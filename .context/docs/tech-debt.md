@@ -62,10 +62,10 @@ O modelo em [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md)
 - **(mitigado) hang infinito:** `withIdleTimeout` (60s) no consumo do stream (commit `6055790`) transforma o hang em `event: error` gracioso (o frontend trata e reabilita o composer). Mas o usuário recebe ERRO em vez de resposta nessas queries.
 - **A investigar (causa raiz):** por que o Bedrock não responde no turno pós-tool? Hipóteses: (a) shape do `tool_result`/conversa remontada para o turno seguinte (`buildConverseInput`) que faz o modelo travar; (b) throttling/limite da conta; (c) auth Bearer (`AWS_BEARER_TOKEN_BEDROCK`)/região/inference profile. Próximo passo: logar request/latência do Converse por turno e inspeccionar metadata/erros do SDK; testar o mesmo prompt+tool_result fora do app.
 
-## 9. Credenciais AWS estáticas → IAM Role da EC2 (pendente)
-- **Contexto:** hoje o acesso ao S3 (detailed report) e ao Bedrock usa credenciais estáticas — `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (leitura S3) e `AWS_BEARER_TOKEN_BEDROCK` (LLM). O `.env.example` já reflete os valores reais (`ATENA_SMS_STATUS_BUCKET=example-sms-delivery-reports`, `BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0`).
-- **Débito:** em produção (deploy numa EC2), preferir **IAM Role da instância** (sem chaves estáticas no `.env`) para S3 e Bedrock; manter as estáticas/STS só para dev local.
-- **Quando:** ao formalizar o deploy em EC2.
+## 9. Credenciais AWS: S3 via IAM Role (feito no app) · Bedrock via Bearer (por design)
+- **S3 (detailed report):** o DuckDB usa `CREATE SECRET … PROVIDER credential_chain` → resolve sozinho **chaves estáticas/STS** (`AWS_ACCESS_KEY_ID`/`SECRET`/`SESSION_TOKEN`) no dev local OU a **IAM Role da instância** (EC2/ECS) em produção, sem chaves no `.env`. Nada a fazer no app — basta a EC2 ter a role com `s3:GetObject`/`s3:ListBucket` no bucket do detailed report.
+- **Bedrock (LLM):** autentica por `AWS_BEARER_TOKEN_BEDROCK` (Bearer), **OBRIGATÓRIO** quando `LLM_PROVIDER=bedrock` (o `LlmModule` falha-rápido sem ele). NÃO usa a IAM Role — por decisão de design.
+- **Resta (infra/AWS, fora do app):** anexar a IAM Role à EC2 e prover o Bearer do Bedrock por segredo (SSM/Secrets Manager) em produção. O `.env.example` já reflete os valores reais (`ATENA_SMS_STATUS_BUCKET=example-sms-delivery-reports`, `BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0`).
 
 ## 10. Sem CI
 - **Contexto:** não há `.github/workflows`. Lint/tsc/testes rodam localmente (`make test`/`make test-e2e`, `npm run lint`).
