@@ -10,78 +10,61 @@ scaffoldVersion: "2.0.0"
 
 ## Development Workflow
 
-**Estado atual: só existe DESIGN HANDOFF.** O repositório da Atena ainda não tem código de produção — não há `package.json` do produto, backend nem frontend. O único conteúdo real é o pacote de handoff em [`docs/design_handoff_atena/`](../../docs/design_handoff_atena/) (specs `01`–`06`, `decisions.md`, `spec-assistente-suporte.md`, `screenshots/`) e o protótipo de design de alta fidelidade em `docs/(protótipo original, não incluído)*.jsx`. **Não há toolchain do produto ainda** (sem scripts npm de build/test/run da Atena).
+**Estado atual: MVP implementado.** O repositório é um **monorepo npm** — `apps/api` (NestJS 11 + Prisma/MySQL), `apps/web` (React 18 + Vite) e `packages/types` (`@atena/types`). Auth OIDC, tools, orquestrador (Nova Pro/fake), busca/trilha/relatórios sobre o detailed report no S3, incidentes + detector + realtime, regras, reveal de PII, admin de usuários, audit log e observabilidade estão presentes. O handoff em [`docs/design_handoff_atena/`](../../docs/design_handoff_atena/) é **referência histórica** de design/contrato.
 
-> Atenção: os comandos `npm install` / `npm run dev` / `npm run build` / `npm run test` citados em [`AGENTS.md`](../../AGENTS.md) referem-se à ferramenta de scaffolding de contexto (dotcontext) que gera este `.context/`, **não** ao produto Atena. Não invente scripts npm da Atena — eles não existem.
+> Atenção: a API real serializa em **`snake_case`** na borda (revisão do handoff, que era camelCase). Ver [code-style.md](./code-style.md).
 
-O trabalho de hoje, portanto, é: (1) tratar o protótipo + as specs como fonte da verdade; (2) implementar o backend e recriar o frontend conforme os documentos; (3) seguir a ordem de implementação por sprints abaixo. Toda a stack (NestJS, Prisma, MySQL, S3, Amazon Bedrock (modelo Nova Pro via Bedrock, Converse API, streaming + tool use), React + styled-components) é **direção pretendida** pelo [README do handoff](../../docs/design_handoff_atena/README.md), ainda não montada.
+O trabalho hoje é evoluir o código existente seguindo os princípios não-negociáveis e o code style. Frentes residuais estão em [tech-debt.md](./tech-debt.md).
 
-### Ordem de implementação (sprints do handoff)
+### Mapa de implementação (o que já existe)
 
-Sequência recomendada em [README §7](../../docs/design_handoff_atena/README.md):
+- **Fundação:** auth OIDC Microsoft Entra (state/nonce/PKCE + sessão por cookie JWT) + RBAC gerenciado no app (papéis no banco, `@Requires`); schema MySQL + migrations Prisma; interceptor global de audit (`@Audit`).
+- **Self-service (read-only):** tools `search_shippings`/`get_shipping_trail`/`analyze_shipping_content`/`generate_delivery_report`/`list_providers`/`list_customers`; orquestrador LLM (chat, SSE, tool routing, recusa, `ThinkingSplitter`); mascaramento de PII + reveal auditado; frontend de chat + tool results.
+- **Proativo:** detector de anomalias (4 regras + shadow mode); gateway socket.io + push de incidente; ciclo de vida do incidente (`acknowledge`/`resolve`/`comment`) com validação server-side; telas de Regras, Relatórios, Audit, Observabilidade, Admin de usuários.
+- **Dado de entrega:** motor `AuditQueryService` (DuckDB sobre o detailed report no S3 + cache `/tmp`).
 
-**Sprint 0 — Fundação**
-1. Auth: login social institucional (OIDC, domínio restrito) (SSO corporativo completo é débito residual — ver [`tech-debt.md`](./tech-debt.md)) + RBAC (`support_analyst`, `support_lead`).
-2. Schema MySQL + migrations (de [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md)).
-3. Interceptor de audit log global.
+### Como usar o handoff (referência histórica)
 
-**Sprint 1 — Fase 1 (self-service, read-only)**
-4. Tools determinísticas: `search_shippings`, `get_shipping_trail`, `analyze_shipping_content`, `generate_delivery_report`, `list_providers`, `list_customers`.
-5. Orquestrador LLM (sessão de chat, streaming, tool routing) + recusa explícita.
-6. Mascaramento de PII + reveal com log.
-7. Frontend do chat + tool results (recriar do protótipo).
-
-**Sprint 2 — Fase 2 (proativo)**
-8. Detector de anomalias (começar via webhook do Grafana Alertmanager → cria incidente).
-9. WebSocket gateway + push de incidente ([03-websocket-events.md](../../docs/design_handoff_atena/03-websocket-events.md)).
-10. Ciclo de vida do incidente + endpoints `acknowledge`/`resolve` com validação server-side.
-11. Tela de Regras, Relatórios de incidente, Audit log viewer, Observabilidade.
-
-### Como usar o protótipo + screen-to-endpoint map
-
-- O protótipo (`prototype/*.jsx`) é **referência de design**, não código para copiar. No codebase real, use os componentes do `atena-design-system` (Button, Badge, Card, Table, Dialog, Tabs, Switch) em vez de recriar à mão como o protótipo fez por rodar standalone.
-- Os mocks em `prototype/data.jsx` são o **contrato de shape**: o backend deve responder exatamente no formato que o protótipo consome (ver [01 §C](../../docs/design_handoff_atena/01-backend-api-contract.md)).
-- Para saber qual endpoint alimenta cada tela, use [04-screen-to-endpoint-map.md](../../docs/design_handoff_atena/04-screen-to-endpoint-map.md) (mapeia cada componente do protótipo → endpoint + nota), junto com os shapes de [01](../../docs/design_handoff_atena/01-backend-api-contract.md).
-- Paridade visual: tokens e telas em [05-design-reference.md](../../docs/design_handoff_atena/05-design-reference.md) (Plankton `#077E70`, semânticas, Manrope/Inter, raio 4px, Phosphor Icons, sem emoji, PT-BR informal).
+- O protótipo (`prototype/*.jsx`) e os mocks de `prototype/data.jsx` foram a referência de design/contrato. O front de produção usa um **design-system próprio em CSS** (`apps/web/src/styles/design-system`), não styled-components nem o pacote `atena-design-system` externo.
+- Os shapes hoje vivem em `@atena/types`; a API serializa em `snake_case`. As telas e tokens de [05-design-reference.md](../../docs/design_handoff_atena/05-design-reference.md) (Plankton `#077E70`, semânticas, Phosphor Icons, sem emoji, PT-BR informal) ainda valem como paridade visual.
 
 ## Branching & Releases
 
-- **Branch principal:** `master` (PRs costumam mirar `master`).
-- Não há fluxo de release formalizado ainda (sem código de produto). Recomenda-se trunk-based / feature branches curtas por sprint.
-- **Conventional Commits** são obrigatórios ([AGENTS.md](../../AGENTS.md)), por exemplo `feat(scaffolding): add doc links`. Para o produto, escopos naturais por módulo: `feat(chat): ...`, `feat(tools): ...`, `feat(incidents): ...`, `feat(audit): ...`, `feat(rules): ...`.
+- **Branch principal:** `master`. PRs miram `master`. Trunk-based / feature branches curtas.
+- **Conventional Commits** obrigatórios. Escopos por módulo: `feat(chat)`, `feat(shippings)`, `feat(incidents)`, `feat(audit)`, `feat(rules)`, `feat(auth)`, `feat(detector)`, `fix(...)`, etc. (ver também [code-style.md](./code-style.md)).
 - Ao commitar/abrir PR, só faça quando o usuário pedir; se estiver em `master`, crie uma branch antes.
 
 ## Local Development
 
-**Não há comandos de build/run/test do produto Atena** — o produto ainda não foi iniciado. Os únicos comandos disponíveis no repo hoje pertencem à ferramenta de scaffolding (dotcontext) descrita em [AGENTS.md](../../AGENTS.md):
+Comandos reais (monorepo npm + Makefile; ver [tooling.md](./tooling.md)):
 
-- Install (scaffolding tooling): `npm install`
-- Sessão interativa (scaffolding tooling): `npm run dev`
-- Build do bundle (scaffolding tooling): `npm run build`
-- Testes (scaffolding tooling): `npm run test`
+- Instalar: `npm install`
+- Gerar `.env`: `make env` (cria `apps/api/.env` a partir de `.env.example`)
+- Subir tudo no Docker: `make up ENV=local` (ou `make dev` com `AUTH_DEV_BYPASS=true`)
+- API no host (watch): `npm run dev` (ou `make api`); front: `make web` (Vite)
+- Migrar: `make migrate`; semear: `make seed`
+- Testes: `make test` (unit + e2e mock) / `make test-e2e` (MySQL real)
+- Lint: `npm run lint`; smoke do health: `make smoke`
+- Datadog (opcional): `make datadog`
 
-Quando o backend Atena nascer (Sprint 0), os comandos pretendidos virão de um `package.json` NestJS (ex.: scripts de migration do Prisma sobre MySQL, `start:dev`, testes Jest) — mas **isso ainda não existe**, então não os assuma. Para experimentar a UI hoje, abra o protótipo standalone em `docs/(protótipo original, não incluído)`.
+Em dev, use `LLM_PROVIDER=fake` (sem credencial Bedrock) e `AUTH_DEV_BYPASS=true` (sem login).
 
 ## Code Review Expectations
 
-Itens de [AGENTS.md](../../AGENTS.md) e dos princípios não-negociáveis da Atena que um review deve verificar:
-
-- Conventional Commits respeitados; PR com amostra de output/markdown quando o comportamento muda.
-- Cross-link de novos scaffolds em `docs/README.md` e `agents/README.md`.
-- **Princípios não-negociáveis** ([README §5](../../docs/design_handoff_atena/README.md)): o LLM não acessa o banco; nenhum dado estruturado fabricado pelo LLM (sem tool → recusa); `acknowledge`/`resolve` **nunca** como tool, só REST com validação server-side; toda ação auditável escrevendo no audit log; PII mascarada por padrão e reveal logado.
+- Conventional Commits respeitados; PR com amostra de output quando o comportamento muda.
+- **Princípios não-negociáveis** ([README §5](../../docs/design_handoff_atena/README.md)): o LLM não acessa o banco; nenhum dado estruturado fabricado pelo LLM (sem tool → recusa); `acknowledge`/`resolve` **nunca** como tool, só REST com validação server-side; toda ação auditável escrevendo no audit log; PII mascarada por padrão e reveal logado (`pii:reveal`).
 - **Validação dupla**: a UI desabilita o botão, mas o backend revalida (categoria/descrição/escalated_to/transição de estado).
-- Paridade com os shapes do contrato ([01 §C](../../docs/design_handoff_atena/01-backend-api-contract.md)) e com os tokens de design ([05](../../docs/design_handoff_atena/05-design-reference.md)).
-- Convenções: tipos compartilhados (`@atena/types`), snake_case no DB / camelCase na API.
+- **Code style** ([code-style.md](./code-style.md)): `snake_case` na borda da API; nomes semânticos; um item por linha; JSDoc; `@todo` para pendências; lint + Sonar limpos.
 
 ## Onboarding Tasks
 
 Para quem está começando:
 
-1. Ler, nesta ordem: [README do handoff](../../docs/design_handoff_atena/README.md) → `spec-assistente-suporte.md` → [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md) → [01-backend-api-contract.md](../../docs/design_handoff_atena/01-backend-api-contract.md).
-2. Abrir o protótipo (`prototype/app.jsx` como entry) e percorrer chat → tool results → incidentes para entender o comportamento pretendido.
-3. Decorar os 5 princípios não-negociáveis e [decisions.md](../../docs/design_handoff_atena/decisions.md).
-4. Conferir as **decisões pendentes que destravam** a implementação ([06-pending-decisions.md](../../docs/design_handoff_atena/06-pending-decisions.md) e [decisions.md](../../docs/design_handoff_atena/decisions.md)): (1) conteúdo de SMS em claro no hot store vs. só no S3; (2) top-3 cenários de anomalia (thresholds default); (3) onde mora o audit log (mesmo MySQL vs. serviço dedicado). Decisões já batidas: banco MySQL (Prisma), LLM via Amazon Bedrock (modelo Nova Pro), login social institucional (OIDC, domínio restrito) (SSO corporativo completo é débito residual). Sprint 2 não fecha sem (2).
-5. Primeira tarefa natural: implementar o schema MySQL + migrations de Sprint 0 a partir de [02](../../docs/design_handoff_atena/02-data-model.md).
+1. Ler, nesta ordem: [project-overview.md](./project-overview.md) → [architecture.md](./architecture.md) → [data-flow.md](./data-flow.md) → [code-style.md](./code-style.md).
+2. Rodar local (`make env`, ajustar `apps/api/.env`, `make up` ou `npm run dev` + `make web`); abrir o chat e percorrer busca → tool result → reveal → incidentes.
+3. Decorar os 5 princípios não-negociáveis.
+4. Conferir o débito residual em [tech-debt.md](./tech-debt.md).
+5. Para histórico de design/contrato (telas, shapes originais), consultar o handoff em [docs/design_handoff_atena/](../../docs/design_handoff_atena/).
 
 ## Cross-References
 
@@ -89,4 +72,4 @@ Para quem está começando:
 - [Data Flow & Integrations](./data-flow.md)
 - [Testing Strategy](./testing-strategy.md)
 - [Tooling](./tooling.md)
-- Handoff: [README](../../docs/design_handoff_atena/README.md) · [decisions.md](../../docs/design_handoff_atena/decisions.md) · [04 — Screen→Endpoint Map](../../docs/design_handoff_atena/04-screen-to-endpoint-map.md)
+- [Code Style](./code-style.md)

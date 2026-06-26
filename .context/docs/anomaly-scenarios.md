@@ -9,7 +9,9 @@ status: filled
 
 # Cenários de anomalia (Fase 2) — análise dos logs de produção
 
-> Resolve a decisão pendente #4 ([decisions.md](../../docs/design_handoff_atena/decisions.md)). Define os **top-3 cenários** e os **thresholds default** das `anomaly_rules` ([02-data-model.md](../../docs/design_handoff_atena/02-data-model.md)), a partir dos logs reais em `s3://at-api-logs-prod`.
+> Resolve a decisão pendente #4 ([decisions.md](../../docs/design_handoff_atena/decisions.md)). Define os **top-3 cenários** e os **thresholds default** das `anomaly_rules` ([02-data-model.md](../../docs/design_handoff_atena/02-data-model.md)), a partir dos logs reais.
+>
+> **Nota (fonte de dados migrou):** esta análise foi feita sobre os **logs gerais** em `s3://at-api-logs-prod` (abordagem hoje **abandonada**). A auditoria em produção agora consome o **detailed report** de SMS em `s3://example-sms-delivery-reports` (via DuckDB), que é por-destinatário e com status normalizado — então o caveat #1 (evento ≠ mensagem) deixou de valer no motor atual. Os **cenários priorizados e os thresholds default abaixo permanecem válidos** (foram semeados como defaults das regras e os 4 detectores estão implementados); leia os números como o **estudo histórico** que os calibrou.
 
 ## Metodologia
 - **Fonte:** `at-api-logs-prod` (JSON Lines gzip via firehose; schema = `LogInterface`: `timestamp`, `level`, `service`, `message`, `context.payload` com `status`, e `status_code`/`response_time`/`error`).

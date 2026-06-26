@@ -101,7 +101,7 @@ status: filled
 - Um módulo por feature; **service** (lógica/dados) + **controller** (HTTP fino) + **DTO** (`class-validator`).
 - `ValidationPipe` global (`whitelist: true, transform: true`).
 - **`@Audit(action, severity)`** em toda ação sensível (o interceptor global grava no audit log).
-- Auth/RBAC por guard (`AuthGuard` + `@Roles`) — aplicar quando o login OIDC real existir.
+- Auth/RBAC por guard global (`AuthGuard` + guard de permissões); endpoints exigem `@Requires(perm)`. OIDC real ligado; `/health` e `/auth/*` são `@Public`.
 
 ## Princípios não-negociáveis (resumo)
 - A IA é intérprete: o **provider LLM** fica atrás de `LlmProvider`; a aplicação executa as tools e toca o banco — a IA nunca toca o banco.
@@ -116,5 +116,5 @@ status: filled
 - **Linha em branco ao trocar de tag `@`**: tags do mesmo tipo ficam agrupadas (vários `@param` juntos; vários `@property` juntos); ao mudar para outra tag (`@param`→`@returns`, `@returns`→`@throws`, etc.) inserir uma linha `*` em branco entre os grupos.
 
 ## Commits
-- **Conventional Commits**, em PT-BR no corpo. Escopos usados: `api`, `llm`, `messages`, `catalog`, `chat`, `db`, `make`, `context`, `deps`.
+- **Conventional Commits**, em PT-BR no corpo. Escopos por módulo: `api`, `llm`, `chat`, `shippings`, `catalog`, `incidents`, `detector`, `rules`, `auth`, `audit`, `admin`, `observability`, `db`, `make`, `context`, `deps` (a entidade de entrega é `shipping`, não `message`).
 - Trailer: `Co-Authored-By: Nova Pro <noreply@anthropic.com>`.

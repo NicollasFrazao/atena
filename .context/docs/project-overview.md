@@ -10,80 +10,77 @@ scaffoldVersion: "2.0.0"
 
 ## Project Overview
 
-**Atena** é o assistente conversacional de IA da plataforma de comunicação. Ele dá a times de suporte autorizados **acesso self-service aos dados de envio de mensagens (SMS)** — busca, trilha completa de entrega, análise de risco de conteúdo e relatórios — e, na Fase 2, **detecta anomalias proativamente**, criando incidentes, notificando em tempo real e registrando de forma estruturada a ação tomada em cada um. O princípio central é que **a IA é intérprete, não executora**: o LLM traduz linguagem natural em chamadas de _tools_ determinísticas; a aplicação executa a query, aplica RBAC e acessa os dados — o LLM nunca toca o banco e nunca fabrica dados.
+**Atena** é o assistente conversacional de IA da plataforma de comunicação. Ele dá a times de suporte autorizados **acesso self-service aos dados de envio de SMS** — busca de envios, trilha completa de entrega, análise de risco de conteúdo e relatórios de entregabilidade — e **detecta anomalias proativamente**, criando incidentes, notificando em tempo real (socket.io) e registrando de forma estruturada a ação tomada em cada um. O princípio central é que **a IA é intérprete, não executora**: o LLM traduz linguagem natural em chamadas de _tools_ determinísticas; a aplicação executa a query, aplica RBAC e acessa os dados — o LLM nunca toca o banco e nunca fabrica dados.
 
-> ⚠️ **Estado atual do repositório:** este repo contém o **pacote de design handoff** (`design_handoff_atena/`) — especificação, contratos de API, modelo de dados, eventos de WebSocket e um protótipo React de alta fidelidade. **O código de produção (backend NestJS + frontend React) ainda não foi implementado.** A documentação abaixo descreve o sistema pretendido a partir do handoff, sinalizando o que é spec vs. o que já existe.
+> **Estado atual do repositório (MVP implementado):** o produto **está construído**. É um **monorepo npm** com `apps/api` (NestJS 11 + Prisma/MySQL), `apps/web` (React 18 + Vite) e `packages/types` (`@atena/types`). Auth OIDC Microsoft Entra ligada e validada; RBAC gerenciado no app; tools determinísticas, orquestrador LLM (Amazon Nova Pro via Bedrock, com fallback fake), busca/trilha/relatórios de envio sobre o **detailed report no S3** (via DuckDB), incidentes + detector + push realtime, regras (CRUD + shadow mode), reveal de PII auditado, admin de usuários/papéis, audit log e observabilidade — tudo presente. O pacote de design handoff (`docs/design_handoff_atena/`) permanece como **referência histórica de design/contrato**, não como fonte da verdade do que existe.
 
 ## Codebase Reference
 
-> **Semantic Snapshot**: Use `context({ action: "getMap", section: "all" })` para o stack gerado, camadas de arquitetura, key files e hotspots de dependência. Hoje o snapshot reflete apenas o protótipo (`(protótipo original, não incluído)*.jsx`), já que é o único código presente.
+> **Semantic Snapshot**: Use `context({ action: "getMap", section: "all" })` para o stack gerado, camadas de arquitetura, key files e hotspots de dependência.
 
 ## Quick Facts
 
 - Root: `~/atena`
-- Linguagem primária detectada: JavaScript (protótipo `.jsx`) — stack de produção pretendida: **TypeScript** (Node.js + React)
-- Estado: **design handoff** (specs + protótipo); implementação ainda não iniciada
-- Fonte da verdade dos requisitos: [spec-assistente-suporte.md](../../docs/design_handoff_atena/spec-assistente-suporte.md)
-- Contrato de API / shapes: [01-backend-api-contract.md](../../docs/design_handoff_atena/01-backend-api-contract.md)
-- Entry point do protótipo: [app.jsx](../../(protótipo original, não incluído))
+- Linguagem primária: **TypeScript** fim a fim (Node.js/NestJS no back, React no front).
+- Estado: **MVP implementado** (Fases 1 e 2 entregues; mergeadas na `master`).
+- Estrutura: **monorepo npm workspaces** — `apps/api`, `apps/web`, `packages/types`.
+- Referência de design/contrato (histórica): [spec-assistente-suporte.md](../../docs/design_handoff_atena/spec-assistente-suporte.md), [01-backend-api-contract.md](../../docs/design_handoff_atena/01-backend-api-contract.md).
+- Convenção de I/O da API: **`snake_case`** na borda (revisão do handoff, que era camelCase). Ver [code-style.md](./code-style.md).
 - Semantic snapshot: `context({ action: "getMap", section: "all" })`
 
 ## Entry Points
 
-- **Protótipo (referência de design, único código existente):** [(protótipo original, não incluído)](../../(protótipo original, não incluído)) — monta o shell imersivo e roteia entre Chat / Incidentes / Relatórios.
-- **Backend (pretendido, a implementar):** aplicação NestJS expondo REST + WebSocket gateway (`/ws/support`) conforme [design_handoff_atena/01-backend-api-contract.md](../../docs/design_handoff_atena/01-backend-api-contract.md).
-- **Frontend (pretendido, a implementar):** app React + TypeScript sobre `atena-design-system`, recriando as telas do protótipo.
+- **Backend:** `apps/api/src/main.ts` — app NestJS expondo REST sob prefixo `/api`, stream SSE no chat e gateway **socket.io** em `/ws/support`.
+- **Frontend:** `apps/web/src/main.tsx` / `App.tsx` — app React + Vite, roteando entre Chat, Incidentes, Relatórios, Regras, Audit, Observabilidade, Admin de usuários e Login.
+- **Tipos compartilhados:** `packages/types/src/index.ts` (`@atena/types`) — shapes de envio, tools, eventos WS/SSE, RBAC, etc.
 
 ## Key Exports
 
-Ainda não há superfície pública de produção (sem `package.json`, sem `main`/`bin`/`types`). As "exportações" relevantes hoje são conceituais e definidas pelo handoff:
-
-- **Catálogo de tools do LLM** (contrato): `search_shippings`, `get_shipping_trail`, `analyze_shipping_content`, `generate_delivery_report`, `list_providers`, `list_customers` (Fase 1); `list_incidents`, `get_incident`, `generate_incident_report` (Fase 2). Ver [design_handoff_atena/01-backend-api-contract.md](../../docs/design_handoff_atena/01-backend-api-contract.md) §B.
-- **Endpoints REST + WebSocket** descritos em [design_handoff_atena/01-backend-api-contract.md](../../docs/design_handoff_atena/01-backend-api-contract.md) e [design_handoff_atena/03-websocket-events.md](../../docs/design_handoff_atena/03-websocket-events.md).
-- **Pacote de tipos compartilhados pretendido** (`@atena/types`) entre backend e frontend.
+- **Catálogo de tools do LLM:** `search_shippings`, `get_shipping_trail`, `analyze_shipping_content`, `generate_delivery_report`, `list_providers`, `list_customers` (self-service); `list_incidents`, `get_incident`, `generate_incident_report` (incidentes). Implementadas no orquestrador (`apps/api/src/chat/orchestrator.service.ts`) com endpoint REST espelhado.
+- **Endpoints REST + WebSocket:** controllers em `apps/api/src/*` (rotas sob `/api`, ex.: `/shippings/*`, `/incidents/*`, `/rules`, `/reports/*`, `/observability`, `/audit`, `/admin/*`, `/auth/*`) e gateway socket.io `/ws/support`.
+- **Pacote de tipos compartilhados** `@atena/types` (`packages/types`) — consumido por back e front.
 
 ## File Structure & Code Organization
 
-- `design_handoff_atena/` — pacote de handoff (specs + protótipo + design reference). É a fonte da verdade até o código de produção existir.
-  - `01-backend-api-contract.md`…`06-pending-decisions.md` — contratos e decisões.
-  - `prototype/` — protótipo React standalone (referência de design, **não** copiar para produção).
-  - `screenshots/` — 18 capturas das telas/modais/estados de erro.
-  - `spec-assistente-suporte.md` — especificação V1 completa.
-  - `decisions.md` — decisões de design batidas + pendências.
-- `.context/` — base de conhecimento do dotcontext (docs, agents, skills, harness). Determinística entre reruns.
-- `AGENTS.md` — guia de contribuição (atenção: hoje é template genérico, ainda não reflete o repo real).
+- `apps/api/` — backend NestJS 11. Módulos por feature em `src/`: `auth` (OIDC + RBAC), `admin`/`users`, `chat` (orquestrador + ThinkingSplitter), `llm` (bedrock + fake), `shippings` (busca/trilha/reveal/análise), `audit-query` (motor DuckDB sobre S3), `catalog`, `reports`, `incidents`, `detector`, `rules`, `realtime` (socket.io), `observability`, `audit`, `retention`, `cache`, `config`, `prisma`, `common`. Schema em `prisma/schema.prisma`.
+- `apps/web/` — frontend React 18 + Vite. Features em `src/`: `chat`, `incidents`, `reports`, `rules`, `audit`, `observability`, `admin`, `auth`, `history`, `realtime`, `user`, `components`, `styles` (design-system em CSS + tokens), `api`, `util`.
+- `packages/types/` — `@atena/types`, contrato compartilhado.
+- `docs/design_handoff_atena/` — pacote de handoff (specs `01`–`06`, `decisions.md`, `spec-assistente-suporte.md`, `screenshots/`, `prototype/`). **Referência histórica** de design/contrato.
+- `.context/` — base de conhecimento do dotcontext (docs, agents, skills, harness).
+- `Makefile`, `docker-compose.yml`, `.env.example` — tooling local (ver [tooling.md](tooling.md)).
 
 ## Technology Stack Summary
 
-A stack **pretendida** (do handoff) unifica em **TypeScript**. **Backend:** NestJS (módulos + DI, WebSocket gateway nativo, guards para auth/RBAC — login social institucional (OIDC, domínio restrito), SSO corporativo completo é débito residual, interceptor global de audit log), **Prisma** sobre **MySQL** como hot store de metadados (retenção 90d), **S3** como origem durável do conteúdo de SMS (PII) e logs originais `json.gz`, um **cache transitório de conteúdo/trilha em arquivos temporários no `/tmp`** (volume Docker numa EC2, hidratado do S3), e o **Amazon Bedrock (modelo Nova Pro via Bedrock, Converse API, streaming + tool use)** para o orquestrador LLM. **Frontend:** React + TypeScript + styled-components + Phosphor Icons sobre `atena-design-system`. **Observabilidade:** OpenTelemetry / Prometheus alimentando a página de Observabilidade. Hoje, no repo, só existe o protótipo `.jsx` standalone — sem build tool, sem test runner, sem package manager configurado.
+Stack TypeScript fim a fim. **Backend:** NestJS 11 (módulos + DI, guards de auth/RBAC, interceptor global de audit log, gateway **socket.io**), **Prisma** sobre **MySQL** como store **apenas da aplicação** (chat, incidentes, regras, audit log, usuários/papéis) — o dado de **ENTREGA não fica no MySQL**. **Amazon Nova Pro** (`us.amazon.nova-pro-v1:0`) via **Amazon Bedrock Converse** (streaming + tool use) para o orquestrador, com **provider fake** quando não há credencial. **Frontend:** React 18 + Vite + Phosphor Icons + CSS (design-system com tokens), PT-BR informal. **Observabilidade:** Datadog APM (dd-trace) + métricas via DogStatsD (hot-shots), **opcional** (opt-in).
 
 ## Core Framework Stack
 
-- **Backend:** NestJS — escolhido pelo gateway WebSocket nativo (RF-2.2), guards para auth/RBAC (login social institucional via OIDC) e interceptors que viabilizam o audit log automático e global.
-- **Dados:** MySQL (hot store de metadados) + S3 (origem durável de conteúdo/PII e logs frios; Athena para janelas além da retenção) + cache transitório de conteúdo/trilha em arquivos temporários no `/tmp` (volume Docker numa EC2). ORM: Prisma com migrations versionadas. Cache transitório (read-through) dos dados brutos: leitura de conteúdo/trilha lê do `/tmp`; faltando o dado, busca no S3 (`s3_log_pointer`/`content_ref`) e popula o `/tmp` (cache efêmero/rebuildável) — para evitar muitas requisições ao S3 num curto período e manter os brutos fora do banco.
-- **LLM:** Amazon Bedrock (modelo Nova Pro via Bedrock, Converse API, streaming + tool use) — o orquestrador roda as tools; a IA nunca acessa o banco diretamente.
-- **Real-time:** WebSocket gateway do NestJS, atrás de API Gateway WebSocket gerenciado em produção.
+- **Backend:** NestJS 11 — módulos + DI, guards de auth/RBAC, interceptors (audit/metrics), gateway socket.io.
+- **Dados de entrega (fonte da verdade):** **detailed report no S3** (`s3://example-sms-delivery-reports`, do `example-sms-delivery-reports`/webhook-dispatcher), consultado **sob demanda** pelo motor `AuditQueryService` (DuckDB embarcado + cache transitório no `/tmp`). Grão por destinatário `(campaign_id, phone)`, `id = md5(campaign_id||'|'||phone)`.
+- **Dados da aplicação:** MySQL via Prisma (chat, incidentes, regras, audit log, usuários/papéis). Migrations versionadas. **Conteúdo bruto/PII** vive no S3; o `/tmp` é cache efêmero/rebuildável (read-through do S3).
+- **LLM:** Amazon Nova Pro via Amazon Bedrock Converse (streaming + tool use); fallback fake determinístico. A IA nunca acessa o banco diretamente.
+- **Real-time:** gateway **socket.io** (`/ws/support`), autenticado pela mesma sessão (cookie JWT).
 
 ## UI & Interaction Libraries
 
-- **`atena-design-system`** — usar os componentes reais (Button, Badge, Card, Table, Dialog, Tabs, Switch). O protótipo reimplementou-os à mão só por rodar standalone.
-- **Phosphor Icons** (`@phosphor-icons/react`) — `regular` para chrome, `bold` para glifos grandes. Sem emoji no produto.
+- **Design-system Acme em CSS** — componentes e tokens próprios (`apps/web/src/styles/design-system`); o frontend **não** usa styled-components nem o pacote `atena-design-system` externo (o protótipo só reimplementou à mão por rodar standalone).
+- **Phosphor Icons** (`@phosphor-icons/react`) — sem emoji no produto.
 - **Tokens de design Acme** — primária `plankton800` (#077E70) + cores semânticas (danger/warning/info/success). Ver [05-design-reference.md](../../docs/design_handoff_atena/05-design-reference.md).
-- Idioma do produto: **PT-BR**, registro informal (`você`).
+- Outras libs do front: `react-router-dom`, `@tanstack/react-query`, `react-markdown`, `socket.io-client`.
+- Idioma do produto: **PT-BR**, registro informal (`você`). A entidade de entrega é exibida como **"Envio"**.
 
 ## Development Tools Overview
 
-Ainda não há toolchain configurada no repositório (sem `package.json`/scripts). Quando o código de produção começar, espere os fluxos NestJS (backend) e React/TypeScript (frontend) descritos em [tooling.md](tooling.md) e [development-workflow.md](development-workflow.md). Para inspecionar o estado atual, use o snapshot do dotcontext (`context({ action: "getMap" })`).
+O monorepo é dirigido por npm workspaces + um `Makefile`. Fluxos: `make env` (gera `apps/api/.env`), `make up`/`make dev` (Docker), `make migrate`, `make seed`, `npm run dev` (API no host), `make web` (Vite), `make test`/`make test-e2e`, `npm run lint`. Detalhes em [tooling.md](tooling.md) e [development-workflow.md](development-workflow.md).
 
 ## Getting Started Checklist
 
-1. Leia o [README do handoff](../../docs/design_handoff_atena/README.md) e a [spec V1](../../docs/design_handoff_atena/spec-assistente-suporte.md) para entender escopo e princípios.
-2. Estude os contratos: [01-backend-api-contract.md](../../docs/design_handoff_atena/01-backend-api-contract.md), [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md), [03-websocket-events.md](../../docs/design_handoff_atena/03-websocket-events.md).
-3. Veja como cada tela mapeia para endpoints em [04-screen-to-endpoint-map.md](../../docs/design_handoff_atena/04-screen-to-endpoint-map.md) e abra os `screenshots/`.
-4. Revise os 5 princípios de arquitetura não-negociáveis (IA não executa, não fabrica dados, incidente não é tool, tudo auditado, PII mascarada) — ver [architecture.md](architecture.md).
-5. Confira as decisões batidas e pendentes em [decisions.md](../../docs/design_handoff_atena/decisions.md) e [06-pending-decisions.md](../../docs/design_handoff_atena/06-pending-decisions.md) antes de codar.
-6. Siga a ordem de implementação sugerida (Sprint 0 → 2) do [README do handoff](../../docs/design_handoff_atena/README.md).
+1. Leia este overview, [architecture.md](architecture.md) e [data-flow.md](./data-flow.md) para o estado atual.
+2. Rode local: `make env`, ajuste `apps/api/.env` (em dev `AUTH_DEV_BYPASS=true`, `LLM_PROVIDER=fake`), `make up` (ou `npm run dev` + `make web`).
+3. Revise os 5 princípios não-negociáveis (IA não executa, não fabrica dados, incidente não é tool, tudo auditado, PII mascarada) — ver [architecture.md](architecture.md).
+4. Para histórico de design/contrato (shapes, telas), consulte o handoff em [docs/design_handoff_atena/](../../docs/design_handoff_atena/) — lembrando que a API hoje serializa em `snake_case` ([code-style.md](./code-style.md)).
+5. Confira o débito técnico residual em [tech-debt.md](./tech-debt.md).
 
 ## Next Steps
 
-Decisões pendentes destravam a implementação (ver [06-pending-decisions.md](../../docs/design_handoff_atena/06-pending-decisions.md)): política de PII (conteúdo em claro no cache transitório de `/tmp` ou só no S3), top 3 cenários de anomalia (definem thresholds default das regras) e onde mora o audit log. O provider de LLM já foi batido em **Amazon Bedrock** (preferir cliente sem retenção de prompt) e a auth usa **login social institucional (OIDC) + RBAC** — OIDC via Microsoft 365 (Entra ID), atrás de uma abstração de auth para trocar de IdP facilmente (ex.: Google Workspace), restrito ao domínio `@example.com`, sem senha própria (SSO corporativo completo SAML + SCIM é débito residual, ver [tech-debt.md](./tech-debt.md)). Stakeholder: Acme / time de Suporte. Relacionados: [architecture.md](architecture.md), [development-workflow.md](development-workflow.md), [tooling.md](tooling.md).
+O MVP está entregue. Frentes residuais (ver [tech-debt.md](./tech-debt.md)): SSO corporativo completo (SAML + SCIM); IAM Role da EC2 para o S3 (hoje credenciais de leitura); pré-aquecimento do cache `/tmp` pós-redeploy; cache do catálogo (`list_customers`/`list_providers`); investigar o hang intermitente do turno pós-tool no Bedrock; medir o volume de falhas pré-`queued` não rastreadas. Stakeholder: Acme / time de Suporte. Relacionados: [architecture.md](architecture.md), [development-workflow.md](development-workflow.md), [tooling.md](tooling.md).
