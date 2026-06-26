@@ -1,0 +1,1308 @@
+openapi: 3.1.0
+
+info:
+  title: Atena API
+  version: "0.2.0"
+  contact:
+    name: Time Atena
+    url: https://example.com
+  description: |
+    API da **Atena** — assistente de suporte da plataforma de SMS da Acme.
+
+    Cobre as tools de mensagens/catálogo (Fase 1) e detecção de anomalias,
+    incidentes, regras, observabilidade e chat (Fase 2).
+
+    ## Convenções
+    - Todos os objetos de **request** e **response** são `snake_case`.
+    - Datas em **ISO 8601 UTC** (string).
+    - Erros sempre no shape `{ "error": { "code": "...", "message": "..." } }`.
+    - Envelope paginado: `{ rows, page, total_pages, total, latency_ms }`.
+    - Todos os endpoints ficam sob o prefixo **`/api`**, exceto `GET /health`.
+
+    ## Autenticação
+    A API usa OIDC + RBAC por papel (`support_analyst` / `support_lead`).
+    Em **desenvolvimento** o bypass de auth (`AUTH_DEV_BYPASS=true`) está ligado,
+    então o token Bearer é **opcional** — os requests funcionam sem ele.
+    O `securityScheme` `bearerAuth` está declarado para quando o OIDC real existir.
+
+    > **PII:** telefone e conteúdo saem mascarados por padrão. Os endpoints
+    > `reveal-phone`/`reveal-content` retornam o valor em claro e são auditados.
+
+servers:
+  - url: http://localhost:3000
+    description: Desenvolvimento local (API sob /api; /health na raiz)
+
+tags:
+  - name: Health
+    description: Sonda de saúde da aplicação (fora do prefixo /api)
+  - name: Catálogo
+    description: Providers e customers distintos
+  - name: Mensagens
+    description: Busca, trilha, análise de conteúdo e reveal de PII
+  - name: Relatórios
+    description: Relatórios de entregabilidade e de incidentes
+  - name: Regras
+    description: Leitura e edição das regras de anomalia
+  - name: Incidentes
+    description: Leitura (read-only) e lifecycle (ack/resolve/comment) de incidentes
+  - name: Observabilidade
+    description: Métricas agregadas do assistente
+  - name: Chat
+    description: Sessões e mensagens de chat (resposta em stream SSE)
+  - name: Detector (dev)
+    description: Gatilho de desenvolvimento do detector de anomalias
+  - name: Auth
+    description: Fluxo de login social (OIDC) — stubs até o IdP real
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ---------------------------------------------------------------------------
+  # Health
+  # ---------------------------------------------------------------------------
+  /health:
+    get:
+      tags: [Health]
+      summary: Healthcheck da aplicação
+      operationId: healthCheck
+      description: Endpoint público, fora do prefixo `/api`, para sondas de infra.
+      security: []
+      responses:
+        "200":
+          description: Aplicação no ar
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: atena-api
+                required: [status, service]
+
+  # ---------------------------------------------------------------------------
+  # Catálogo
+  # ---------------------------------------------------------------------------
+  /api/providers:
+    get:
+      tags: [Catálogo]
+      summary: Lista providers distintos
+      operationId: listProviders
+      description: Tool `list_providers`. Nomes de provedores distintos, em ordem ascendente.
+      responses:
+        "200":
+          description: Lista de providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: [twilio, sinch, localsms, voicecarrier]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/customers:
+    get:
+      tags: [Catálogo]
+      summary: Lista customers distintos
+      operationId: listCustomers
+      description: Tool `list_customers`. `id === name` por ora.
+      parameters:
+        - name: search
+          in: query
+          required: false
+          description: Termo para filtrar o `customer_id` (match parcial).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lista de clientes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    name: { type: string }
+                  required: [id, name]
+                example:
+                  - { id: "1001", name: "1001" }
+                  - { id: "8349", name: "8349" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Mensagens
+  # ---------------------------------------------------------------------------
+  /api/messages/search:
+    get:
+      tags: [Mensagens]
+      summary: Busca paginada de mensagens
+      operationId: searchMessages
+      description: Tool `search_messages`. Todos os filtros são opcionais. PII mascarada.
+      parameters:
+        - name: phone
+          in: query
+          description: Telefone em E.164 (match exato).
+          schema: { type: string, example: "+5511987651234" }
+        - name: status
+          in: query
+          description: Status final (`delivered`/`failed`/`pending`/`unknown`).
+          schema: { type: string, example: failed }
+        - name: provider
+          in: query
+          description: Nome do provider.
+          schema: { type: string, example: twilio }
+        - name: customer_id
+          in: query
+          description: Id do cliente (match exato).
+          schema: { type: string, example: "1001" }
+        - name: page
+          in: query
+          description: Página (>= 1; default 1).
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          description: Itens por página (1–100; default 20).
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Envelope paginado de resultados
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      rows:
+                        type: array
+                        items: { $ref: "#/components/schemas/SearchResultRow" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/messages/{id}/trail:
+    get:
+      tags: [Mensagens]
+      summary: Trilha completa de uma mensagem
+      operationId: getMessageTrail
+      description: Tool `get_message_trail`. PII mascarada (sem `content_preview`).
+      parameters:
+        - $ref: "#/components/parameters/MessageId"
+      responses:
+        "200":
+          description: Trilha da mensagem
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageTrail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/messages/analyze:
+    post:
+      tags: [Mensagens]
+      summary: Análise de risco de conteúdo
+      operationId: analyzeMessageContent
+      description: |
+        Tool `analyze_message_content`. Forneça `text` OU `message_id`
+        (o serviço resolve o conteúdo via cache `/tmp`↔S3). Se ambos faltarem,
+        responde `invalid_request`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnalyzeContentRequest" }
+            examples:
+              porTexto:
+                summary: Analisar texto direto
+                value: { text: "Clique aqui para resgatar seu prêmio: http://bit.ly/xyz" }
+              porMensagem:
+                summary: Analisar conteúdo de uma mensagem existente
+                value: { message_id: "m-1001" }
+      responses:
+        "201":
+          description: Resultado da análise de risco
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RiskAnalysis" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/messages/{id}/reveal-phone:
+    post:
+      tags: [Mensagens]
+      summary: Revela o telefone completo (PII)
+      operationId: revealMessagePhone
+      description: Auditado como `reveal_phone` (severidade `pii`). O valor vai só na resposta.
+      parameters:
+        - $ref: "#/components/parameters/MessageId"
+      responses:
+        "201":
+          description: Telefone revelado (não mascarado)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RevealedPhone" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/messages/{id}/reveal-content:
+    post:
+      tags: [Mensagens]
+      summary: Revela o conteúdo bruto (PII)
+      operationId: revealMessageContent
+      description: Auditado como `reveal_content` (severidade `pii`). Conteúdo hidratado do S3 via `content_ref`.
+      parameters:
+        - $ref: "#/components/parameters/MessageId"
+      responses:
+        "201":
+          description: Conteúdo revelado (não mascarado)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RevealedContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Relatórios
+  # ---------------------------------------------------------------------------
+  /api/reports/delivery:
+    post:
+      tags: [Relatórios]
+      summary: Relatório de entregabilidade
+      operationId: generateDeliveryReport
+      description: Tool `generate_delivery_report`. Sempre quebra por provider.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeliveryReportRequest" }
+            examples:
+              ultimas24h:
+                summary: Últimas 24h, todos os providers
+                value: { date_range: "24h" }
+              comFiltro:
+                summary: 7 dias, filtrando por cliente
+                value:
+                  date_range: "7d"
+                  group_by: [provider]
+                  filters: { customer_id: "1001" }
+      responses:
+        "201":
+          description: Relatório agregado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryReport" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/reports/incidents:
+    post:
+      tags: [Relatórios]
+      summary: Relatório de incidentes resolvidos
+      operationId: generateIncidentReport
+      description: Tool `generate_incident_report` (§C.6).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IncidentReportRequest" }
+            examples:
+              ultimas24h:
+                summary: Últimas 24h
+                value: { date_range: "24h" }
+              criticosPorCliente:
+                summary: 30 dias, só críticos por cliente
+                value:
+                  date_range: "30d"
+                  filters: { severity: critical, dimension: customer }
+      responses:
+        "201":
+          description: Relatório de incidentes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IncidentReport" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Regras
+  # ---------------------------------------------------------------------------
+  /api/rules:
+    get:
+      tags: [Regras]
+      summary: Lista regras de anomalia
+      operationId: listRules
+      description: "Lista todas as regras de anomalia configuradas (tabela `anomaly_rules`)."
+      responses:
+        "200":
+          description: Regras (snake_case)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AnomalyRule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/rules/{id}:
+    put:
+      tags: [Regras]
+      summary: Edita campos permitidos de uma regra
+      operationId: updateRule
+      description: "`rule_type` é imutável (não aceito). Atualização parcial; auditada como `rule_update`."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Id da regra (ex.: `r-delivery-drop-customer`)."
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateRuleRequest" }
+            examples:
+              ajustaLimiar:
+                summary: Ajustar limiar e janela
+                value: { threshold: 8, window_minutes: 15 }
+              desabilita:
+                summary: Desabilitar a regra
+                value: { enabled: false }
+      responses:
+        "200":
+          description: Regra atualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnomalyRule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Incidentes — leitura
+  # ---------------------------------------------------------------------------
+  /api/incidents:
+    get:
+      tags: [Incidentes]
+      summary: Lista paginada de incidentes
+      operationId: listIncidents
+      description: Tool `list_incidents` (§C.5). Filtros via CSV.
+      parameters:
+        - name: status
+          in: query
+          description: "Status (CSV): `detected,acknowledged,resolved,auto_resolved`."
+          schema: { type: string, example: "detected,acknowledged" }
+        - name: severity
+          in: query
+          description: "Severidade (CSV): `critical,warning,info`."
+          schema: { type: string, example: critical }
+        - name: dimension
+          in: query
+          description: "Tipo de dimensão: `provider|customer|route|global`."
+          schema: { type: string, example: customer }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Envelope paginado de incidentes
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      rows:
+                        type: array
+                        items: { $ref: "#/components/schemas/Incident" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/incidents/{id}:
+    get:
+      tags: [Incidentes]
+      summary: Incidente + atividades
+      operationId: getIncident
+      description: Tool `get_incident`.
+      parameters:
+        - $ref: "#/components/parameters/IncidentId"
+      responses:
+        "200":
+          description: Incidente com a trilha de atividades
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IncidentWithActivities" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Incidentes — lifecycle (UI-only, não-LLM)
+  # ---------------------------------------------------------------------------
+  /api/incidents/{id}/acknowledge:
+    post:
+      tags: [Incidentes]
+      summary: Reconhece um incidente
+      operationId: acknowledgeIncident
+      description: "Transição `detected` → `acknowledged`. Validação server-side (§D)."
+      parameters:
+        - $ref: "#/components/parameters/IncidentId"
+      responses:
+        "200":
+          description: Incidente reconhecido + atividades
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IncidentWithActivities" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/incidents/{id}/resolve:
+    post:
+      tags: [Incidentes]
+      summary: Resolve manualmente um incidente
+      operationId: resolveIncident
+      description: |
+        Validação §D no serviço: `action_description` ≥ 20 chars (≥ 10 em `auto_resolved`)
+        e `escalated_to` obrigatório quando `action_category` ∈ {`provider_escalated`,
+        `internal_escalated`}.
+      parameters:
+        - $ref: "#/components/parameters/IncidentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveIncidentRequest" }
+            examples:
+              providerRecuperou:
+                summary: Provider se recuperou
+                value:
+                  action_category: provider_recovered
+                  action_description: "Provedor normalizou as entregas após reroteamento; taxa de volta ao baseline."
+              escalado:
+                summary: Escalado ao provedor (exige escalated_to)
+                value:
+                  action_category: provider_escalated
+                  action_description: "Abrimos chamado P1 junto ao provedor para a quebra de integração."
+                  escalated_to: "suporte@twilio.com"
+                  tags: [integracao, p1]
+      responses:
+        "200":
+          description: Incidente resolvido + atividades
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IncidentWithActivities" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/incidents/{id}/comment:
+    post:
+      tags: [Incidentes]
+      summary: Adiciona um comentário
+      operationId: addIncidentComment
+      description: Não muda o estado do incidente.
+      parameters:
+        - $ref: "#/components/parameters/IncidentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddCommentRequest" }
+            examples:
+              comentario:
+                value: { text: "Acompanhando com o time de integração; sem novas falhas na última hora." }
+      responses:
+        "201":
+          description: Atividade de comentário criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IncidentActivity" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Observabilidade
+  # ---------------------------------------------------------------------------
+  /api/observability:
+    get:
+      tags: [Observabilidade]
+      summary: Snapshot de métricas do assistente
+      operationId: getObservability
+      description: |
+        Métricas básicas (§E) a partir do audit log/sessões/WS. Tokens/custo/MTTA/
+        percentis ficam `null` (pendentes — OpenTelemetry/Prometheus).
+      responses:
+        "200":
+          description: Snapshot de observabilidade
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Observability" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Chat
+  # ---------------------------------------------------------------------------
+  /api/chat/sessions:
+    post:
+      tags: [Chat]
+      summary: Cria uma sessão de chat
+      operationId: createChatSession
+      description: Auditado como `session_start`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSessionRequest" }
+            examples:
+              comTitulo:
+                value: { title: "Investigando falhas do cliente 1001" }
+      responses:
+        "201":
+          description: Sessão criada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                required: [session_id]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    get:
+      tags: [Chat]
+      summary: Lista sessões do usuário
+      operationId: listChatSessions
+      description: Lista as sessões de chat do usuário, mais recentes primeiro.
+      responses:
+        "200":
+          description: Sessões mais recentes primeiro
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ChatSessionListItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/chat/sessions/{id}/messages:
+    get:
+      tags: [Chat]
+      summary: Histórico de mensagens de uma sessão
+      operationId: listChatMessages
+      description: Retorna o histórico de mensagens de uma sessão em ordem cronológica.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Mensagens em ordem cronológica
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ChatMessage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Chat]
+      summary: Envia mensagem e recebe resposta em stream SSE
+      operationId: sendChatMessage
+      description: |
+        Responde em **stream SSE** (`text/event-stream`), não JSON. Os frames seguem
+        `event: <tipo>` / `data: <json>`:
+
+        - `tool_call`   — orquestrador iniciou uma tool (`status: running`)
+        - `tool_result` — tool concluiu (`status: success|error`, `result`)
+        - `text_delta`  — fragmento incremental do texto (`delta`)
+        - `done`        — fim da resposta (`message_id`, `refusal: null`)
+        - `refusal`     — recusa estruturada (`reason`, `explanation`, `can_do`)
+
+        > No Insomnia, use o tipo de requisição **Event Stream (SSE)** para ver os frames.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SendMessageRequest" }
+            examples:
+              pergunta:
+                value: { text: "Quais incidentes críticos abertos temos agora?" }
+      responses:
+        "200":
+          description: Stream de eventos SSE
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: tool_call
+                  data: {"name":"list_incidents","args":{"status":"detected"},"status":"running"}
+
+                  event: text_delta
+                  data: {"delta":"Há 3 incidentes críticos abertos..."}
+
+                  event: done
+                  data: {"message_id":"cm-9001","refusal":null}
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Detector (dev)
+  # ---------------------------------------------------------------------------
+  /api/dev/detect:
+    post:
+      tags: [Detector (dev)]
+      summary: Dispara um scan imediato do detector
+      operationId: runDetector
+      description: Gatilho de DEV (independente do `@Interval`/`detect.enabled`). Detecta → cria incidente → push WS.
+      responses:
+        "200":
+          description: Resumo da execução
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DetectorRunSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Auth (OIDC — stubs)
+  # ---------------------------------------------------------------------------
+  /api/auth/login:
+    get:
+      tags: [Auth]
+      summary: Inicia o login (redireciona ao IdP)
+      operationId: authLogin
+      description: "Inicia o login OIDC: obtém a URL de autorização do IdP e redireciona (302)."
+      security: []
+      responses:
+        "302":
+          description: Redirect (HTTP 302) para a URL de autorização do IdP
+          headers:
+            Location:
+              schema: { type: string }
+
+  /api/auth/callback:
+    get:
+      tags: [Auth]
+      summary: Callback do IdP
+      operationId: authCallback
+      description: Recebe o redirect do IdP e conclui o login.
+      security: []
+      parameters:
+        - name: code
+          in: query
+          schema: { type: string }
+        - name: state
+          in: query
+          schema: { type: string }
+      responses:
+        "302":
+          description: Redirect (HTTP 302) de volta para o app
+          headers:
+            Location:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Encerra a sessão
+      operationId: authLogout
+      description: Encerra a sessão do usuário (HTTP 204).
+      security: []
+      responses:
+        "204":
+          description: Sessão encerrada (sem corpo)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Token OIDC. Em desenvolvimento (`AUTH_DEV_BYPASS=true`) o token é opcional —
+        os requests funcionam sem o header `Authorization`.
+
+  parameters:
+    MessageId:
+      name: id
+      in: path
+      required: true
+      description: Id (PK) da mensagem.
+      schema: { type: string, example: m-1001 }
+    IncidentId:
+      name: id
+      in: path
+      required: true
+      description: Id do incidente.
+      schema: { type: string, example: INC-2401 }
+    SessionId:
+      name: id
+      in: path
+      required: true
+      description: Id da sessão de chat.
+      schema: { type: string, example: cs-1001 }
+
+  responses:
+    BadRequest:
+      description: Requisição inválida (validação)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+          example: { error: { code: invalid_request, message: "Parâmetros inválidos" } }
+    Unauthorized:
+      description: Não autenticado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+          example: { error: { code: unauthorized, message: "Autenticação necessária" } }
+    Forbidden:
+      description: Sem permissão (RBAC)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+          example: { error: { code: forbidden, message: "Papel insuficiente" } }
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+          example: { error: { code: not_found, message: "Recurso não encontrado" } }
+    Conflict:
+      description: Transição de estado inválida
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+          example: { error: { code: invalid_transition, message: "Transição de estado não permitida" } }
+
+  schemas:
+    # --- Enums / unions de domínio --------------------------------------------
+    MessageStatus:
+      type: string
+      enum: [delivered, failed, pending, unknown]
+    IncidentSeverity:
+      type: string
+      enum: [info, warning, critical]
+    IncidentStatus:
+      type: string
+      enum: [detected, acknowledged, resolved, auto_resolved]
+    DimensionType:
+      type: string
+      enum: [provider, customer, route, global]
+    ActionCategory:
+      type: string
+      enum:
+        - provider_recovered
+        - provider_escalated
+        - internal_escalated
+        - false_positive
+        - customer_communicated
+        - monitoring_only
+        - other
+    RuleType:
+      type: string
+      enum: [delivery_rate_drop, failure_spike, consistent_error, webhook_silence]
+    ThresholdUnit:
+      type: string
+      enum: ["%", "σ", "min"]
+    RiskVerdict:
+      type: string
+      enum: [low, medium, high]
+    DateRange:
+      type: string
+      enum: ["24h", "7d", "30d", "all"]
+      default: "24h"
+
+    # --- Envelopes / erro -----------------------------------------------------
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+          required: [code, message]
+      required: [error]
+    PaginatedEnvelope:
+      type: object
+      properties:
+        rows:
+          type: array
+          items: {}
+        page: { type: integer }
+        total_pages: { type: integer }
+        total: { type: integer }
+        latency_ms: { type: integer }
+      required: [rows, page, total_pages, total, latency_ms]
+
+    # --- Mensagens ------------------------------------------------------------
+    SearchResultRow:
+      type: object
+      properties:
+        id: { type: string }
+        phone_masked: { type: string, example: "+55 11 9****-1234" }
+        phone_full:
+          type: string
+          description: "PII: só com permissão + reveal auditado."
+        status: { $ref: "#/components/schemas/MessageStatus" }
+        provider: { type: string }
+        customer: { type: string }
+        requested_at: { type: string, format: date-time }
+        error_hint:
+          type: [string, "null"]
+      required: [id, phone_masked, status, provider, customer, requested_at, error_hint]
+    TrailEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [api_request, routing, provider_attempt, webhook_status, final]
+        label: { type: string }
+        at: { type: string, format: date-time }
+        detail: { type: string }
+      required: [type, label, at, detail]
+    MessageTrail:
+      type: object
+      properties:
+        message_id: { type: string }
+        customer: { type: string }
+        provider: { type: string }
+        phone_masked: { type: string }
+        final_status: { $ref: "#/components/schemas/MessageStatus" }
+        content_ref: { type: string }
+        content_preview:
+          type: string
+          description: "PII: só após reveal auditado; mascarado por padrão."
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/TrailEvent" }
+      required: [message_id, customer, provider, phone_masked, final_status, content_ref, events]
+    RiskCategory:
+      type: object
+      properties:
+        name: { type: string }
+        strength: { type: number }
+      required: [name, strength]
+    RiskAnalysis:
+      type: object
+      properties:
+        score: { type: number }
+        verdict: { $ref: "#/components/schemas/RiskVerdict" }
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/RiskCategory" }
+        explanation: { type: string }
+      required: [score, verdict, categories, explanation]
+    RevealedPhone:
+      type: object
+      properties:
+        message_id: { type: string }
+        phone_full: { type: string, example: "+5511987651234" }
+      required: [message_id, phone_full]
+    RevealedContent:
+      type: object
+      properties:
+        message_id: { type: string }
+        content_preview: { type: string }
+      required: [message_id, content_preview]
+
+    # --- Requests de mensagens ------------------------------------------------
+    AnalyzeContentRequest:
+      type: object
+      description: Forneça `text` OU `message_id`.
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        message_id:
+          type: string
+      minProperties: 1
+
+    # --- Relatórios -----------------------------------------------------------
+    DeliveryFilters:
+      type: object
+      properties:
+        customer_id: { type: string }
+        provider: { type: string }
+        status: { type: string }
+    DeliveryReportRequest:
+      type: object
+      properties:
+        date_range: { $ref: "#/components/schemas/DateRange" }
+        group_by:
+          type: array
+          items: { type: string }
+          description: Informativo; o relatório sempre quebra por provider.
+        filters: { $ref: "#/components/schemas/DeliveryFilters" }
+    DeliveryReport:
+      type: object
+      properties:
+        window: { type: string }
+        totals:
+          type: object
+          properties:
+            sent: { type: integer }
+            delivered: { type: integer }
+            failed: { type: integer }
+            pending: { type: integer }
+          required: [sent, delivered, failed, pending]
+        by_provider:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              sent: { type: integer }
+              delivered: { type: integer }
+              rate: { type: number }
+            required: [name, sent, delivered, rate]
+        hourly:
+          type: array
+          items: { type: integer }
+        top_errors:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              count: { type: integer }
+              provider: { type: string }
+            required: [code, count, provider]
+        csv_url: { type: string }
+      required: [window, totals, by_provider, hourly, top_errors, csv_url]
+    IncidentReportFilters:
+      type: object
+      properties:
+        severity: { $ref: "#/components/schemas/IncidentSeverity" }
+        dimension: { $ref: "#/components/schemas/DimensionType" }
+    IncidentReportRequest:
+      type: object
+      properties:
+        date_range: { $ref: "#/components/schemas/DateRange" }
+        filters: { $ref: "#/components/schemas/IncidentReportFilters" }
+    ResolvedIncident:
+      type: object
+      properties:
+        id: { type: string }
+        severity: { $ref: "#/components/schemas/IncidentSeverity" }
+        rule: { type: string }
+        resolved_at: { type: string, format: date-time }
+        action: { $ref: "#/components/schemas/ActionCategory" }
+        analyst:
+          type: [string, "null"]
+        duration: { type: string }
+        escalated_to:
+          type: [string, "null"]
+      required: [id, severity, rule, resolved_at, action, analyst, duration, escalated_to]
+    IncidentReport:
+      type: object
+      properties:
+        window: { type: string }
+        total: { type: integer }
+        by_severity:
+          type: object
+          properties:
+            critical: { type: integer }
+            warning: { type: integer }
+            info: { type: integer }
+          required: [critical, warning, info]
+        resolved:
+          type: array
+          items: { $ref: "#/components/schemas/ResolvedIncident" }
+      required: [window, total, by_severity, resolved]
+
+    # --- Regras ---------------------------------------------------------------
+    AnomalyRule:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        rule_type: { $ref: "#/components/schemas/RuleType" }
+        dimension: { $ref: "#/components/schemas/DimensionType" }
+        enabled: { type: boolean }
+        severity: { $ref: "#/components/schemas/IncidentSeverity" }
+        threshold: { type: number }
+        threshold_unit: { $ref: "#/components/schemas/ThresholdUnit" }
+        window_minutes: { type: integer }
+        updated_by:
+          type: [string, "null"]
+        updated_at: { type: string, format: date-time }
+      required:
+        - id
+        - name
+        - rule_type
+        - dimension
+        - enabled
+        - severity
+        - threshold
+        - threshold_unit
+        - window_minutes
+        - updated_by
+        - updated_at
+    UpdateRuleRequest:
+      type: object
+      description: Atualização parcial; `rule_type` é imutável (não aceito).
+      properties:
+        threshold: { type: number, minimum: 0 }
+        dimension: { $ref: "#/components/schemas/DimensionType" }
+        window_minutes: { type: integer, minimum: 1 }
+        severity: { $ref: "#/components/schemas/IncidentSeverity" }
+        enabled: { type: boolean }
+
+    # --- Incidentes -----------------------------------------------------------
+    IncidentMetrics:
+      type: object
+      properties:
+        baseline: { type: string }
+        current: { type: string }
+        threshold: { type: string }
+        sample: { type: string }
+      required: [baseline, current, threshold, sample]
+    Incident:
+      type: object
+      properties:
+        id: { type: string }
+        rule: { type: string }
+        severity: { $ref: "#/components/schemas/IncidentSeverity" }
+        status: { $ref: "#/components/schemas/IncidentStatus" }
+        dimension_type: { $ref: "#/components/schemas/DimensionType" }
+        dimension_value: { type: string }
+        detected_at: { type: string, format: date-time }
+        window: { type: string }
+        summary: { type: string }
+        metrics: { $ref: "#/components/schemas/IncidentMetrics" }
+        related_messages: { type: integer }
+        assignee:
+          type: [string, "null"]
+      required:
+        - id
+        - rule
+        - severity
+        - status
+        - dimension_type
+        - dimension_value
+        - detected_at
+        - window
+        - summary
+        - metrics
+        - related_messages
+        - assignee
+    IncidentActivity:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        type:
+          type: string
+          enum: [comment, status_change, tool_call]
+        at: { type: string, format: date-time }
+        payload:
+          type: object
+          additionalProperties: true
+      required: [id, type, at, payload]
+    IncidentWithActivities:
+      allOf:
+        - $ref: "#/components/schemas/Incident"
+        - type: object
+          properties:
+            activities:
+              type: array
+              items: { $ref: "#/components/schemas/IncidentActivity" }
+          required: [activities]
+    ResolveIncidentRequest:
+      type: object
+      properties:
+        action_category: { $ref: "#/components/schemas/ActionCategory" }
+        action_description:
+          type: string
+          description: "≥ 20 chars (≥ 10 em `auto_resolved`) — validado server-side."
+        escalated_to:
+          type: string
+          description: "Obrigatório se action_category ∈ {provider_escalated, internal_escalated}."
+        related_message_ids:
+          type: array
+          items: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+      required: [action_category, action_description]
+    AddCommentRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required: [text]
+
+    # --- Observabilidade ------------------------------------------------------
+    ToolUsageStat:
+      type: object
+      properties:
+        name: { type: string }
+        calls: { type: integer }
+        errors: { type: integer }
+        avg_latency_ms:
+          type: [number, "null"]
+      required: [name, calls, errors, avg_latency_ms]
+    Observability:
+      type: object
+      properties:
+        period: { type: string }
+        overview:
+          type: object
+          properties:
+            sessions: { type: integer }
+            reveals: { type: integer }
+            tokens:
+              type: [integer, "null"]
+            cost:
+              type: [number, "null"]
+            mtta:
+              type: [string, "null"]
+          required: [sessions, reveals, tokens, cost, mtta]
+        tools:
+          type: array
+          items: { $ref: "#/components/schemas/ToolUsageStat" }
+        refusals:
+          type: object
+          properties:
+            total: { type: integer }
+            by_reason:
+              type: array
+              items:
+                type: object
+                properties:
+                  reason: { type: string }
+                  count: { type: integer }
+                required: [reason, count]
+          required: [total, by_reason]
+        websocket:
+          type: object
+          properties:
+            connected: { type: integer }
+            peak:
+              type: [integer, "null"]
+          required: [connected, peak]
+      required: [period, overview, tools, refusals, websocket]
+
+    # --- Chat -----------------------------------------------------------------
+    CreateSessionRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+    SendMessageRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+      required: [text]
+    ChatSessionListItem:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        started_at: { type: string, format: date-time }
+        message_count: { type: integer }
+        tool_count: { type: integer }
+        pinned: { type: boolean }
+        tags:
+          type: array
+          items: { type: string }
+        preview: { type: string }
+        duration: { type: string }
+        has_incident: { type: boolean }
+      required:
+        - id
+        - title
+        - started_at
+        - message_count
+        - tool_count
+        - pinned
+        - tags
+        - preview
+        - duration
+        - has_incident
+    ChatToolInvocation:
+      type: object
+      properties:
+        name: { type: string }
+        args:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [success, error]
+        result: {}
+      required: [name, args, status, result]
+    ChatMessageContent:
+      type: object
+      properties:
+        text: { type: string }
+        tools:
+          type: array
+          items: { $ref: "#/components/schemas/ChatToolInvocation" }
+        refusal:
+          oneOf:
+            - type: "null"
+            - type: object
+              properties:
+                reason: { type: string }
+                explanation: { type: string }
+                can_do:
+                  type: array
+                  items: { type: string }
+              required: [reason, explanation, can_do]
+      required: [text]
+    ChatMessage:
+      type: object
+      properties:
+        id: { type: string }
+        role:
+          type: string
+          enum: [user, assistant]
+        content: { $ref: "#/components/schemas/ChatMessageContent" }
+        created_at: { type: string, format: date-time }
+      required: [id, role, content, created_at]
+
+    # --- Detector -------------------------------------------------------------
+    DetectorRunSummary:
+      type: object
+      properties:
+        detected: { type: integer }
+        created: { type: integer }
+        auto_resolved: { type: integer }
+      required: [detected, created, auto_resolved]

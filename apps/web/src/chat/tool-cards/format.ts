@@ -65,8 +65,8 @@ export function describeStatus(status: string): {
   };
 }
 
-/** Datetime SEM fuso (naive `YYYY-MM-DDTHH:mm[:ss]`, sem `Z`/offset): já é o relógio de parede do fuso. */
-const NAIVE_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+/** Datetime SEM fuso (naive `YYYY-MM-DDTHH:mm[:ss[.sss]]`, sem `Z`/offset): já é o relógio de parede do fuso. */
+const NAIVE_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
 
 /**
  * Formata um instante para exibição em pt-BR no fuso do app, com fallback ao valor cru se inválido.
