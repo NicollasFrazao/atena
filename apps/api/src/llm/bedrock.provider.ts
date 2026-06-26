@@ -2,8 +2,10 @@
  * Provider LLM concreto: Amazon Bedrock (Nova via Bedrock, Converse API com streaming).
  *
  * Usa `@aws-sdk/client-bedrock-runtime` diretamente (Bedrock é partner-operated; sem SDK da
- * Anthropic). Autentica por **API key (Bearer)** passada explicitamente no client (`token`),
- * pois o SDK tem o esquema `httpBearerAuth` mas não lê a env `AWS_BEARER_TOKEN_BEDROCK` sozinho.
+ * Anthropic). Autentica por **API key (Bearer)** — `AWS_BEARER_TOKEN_BEDROCK`, passado explícito no
+ * client (`httpBearerAuth`; o SDK não lê a env sozinho). O `LlmModule` torna o token OBRIGATÓRIO
+ * quando `LLM_PROVIDER=bedrock`. O Bedrock NÃO usa a IAM Role da EC2 — essa cobre só o acesso S3
+ * ao detailed report (via `credential_chain` do DuckDB no AuditQueryService).
  * `modelId` (inference profile, ex.: `us.amazon.nova-pro-v1:0`), `region` e `maxTokens` vêm
  * do ConfigService. A IA apenas PEDE tool calls; a aplicação executa as tools.
  */
