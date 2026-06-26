@@ -39,6 +39,7 @@ import {
   recordsDdl,
   recordsDdlFromSources,
   RECORDS_TABLE,
+  sourcesSubquery,
   trailEventsSql,
 } from './audit-query.sql';
 import { cleanOrphanCacheVersions, evictCacheDir } from './cache-eviction';
@@ -668,12 +669,33 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
   /** @inheritdoc */
   async distinctProviders(window?: AuditWindowInterface): Promise<string[]> {
-    return this.withRecords(
+    // Catálogo: DISTINCT direto da fonte (vide {@link withSources}) — NÃO precisa do dedup por
+    // destinatário (`atena_records`). Lista todo provedor que aparece na janela (⊇ o derivado de
+    // records, que usa max(provider)/destinatário).
+    return this.withSources(
       window ?? this.defaultWindow(),
-      async (connection) => {
+      async (
+        connection,
+        {
+          parquetFiles,
+          jsonFiles,
+        },
+      ) => {
+        // Janela sem objetos → catálogo vazio (a união seria SQL inválido).
+        if (
+          parquetFiles.length === 0
+          && jsonFiles.length === 0
+        ) {
+          return [];
+        }
+
         const rows = await this.query(
           connection,
-          `SELECT DISTINCT provider FROM ${RECORDS_TABLE} WHERE provider IS NOT NULL ORDER BY provider`,
+          `SELECT DISTINCT provider FROM ${sourcesSubquery(
+            parquetFiles,
+            jsonFiles,
+          )}
+            WHERE provider IS NOT NULL ORDER BY provider`,
           [],
         );
 
@@ -692,9 +714,32 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     items: string[];
     total: number
   }> {
-    return this.withRecords(
+    // Catálogo: agrega direto da fonte (vide {@link withSources}) — sem materializar `atena_records`.
+    return this.withSources(
       window ?? this.defaultWindow(),
-      async (connection) => {
+      async (
+        connection,
+        {
+          parquetFiles,
+          jsonFiles,
+        },
+      ) => {
+        // Janela sem objetos → catálogo vazio (a união seria SQL inválido).
+        if (
+          parquetFiles.length === 0
+          && jsonFiles.length === 0
+        ) {
+          return {
+            items: [],
+            total: 0,
+          };
+        }
+
+        const from = sourcesSubquery(
+          parquetFiles,
+          jsonFiles,
+        );
+
         const params: BindValue[] = [];
         let filterClause = '';
 
@@ -706,17 +751,21 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
         // Total distinto (antes do limite) — o card declara o tamanho real do conjunto.
         const totalRows = await this.query(
           connection,
-          `SELECT count(DISTINCT customer)::INTEGER AS total FROM ${RECORDS_TABLE}
+          `SELECT count(DISTINCT customer)::INTEGER AS total FROM ${from}
             WHERE customer IS NOT NULL${filterClause}`,
           params,
         );
 
-        // Top-N por VOLUME (mais ativos primeiro; desempate por nome) — em vez de despejar todos no LLM.
+        // Top-N por VOLUME = nº de DESTINATÁRIOS (campaign_id+phone distintos) por cliente — MESMO
+        // critério do antigo `count(*) FROM atena_records` (records = 1 linha/destinatário), agora
+        // direto da fonte: o volume vira count(DISTINCT chave-do-destinatário). Desempate por nome.
         const rows = await this.query(
           connection,
-          `SELECT customer FROM ${RECORDS_TABLE}
+          `SELECT customer FROM ${from}
             WHERE customer IS NOT NULL${filterClause}
-            GROUP BY customer ORDER BY count(*) DESC, customer LIMIT ${CATALOG_LIMIT}`,
+            GROUP BY customer
+            ORDER BY count(DISTINCT campaign_id || '|' || coalesce(phone, '')) DESC, customer
+            LIMIT ${CATALOG_LIMIT}`,
           params,
         );
 
@@ -1333,13 +1382,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * @param {AuditProgressCallback} [onProgress] - Callback de andamento da materialização.
    * @returns {Promise<T>} O resultado de `run`.
    */
-  private async withRecords<T>(
-    window: AuditWindowInterface,
+  private async withConnection<T>(
     run: (connection: DuckDBConnection) => Promise<T>,
-    onProgress?: AuditProgressCallback,
     signal?: AbortSignal,
-    bufferMs?: number,
-    withRawEvents = false,
   ): Promise<T> {
     const instance = await this.ensureInstance();
     const connection = await instance.connect();
@@ -1362,15 +1407,6 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     );
 
     try {
-      await this.materialize(
-        connection,
-        window,
-        onProgress,
-        signal,
-        bufferMs,
-        withRawEvents,
-      );
-
       return await run(connection);
     }
     finally {
@@ -1383,32 +1419,107 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async withRecords<T>(
+    window: AuditWindowInterface,
+    run: (connection: DuckDBConnection) => Promise<T>,
+    onProgress?: AuditProgressCallback,
+    signal?: AbortSignal,
+    bufferMs?: number,
+    withRawEvents = false,
+  ): Promise<T> {
+    return this.withConnection(
+      async (connection) => {
+        await this.materialize(
+          connection,
+          window,
+          onProgress,
+          signal,
+          bufferMs,
+          withRawEvents,
+        );
+
+        return run(connection);
+      },
+      signal,
+    );
+  }
+
   /**
-   * Materializa a TEMP TABLE de registros da janela, com cache `/tmp` por partição.
+   * Como {@link withRecords}, mas em vez de materializar `atena_records` (dedup por destinatário),
+   * apenas VARRE as partições (cache + pré-fetch) e entrega as fontes (`parquetFiles`/`jsonFiles`)
+   * ao `run` — que consulta a UNIÃO direto (via {@link sourcesSubquery}). É o caminho do CATÁLOGO:
+   * um `DISTINCT provider`/`customer` não precisa do grão por destinatário, então pular o dedup
+   * (271k+ destinatários via `arg_max`/`any_value`) corta o custo da agregação. Fonte vazia
+   * (janela sem objetos) → o `run` recebe listas vazias e deve curto-circuitar.
    *
-   * Para cada partição: se está "settled" (fechada há mais de `settleMs`) e já tem Parquet de cache,
-   * usa o cache SEM tocar o S3; se settled sem cache, lê o S3 uma vez e grava o cache (write-through);
-   * partições recentes são lidas live (JSON). A dedup por destinatário roda sobre a UNIÃO
-   * `read_parquet(cache) ∪ read_json(live)` — global à janela (recipients podem cruzar partições).
+   * @template T - Tipo do resultado de `run`.
+   * @param {AuditWindowInterface} window - Janela que define as partições varridas.
+   * @param {(connection: DuckDBConnection, sources: { parquetFiles: string[]; jsonFiles: string[] }) => Promise<T>} run - Trabalho sobre a união das fontes.
+   * @param {AuditProgressCallback} [onProgress] - Callback de andamento da varredura.
+   * @param {AbortSignal} [signal] - Aborta a query em curso.
+   * @param {number} [bufferMs] - Override do buffer de expansão simétrica da janela.
+   * @returns {Promise<T>} O resultado de `run`.
+   */
+  private async withSources<T>(
+    window: AuditWindowInterface,
+    run: (
+      connection: DuckDBConnection,
+      sources: {
+        parquetFiles: string[];
+        jsonFiles: string[]
+      },
+    ) => Promise<T>,
+    onProgress?: AuditProgressCallback,
+    signal?: AbortSignal,
+    bufferMs?: number,
+  ): Promise<T> {
+    return this.withConnection(
+      async (connection) => {
+        const sources = await this.scanPartitions(
+          connection,
+          window,
+          onProgress,
+          signal,
+          bufferMs,
+        );
+
+        return run(
+          connection,
+          sources,
+        );
+      },
+      signal,
+    );
+  }
+
+  /**
+   * Varre as partições da janela e devolve as fontes — Parquet de cache (settled) ∪ JSON live
+   * (recente) — SEM montar nenhuma TEMP TABLE. É o tronco comum de {@link materialize} (que
+   * constrói `atena_ev`/`atena_records`) e {@link withSources} (que consulta a união direto, p/ o
+   * catálogo). Por partição: settled com Parquet de cache → usa o cache SEM tocar o S3; settled sem
+   * cache → lê o S3 uma vez e grava o cache (write-through); recente → live (JSON). Emite progresso
+   * (`mapping → reading → querying`) e contabiliza o custo de S3 ({@link recordScan}).
    *
    * @param {DuckDBConnection} connection - Conexão ativa.
    * @param {AuditWindowInterface} window - Janela que define as partições candidatas.
    * @param {AuditProgressCallback} [onProgress] - Callback de andamento (mapping → reading → querying).
-   * @param {AbortSignal} [signal] - Aborta a query em curso.
+   * @param {AbortSignal} [signal] - Aborta a varredura entre partições.
    * @param {number} [bufferMs] - Override do buffer de expansão simétrica da janela. Default
    *   `this.lateStatusBufferMs` (cobre status que finalizam fora da janela). Passe `0` num lookup
    *   pontual por id (reveal) p/ varrer SÓ a janela/filtros — o evento `queued` (com telefone) está
    *   no próprio dia, então não precisa expandir, e o scan frio cai de ~6 dias para ~1.
-   * @returns {Promise<void>}
+   * @returns {Promise<{ parquetFiles: string[]; jsonFiles: string[] }>} Fontes da janela.
    */
-  private async materialize(
+  private async scanPartitions(
     connection: DuckDBConnection,
     window: AuditWindowInterface,
     onProgress?: AuditProgressCallback,
     signal?: AbortSignal,
     bufferMs?: number,
-    withRawEvents = false,
-  ): Promise<void> {
+  ): Promise<{
+    parquetFiles: string[];
+    jsonFiles: string[]
+  }> {
     const startedAt = Date.now();
     const now = new Date();
 
@@ -1501,6 +1612,44 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       Date.now() - startedAt,
     );
 
+    return {
+      parquetFiles,
+      jsonFiles,
+    };
+  }
+
+  /**
+   * Materializa a TEMP TABLE de registros da janela ({@link scanPartitions} + build), com cache
+   * `/tmp` por partição. A dedup por destinatário roda sobre a UNIÃO `read_parquet(cache) ∪
+   * read_json(live)` — global à janela (recipients podem cruzar partições).
+   *
+   * @param {DuckDBConnection} connection - Conexão ativa.
+   * @param {AuditWindowInterface} window - Janela que define as partições candidatas.
+   * @param {AuditProgressCallback} [onProgress] - Callback de andamento (mapping → reading → querying).
+   * @param {AbortSignal} [signal] - Aborta a query em curso.
+   * @param {number} [bufferMs] - Override do buffer de expansão simétrica da janela (vide {@link scanPartitions}).
+   * @param {boolean} [withRawEvents] - `true` materializa `atena_ev` (eventos crus) p/ a trilha; `false` agrega `atena_records` direto da fonte.
+   * @returns {Promise<void>}
+   */
+  private async materialize(
+    connection: DuckDBConnection,
+    window: AuditWindowInterface,
+    onProgress?: AuditProgressCallback,
+    signal?: AbortSignal,
+    bufferMs?: number,
+    withRawEvents = false,
+  ): Promise<void> {
+    const {
+      parquetFiles,
+      jsonFiles,
+    } = await this.scanPartitions(
+      connection,
+      window,
+      onProgress,
+      signal,
+      bufferMs,
+    );
+
     if (
       parquetFiles.length === 0
       && jsonFiles.length === 0
@@ -1519,8 +1668,8 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       await connection.run(recordsDdl());
     }
     else {
-      // Busca/relatório/catálogo/reveal: só leem `atena_records` → agrega DIRETO da fonte, SEM
-      // materializar `atena_ev` (todos os eventos crus). Menos materialização intermediária.
+      // Busca/relatório/reveal: só leem `atena_records` → agrega DIRETO da fonte, SEM materializar
+      // `atena_ev` (todos os eventos crus). Menos materialização intermediária.
       await connection.run(recordsDdlFromSources(
         parquetFiles,
         jsonFiles,

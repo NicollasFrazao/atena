@@ -399,6 +399,33 @@ export function recordsDdlFromSources(
 }
 
 /**
+ * Sub-select FROM-able da UNIÃO das fontes (Parquet de cache ∪ JSON live), já filtrada por canal — a
+ * MESMA base de {@link recordsDdlFromSources}, mas exposta para consultas que NÃO precisam do dedup
+ * por destinatário (`atena_records`): o catálogo (`DISTINCT provider`/`customer`). Um DISTINCT não
+ * precisa do grão por destinatário, então evita materializar records (271k+ destinatários via
+ * `arg_max`/`any_value`) só para listar provedores/clientes. Ambas as listas vazias → string vazia
+ * (a janela não casou objetos): o chamador deve curto-circuitar (a união seria SQL inválido). Use
+ * como `FROM ${sourcesSubquery(parquet, json)}`.
+ *
+ * @param {string[]} parquetFiles - Parquets de cache (formato `ev`); podem ser vazios.
+ * @param {string[]} jsonFiles - Objetos JSON.gz live; podem ser vazios.
+ * @returns {string} `(\n<união>\n) AS src` — ou `''` se ambas as listas estão vazias.
+ */
+export function sourcesSubquery(
+  parquetFiles: string[],
+  jsonFiles: string[],
+): string {
+  const union = evSourcesUnion(
+    parquetFiles,
+    jsonFiles,
+  );
+
+  return union === ''
+    ? ''
+    : `(\n${union}\n) AS src`;
+}
+
+/**
  * Eventos crus de um destinatário (`md5(campaign_id || '|' || phone) = $1`), em ordem cronológica —
  * base da trilha. A chave casa o grão por destinatário (campanha + telefone) de {@link recordsDdl}.
  *
