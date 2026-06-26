@@ -1,0 +1,674 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-06-17T17:30:00.000Z",
+  "__export_source": "atena.gen:openapi->insomnia.v4",
+  "resources": [
+    {
+      "_id": "wrk_atena",
+      "_type": "workspace",
+      "parentId": null,
+      "name": "Atena API",
+      "description": "Coleção da Atena (REST + realtime). Gerada a partir de docs/openapi.yaml.",
+      "scope": "collection"
+    },
+    {
+      "_id": "env_atena",
+      "_type": "environment",
+      "parentId": "wrk_atena",
+      "name": "Base Environment",
+      "data": {
+        "base_url": "http://localhost:3000",
+        "ws_url": "ws://localhost:3000",
+        "message_id": "00294db9-12fc-4a8b-9dfd-1d57c37f23b2",
+        "incident_id": "INC-2400",
+        "session_id": "COLE_UM_SESSION_ID_AQUI",
+        "rule_id": "r-integration-error"
+      },
+      "dataPropertyOrder": null,
+      "metaSortKey": -900
+    },
+    {
+      "_id": "fld_health",
+      "_type": "request_group",
+      "parentId": "wrk_atena",
+      "name": "Health",
+      "metaSortKey": -800
+    },
+    {
+      "_id": "fld_cat_logo",
+      "_type": "request_group",
+      "parentId": "wrk_atena",
+      "name": "Catálogo",
+      "metaSortKey": -700
+    },
+    {
+      "_id": "fld_mensagens",
+      "_type": "request_group",
+      "parentId": "wrk_atena",
+      "name": "Mensagens",
+      "metaSortKey": -600
+    },
+    {
+      "_id": "fld_relat_rios",
+      "_type": "request_group",
+      "parentId": "wrk_atena",
+      "name": "Relatórios",
+      "metaSortKey": -500
+    },
+    {
+      "_id": "fld_regras",
+      "_type": "request_group",
+      "parentId": "wrk_atena",
+      "name": "Regras",
+      "metaSortKey": -400
+    },
+    {
+      "_id": "fld_incidentes",
+      "_type": "request_group",
+      "parentId": "wrk_atena",
+      "name": "Incidentes",
+      "metaSortKey": -300
+    },
+    {
+      "_id": "fld_observabilidade",
+      "_type": "request_group",
+      "parentId": "wrk_atena",
+      "name": "Observabilidade",
+      "metaSortKey": -200
+    },
+    {
+      "_id": "fld_chat",
+      "_type": "request_group",
+      "parentId": "wrk_atena",
+      "name": "Chat",
+      "metaSortKey": -100
+    },
+    {
+      "_id": "fld_detector_dev",
+      "_type": "request_group",
+      "parentId": "wrk_atena",
+      "name": "Detector (dev)",
+      "metaSortKey": 0
+    },
+    {
+      "_id": "fld_auth",
+      "_type": "request_group",
+      "parentId": "wrk_atena",
+      "name": "Auth",
+      "metaSortKey": 100
+    },
+    {
+      "_id": "req_healthCheck",
+      "_type": "request",
+      "parentId": "fld_health",
+      "name": "GET /health  ·  Healthcheck da aplicação",
+      "method": "GET",
+      "url": "{{ _.base_url }}/health",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 200
+    },
+    {
+      "_id": "req_listProviders",
+      "_type": "request",
+      "parentId": "fld_cat_logo",
+      "name": "GET /api/providers  ·  Lista providers distintos",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/providers",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 300
+    },
+    {
+      "_id": "req_listCustomers",
+      "_type": "request",
+      "parentId": "fld_cat_logo",
+      "name": "GET /api/customers  ·  Lista customers distintos",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/customers",
+      "body": {},
+      "headers": [],
+      "parameters": [
+        {
+          "name": "search",
+          "value": "",
+          "disabled": true,
+          "description": "Termo para filtrar o `customer_id` (match parcial)."
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 400
+    },
+    {
+      "_id": "req_searchMessages",
+      "_type": "request",
+      "parentId": "fld_mensagens",
+      "name": "GET /api/messages/search  ·  Busca paginada de mensagens",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/messages/search",
+      "body": {},
+      "headers": [],
+      "parameters": [
+        {
+          "name": "phone",
+          "value": "+5511987651234",
+          "disabled": true,
+          "description": "Telefone em E.164 (match exato)."
+        },
+        {
+          "name": "status",
+          "value": "failed",
+          "disabled": true,
+          "description": "Status final (`delivered`/`failed`/`pending`/`unknown`)."
+        },
+        {
+          "name": "provider",
+          "value": "twilio",
+          "disabled": true,
+          "description": "Nome do provider."
+        },
+        {
+          "name": "customer_id",
+          "value": "1001",
+          "disabled": true,
+          "description": "Id do cliente (match exato)."
+        },
+        {
+          "name": "page",
+          "value": "1",
+          "disabled": true,
+          "description": "Página (>= 1; default 1)."
+        },
+        {
+          "name": "limit",
+          "value": "20",
+          "disabled": true,
+          "description": "Itens por página (1–100; default 20)."
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 500
+    },
+    {
+      "_id": "req_getMessageTrail",
+      "_type": "request",
+      "parentId": "fld_mensagens",
+      "name": "GET /api/messages/{id}/trail  ·  Trilha completa de uma mensagem",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/messages/{{ _.message_id }}/trail",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 600
+    },
+    {
+      "_id": "req_analyzeMessageContent",
+      "_type": "request",
+      "parentId": "fld_mensagens",
+      "name": "POST /api/messages/analyze  ·  Análise de risco de conteúdo",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/messages/analyze",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"text\": \"Clique aqui para resgatar seu prêmio: http://bit.ly/xyz\"\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 700
+    },
+    {
+      "_id": "req_revealMessagePhone",
+      "_type": "request",
+      "parentId": "fld_mensagens",
+      "name": "POST /api/messages/{id}/reveal-phone  ·  Revela o telefone completo (PII)",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/messages/{{ _.message_id }}/reveal-phone",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 800
+    },
+    {
+      "_id": "req_revealMessageContent",
+      "_type": "request",
+      "parentId": "fld_mensagens",
+      "name": "POST /api/messages/{id}/reveal-content  ·  Revela o conteúdo bruto (PII)",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/messages/{{ _.message_id }}/reveal-content",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 900
+    },
+    {
+      "_id": "req_generateDeliveryReport",
+      "_type": "request",
+      "parentId": "fld_relat_rios",
+      "name": "POST /api/reports/delivery  ·  Relatório de entregabilidade",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/reports/delivery",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"date_range\": \"24h\"\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 1000
+    },
+    {
+      "_id": "req_generateIncidentReport",
+      "_type": "request",
+      "parentId": "fld_relat_rios",
+      "name": "POST /api/reports/incidents  ·  Relatório de incidentes resolvidos",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/reports/incidents",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"date_range\": \"24h\"\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 1100
+    },
+    {
+      "_id": "req_listRules",
+      "_type": "request",
+      "parentId": "fld_regras",
+      "name": "GET /api/rules  ·  Lista regras de anomalia",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/rules",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 1200
+    },
+    {
+      "_id": "req_updateRule",
+      "_type": "request",
+      "parentId": "fld_regras",
+      "name": "PUT /api/rules/{id}  ·  Edita campos permitidos de uma regra",
+      "method": "PUT",
+      "url": "{{ _.base_url }}/api/rules/{{ _.rule_id }}",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"threshold\": 8,\n  \"window_minutes\": 15\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 1300
+    },
+    {
+      "_id": "req_listIncidents",
+      "_type": "request",
+      "parentId": "fld_incidentes",
+      "name": "GET /api/incidents  ·  Lista paginada de incidentes",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/incidents",
+      "body": {},
+      "headers": [],
+      "parameters": [
+        {
+          "name": "status",
+          "value": "detected,acknowledged",
+          "disabled": true,
+          "description": "Status (CSV): `detected,acknowledged,resolved,auto_resolved`."
+        },
+        {
+          "name": "severity",
+          "value": "critical",
+          "disabled": true,
+          "description": "Severidade (CSV): `critical,warning,info`."
+        },
+        {
+          "name": "dimension",
+          "value": "customer",
+          "disabled": true,
+          "description": "Tipo de dimensão: `provider|customer|route|global`."
+        },
+        {
+          "name": "page",
+          "value": "1",
+          "disabled": true,
+          "description": ""
+        },
+        {
+          "name": "limit",
+          "value": "20",
+          "disabled": true,
+          "description": ""
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 1400
+    },
+    {
+      "_id": "req_getIncident",
+      "_type": "request",
+      "parentId": "fld_incidentes",
+      "name": "GET /api/incidents/{id}  ·  Incidente + atividades",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/incidents/{{ _.incident_id }}",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 1500
+    },
+    {
+      "_id": "req_acknowledgeIncident",
+      "_type": "request",
+      "parentId": "fld_incidentes",
+      "name": "POST /api/incidents/{id}/acknowledge  ·  Reconhece um incidente",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/incidents/{{ _.incident_id }}/acknowledge",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 1600
+    },
+    {
+      "_id": "req_resolveIncident",
+      "_type": "request",
+      "parentId": "fld_incidentes",
+      "name": "POST /api/incidents/{id}/resolve  ·  Resolve manualmente um incidente",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/incidents/{{ _.incident_id }}/resolve",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"action_category\": \"provider_recovered\",\n  \"action_description\": \"Provedor normalizou as entregas após reroteamento; taxa de volta ao baseline.\"\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 1700
+    },
+    {
+      "_id": "req_addIncidentComment",
+      "_type": "request",
+      "parentId": "fld_incidentes",
+      "name": "POST /api/incidents/{id}/comment  ·  Adiciona um comentário",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/incidents/{{ _.incident_id }}/comment",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"text\": \"Acompanhando com o time de integração; sem novas falhas na última hora.\"\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 1800
+    },
+    {
+      "_id": "req_getObservability",
+      "_type": "request",
+      "parentId": "fld_observabilidade",
+      "name": "GET /api/observability  ·  Snapshot de métricas do assistente",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/observability",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 1900
+    },
+    {
+      "_id": "req_listChatSessions",
+      "_type": "request",
+      "parentId": "fld_chat",
+      "name": "GET /api/chat/sessions  ·  Lista sessões do usuário",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/chat/sessions",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 2000
+    },
+    {
+      "_id": "req_createChatSession",
+      "_type": "request",
+      "parentId": "fld_chat",
+      "name": "POST /api/chat/sessions  ·  Cria uma sessão de chat",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/chat/sessions",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"title\": \"Investigando falhas do cliente 1001\"\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 2100
+    },
+    {
+      "_id": "req_listChatMessages",
+      "_type": "request",
+      "parentId": "fld_chat",
+      "name": "GET /api/chat/sessions/{id}/messages  ·  Histórico de mensagens de uma sessão",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/chat/sessions/{{ _.session_id }}/messages",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 2200
+    },
+    {
+      "_id": "req_sendChatMessage",
+      "_type": "request",
+      "parentId": "fld_chat",
+      "name": "POST /api/chat/sessions/{id}/messages  ·  Envia mensagem e recebe resposta em stream SSE",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/chat/sessions/{{ _.session_id }}/messages",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"text\": \"Quais incidentes críticos abertos temos agora?\"\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Accept",
+          "value": "text/event-stream"
+        }
+      ],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 2300
+    },
+    {
+      "_id": "req_runDetector",
+      "_type": "request",
+      "parentId": "fld_detector_dev",
+      "name": "POST /api/dev/detect  ·  Dispara um scan imediato do detector",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/dev/detect",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 2400
+    },
+    {
+      "_id": "req_authLogin",
+      "_type": "request",
+      "parentId": "fld_auth",
+      "name": "GET /api/auth/login  ·  Inicia o login (redireciona ao IdP)",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/auth/login",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 2500
+    },
+    {
+      "_id": "req_authCallback",
+      "_type": "request",
+      "parentId": "fld_auth",
+      "name": "GET /api/auth/callback  ·  Callback do IdP",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/auth/callback",
+      "body": {},
+      "headers": [],
+      "parameters": [
+        {
+          "name": "code",
+          "value": "",
+          "disabled": true,
+          "description": ""
+        },
+        {
+          "name": "state",
+          "value": "",
+          "disabled": true,
+          "description": ""
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 2600
+    },
+    {
+      "_id": "req_authLogout",
+      "_type": "request",
+      "parentId": "fld_auth",
+      "name": "POST /api/auth/logout  ·  Encerra a sessão",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/auth/logout",
+      "body": {},
+      "headers": [],
+      "parameters": [],
+      "authentication": {},
+      "metaSortKey": 2700
+    },
+    {
+      "_id": "fld_realtime",
+      "_type": "request_group",
+      "parentId": "wrk_atena",
+      "name": "Realtime (WebSocket / socket.io)",
+      "description": "O /ws/support é socket.io (Engine.IO por baixo).\nCaminho fácil: crie um \"Socket.IO Request\" nativo com URL http://localhost:3000/ws/support\ne escute incident.created / incident.updated / incident.auto_resolved.\n\nEste request WebSocket conecta no Engine.IO cru e funciona em qualquer versão:\n1) Connect -> servidor envia 0{...} (open).\n2) Envie o payload \"40/ws/support,\" para entrar no namespace.\n3) Você recebe 42/ws/support,[\"connection.status\",{...}] e os eventos de incidente.\n4) Responda os pings: ao receber \"2\", envie \"3\" (payload pong), senão cai em ~20s.",
+      "metaSortKey": 2800
+    },
+    {
+      "_id": "sio_support",
+      "_type": "socketio_request",
+      "parentId": "fld_realtime",
+      "name": "Socket.IO /ws/support (nativo — recomendado)",
+      "url": "{{ _.base_url }}/ws/support",
+      "headers": [],
+      "authentication": {},
+      "parameters": [],
+      "description": "Connect e escute: incident.created / incident.updated / incident.auto_resolved.\nHandshake path padrão /socket.io/ (Request Settings). Dev: sem token (devBypass).\nO servidor faz o heartbeat do Engine.IO — a conexão fica de pé (diferente do WebSocket cru).",
+      "eventListeners": [
+        {
+          "id": "evt-connection-status",
+          "eventName": "connection.status",
+          "desc": "Heartbeat/estado da conexão",
+          "isOpen": false
+        },
+        {
+          "id": "evt-incident-created",
+          "eventName": "incident.created",
+          "desc": "Novo incidente detectado",
+          "isOpen": false
+        },
+        {
+          "id": "evt-incident-updated",
+          "eventName": "incident.updated",
+          "desc": "Mudança de status (ack/resolve)",
+          "isOpen": false
+        },
+        {
+          "id": "evt-incident-auto-resolved",
+          "eventName": "incident.auto_resolved",
+          "desc": "Resolução automática",
+          "isOpen": false
+        }
+      ],
+      "settingEncodeUrl": true,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "metaSortKey": 2900
+    },
+    {
+      "_id": "ws_support",
+      "_type": "websocket_request",
+      "parentId": "fld_realtime",
+      "name": "WS /ws/support (Engine.IO cru — fallback)",
+      "url": "{{ _.ws_url }}/socket.io/?EIO=4&transport=websocket",
+      "headers": [],
+      "authentication": {},
+      "parameters": [],
+      "metaSortKey": 3000
+    },
+    {
+      "_id": "wsp_join",
+      "_type": "websocket_payload",
+      "parentId": "ws_support",
+      "name": "1) entrar no namespace",
+      "value": "40/ws/support,",
+      "mode": "text",
+      "metaSortKey": 3100
+    },
+    {
+      "_id": "wsp_pong",
+      "_type": "websocket_payload",
+      "parentId": "ws_support",
+      "name": "2) pong (responder ao ping \"2\")",
+      "value": "3",
+      "mode": "text",
+      "metaSortKey": 3200
+    }
+  ]
+}

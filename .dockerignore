@@ -1,0 +1,11 @@
+# Reduz o contexto de build (raiz do monorepo) e evita mandar segredos/artefatos.
+node_modules
+**/node_modules
+**/dist
+.git
+.context
+docs
+*.log
+.env
+**/.env
+apps/web/.gitignore

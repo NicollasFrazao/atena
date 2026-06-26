@@ -1,0 +1,349 @@
+/* ============================================================
+   Atena Design System — Colors & Typography
+   Source: Atena theme
+   Theme: spa-atena
+   ============================================================ */
+
+/* --- Fonts ------------------------------------------------- */
+@font-face {
+  font-family: 'Manrope';
+  src: url('fonts/Manrope-ExtraLight.ttf') format('truetype');
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Manrope';
+  src: url('fonts/Manrope-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Manrope';
+  src: url('fonts/Manrope-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Manrope';
+  src: url('fonts/Manrope-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Manrope';
+  src: url('fonts/Manrope-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Manrope';
+  src: url('fonts/Manrope-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Manrope';
+  src: url('fonts/Manrope-ExtraBold.ttf') format('truetype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-VariableFont.ttf') format('truetype-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-Italic-VariableFont.ttf') format('truetype-variations');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* =========================================================
+     COLOR TOKENS — raw scale
+     ========================================================= */
+
+  /* Plankton (primary brand — teal/green) */
+  --at-plankton-50:   #F1FCF9;
+  --at-plankton-100:  #DFF5F0;
+  --at-plankton-200:  #A8E0D3;
+  --at-plankton-300:  #82DFCC;
+  --at-plankton-400:  #5BDEC5;
+  --at-plankton-500:  #1BCCAE;
+  --at-plankton-600:  #06B298;
+  --at-plankton-700:  #029F8A;
+  --at-plankton-800:  #077E70; /* primary */
+  --at-plankton-900:  #0B645A;
+  --at-plankton-1000: #0E534B; /* primary dark */
+  --at-plankton-1100: #01322F; /* primary darker */
+
+  /* Thanos (secondary brand — purple) */
+  --at-thanos-50:   #F7F0FF;
+  --at-thanos-100:  #EBDFFA;
+  --at-thanos-200:  #DECDF4;
+  --at-thanos-300:  #C9A5F7;
+  --at-thanos-400:  #B483F4;
+  --at-thanos-500:  #9F61F0;
+  --at-thanos-600:  #8C53E5;
+  --at-thanos-700:  #7840D3;
+  --at-thanos-800:  #6D1BCC; /* secondary */
+  --at-thanos-900:  #5815A2; /* secondary dark */
+  --at-thanos-1000: #430F79;
+  --at-thanos-1100: #27024D; /* secondary darker */
+
+  /* Neutral */
+  --at-neutral-50:   #FFFFFF;
+  --at-neutral-100:  #FAFBFC;
+  --at-neutral-200:  #EFEFF0;
+  --at-neutral-300:  #DFDFE0;
+  --at-neutral-400:  #CFCFD1;
+  --at-neutral-500:  #BFBFC2;
+  --at-neutral-600:  #AEAEB2;
+  --at-neutral-700:  #7C7C83;
+  --at-neutral-800:  #68686E;
+  --at-neutral-900:  #4B4B53;
+  --at-neutral-1000: #313135;
+  --at-neutral-1100: #19191C;
+
+  /* Semantic */
+  --at-danger-50:  #FF9C99;
+  --at-danger-100: #FF3730;
+  --at-danger-200: #C12722;
+  --at-danger-300: #920703;
+
+  --at-warning-50:  #FFE499;
+  --at-warning-100: #FFBB00;
+  --at-warning-200: #E0A500;
+  --at-warning-300: #CC9600;
+
+  --at-success-50:  #ACECBA;
+  --at-success-100: #29BD4A;
+  --at-success-200: #21973B;
+  --at-success-300: #1F6F31;
+
+  --at-info-50:  #99C2FF;
+  --at-info-100: #0052CC;
+  --at-info-200: #0041A3;
+  --at-info-300: #14458F;
+
+  --at-white: #FFFFFF;
+  --at-black: #000000;
+  --at-transparent: transparent;
+
+  /* =========================================================
+     SEMANTIC COLOR TOKENS (mapped from spa theme)
+     ========================================================= */
+  --at-primary:          var(--at-plankton-800);
+  --at-primary-dark:     var(--at-plankton-1000);
+  --at-primary-darker:   var(--at-plankton-1100);
+  --at-primary-light:    var(--at-plankton-200);
+  --at-primary-lighter:  var(--at-plankton-50);
+
+  --at-secondary:         var(--at-thanos-800);
+  --at-secondary-dark:    var(--at-thanos-900);
+  --at-secondary-darker:  var(--at-thanos-1100);
+  --at-secondary-light:   var(--at-thanos-200);
+  --at-secondary-lighter: var(--at-thanos-50);
+
+  --at-bg:        var(--at-neutral-50);   /* app canvas */
+  --at-bg-soft:   var(--at-neutral-100);  /* subtle panel */
+  --at-bg-muted:  var(--at-neutral-200);  /* input base */
+
+  --at-border:        var(--at-neutral-300);
+  --at-border-strong: var(--at-neutral-400);
+
+  --at-fg:       var(--at-neutral-1000); /* textDark */
+  --at-fg-muted: var(--at-neutral-800);  /* textMedium */
+  --at-fg-subtle:var(--at-neutral-700);
+  --at-fg-inv:   var(--at-white);        /* textLight */
+
+  /* =========================================================
+     TYPE TOKENS
+     ========================================================= */
+  --at-font-body:     'Manrope', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --at-font-heading:  'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+
+  --at-fs-10: 10px;
+  --at-fs-12: 12px;
+  --at-fs-14: 14px;
+  --at-fs-16: 16px;
+  --at-fs-18: 18px;
+  --at-fs-20: 20px;
+  --at-fs-24: 24px;
+  --at-fs-28: 28px;
+  --at-fs-32: 32px;
+
+  --at-lh-12: 12px;
+  --at-lh-14: 14px;
+  --at-lh-16: 16px;
+  --at-lh-20: 20px;
+  --at-lh-22: 22px;
+  --at-lh-24: 24px;
+  --at-lh-26: 26px;
+  --at-lh-28: 28px;
+  --at-lh-32: 32px;
+  --at-lh-40: 40px;
+  --at-lh-48: 48px;
+
+  --at-fw-400: 400;
+  --at-fw-500: 500;
+  --at-fw-600: 600;
+  --at-fw-700: 700;
+
+  /* =========================================================
+     SPACING — 4pt scale (tokens.spacing.*)
+     ========================================================= */
+  --at-space-0: 0;
+  --at-space-2: 2px;
+  --at-space-4: 4px;
+  --at-space-8: 8px;
+  --at-space-12: 12px;
+  --at-space-16: 16px;
+  --at-space-20: 20px;
+  --at-space-24: 24px;
+  --at-space-32: 32px;
+  --at-space-36: 36px;
+  --at-space-40: 40px;
+  --at-space-48: 48px;
+  --at-space-56: 56px;
+  --at-space-64: 64px;
+  --at-space-72: 72px;
+  --at-space-80: 80px;
+  --at-space-96: 96px;
+  --at-space-128: 128px;
+
+  /* =========================================================
+     RADII (tokens.radius.*)
+     ========================================================= */
+  --at-radius-0:   0px;
+  --at-radius-2:   2px;
+  --at-radius-4:   4px;  /* default */
+  --at-radius-8:   8px;
+  --at-radius-12:  12px;
+  --at-radius-16:  16px;
+  --at-radius-24:  24px;
+  --at-radius-32:  32px;
+  --at-radius-40:  40px;
+  --at-radius-full:999px;
+
+  /* =========================================================
+     SHADOWS (from figma metadata + tokens.shadow)
+     ========================================================= */
+  --at-shadow-0:      0 0 0 rgba(0,0,0,0);
+  --at-shadow-xs:     0 1px 2px rgba(0,0,0,0.05);
+  --at-shadow-sm:     0 1px 2px rgba(0,0,0,0.05), 0 1px 3px rgba(0,0,0,0.10);
+  --at-shadow-md:     0 4px 6px -1px rgba(0,0,0,0.10), 0 2px 4px -2px rgba(0,0,0,0.05);
+  --at-shadow-lg:     0 10px 15px -3px rgba(0,0,0,0.10), 0 4px 6px -4px rgba(0,0,0,0.05);
+  --at-shadow-focus:  0 0 0 3px rgba(163,163,163,0.5);
+  --at-shadow-error:  0 0 0 3px rgba(220,38,38,0.2);
+
+  /* =========================================================
+     MOTION
+     ========================================================= */
+  --at-duration-fast:   150ms;
+  --at-duration-base:   300ms;
+  --at-duration-slow:   500ms;
+  --at-ease-standard:   cubic-bezier(.2,.0,.0,1);
+  --at-ease-linear:     linear;
+}
+
+/* =========================================================
+   SEMANTIC TYPE RULES
+   (span01, body01–03, heading01–04 from spa theme)
+   ========================================================= */
+.at-span-01 {
+  font-family: var(--at-font-body);
+  font-size: var(--at-fs-10);
+  line-height: var(--at-lh-14);
+  font-weight: var(--at-fw-500);
+}
+.at-body-01 {
+  font-family: var(--at-font-body);
+  font-size: var(--at-fs-12);
+  line-height: var(--at-lh-16);
+  font-weight: var(--at-fw-400);
+}
+.at-body-02 {
+  font-family: var(--at-font-body);
+  font-size: var(--at-fs-14);
+  line-height: var(--at-lh-22);
+  font-weight: var(--at-fw-400);
+}
+.at-body-03 {
+  font-family: var(--at-font-body);
+  font-size: var(--at-fs-16);
+  line-height: var(--at-lh-24);
+  font-weight: var(--at-fw-400);
+}
+.at-heading-01,
+h5 {
+  font-family: var(--at-font-heading);
+  font-size: var(--at-fs-18);
+  line-height: var(--at-lh-26);
+  font-weight: var(--at-fw-500);
+  margin: 0;
+}
+.at-heading-02,
+h4 {
+  font-family: var(--at-font-heading);
+  font-size: var(--at-fs-20);
+  line-height: var(--at-lh-28);
+  font-weight: var(--at-fw-600);
+  margin: 0;
+}
+.at-heading-03,
+h3 {
+  font-family: var(--at-font-heading);
+  font-size: var(--at-fs-24);
+  line-height: var(--at-lh-32);
+  font-weight: var(--at-fw-600);
+  margin: 0;
+}
+.at-heading-04,
+h2 {
+  font-family: var(--at-font-heading);
+  font-size: var(--at-fs-32);
+  line-height: var(--at-lh-40);
+  font-weight: var(--at-fw-600);
+  margin: 0;
+}
+h1 {
+  font-family: var(--at-font-heading);
+  font-size: 48px;
+  line-height: 56px;
+  font-weight: var(--at-fw-700);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+code, pre, .at-mono {
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--at-fs-14);
+}
+
+/* =========================================================
+   BASE RESET (mild)
+   ========================================================= */
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: var(--at-bg);
+  color: var(--at-fg);
+  font-family: var(--at-font-body);
+  font-size: var(--at-fs-14);
+  line-height: var(--at-lh-22);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: var(--at-primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
