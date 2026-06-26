@@ -1,0 +1,40 @@
+{
+  "name": "@atena/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Frontend da Atena (Vite + React + TS) — consome a API sob @atena/types",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src eslint.config.mjs --fix --max-warnings=0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@atena/types": "*",
+    "@phosphor-icons/react": "^2.1.7",
+    "@tanstack/react-query": "^5.59.20",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^6.28.0",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "eslint-plugin-sonarjs": "^4.1.0",
+    "globals": "^15.13.0",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.18.0",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}

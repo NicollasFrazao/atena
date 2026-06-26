@@ -1,0 +1,93 @@
+# Atena — Docker Compose com profiles. O profile decide QUAIS serviços sobem,
+# não qual arquivo de env: o app lê sempre um único .env (gerado em runtime).
+#   make up ENV=local        # api + web + MySQL local
+#   make up ENV=production   # api + web (DB externo/RDS)
+#   make datadog             # opt-in: agent Datadog (profile observability; exige DD_API_KEY)
+
+services:
+  mysql:
+    image: mysql:8.4
+    profiles: ["local"]
+    environment:
+      MYSQL_DATABASE: atena
+      MYSQL_ROOT_PASSWORD: atena
+    ports:
+      - "3306:3306"
+    volumes:
+      - atena-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-patena"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    profiles: ["local", "production"]
+    env_file:
+      - apps/api/.env # único .env (nunca versionado); lido pela API e pelo Prisma (cwd=apps/api)
+    environment:
+      # Dentro do Docker o banco é o serviço `mysql` — sobrepõe o host do .env (que é 127.0.0.1, p/ rodar no host).
+      - DATABASE_URL=mysql://root:atena@mysql:3306/atena
+      # APM/DogStatsD: dentro do Docker o agent é o serviço `datadog` (no host, dd-trace usa localhost por default).
+      - DD_AGENT_HOST=datadog
+      # Detector de anomalias: liga o scan agendado (@Interval 60s) sobre o S3 real → cria/auto-resolve incidentes + push WS.
+      - DETECT_ENABLED=true
+      # Bypass de login: SEMPRE `false` por padrão (sobrepõe o env_file → seguro em produção). Só
+      # `make dev` injeta `AUTH_DEV_BYPASS=true` (login dispensado). NUNCA usar `make dev` em produção.
+      - AUTH_DEV_BYPASS=${AUTH_DEV_BYPASS:-false}
+    ports:
+      - "3000:3000"
+    volumes:
+      - atena-tmp:/tmp/atena-cache # cache transitório read-through (decisão #8)
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 40s
+    # Local: o MySQL sobe pelo profile 'local'. Produção: DB externo (RDS/MySQL gerenciado).
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # O browser (host) fala com a API publicada no host; build-time (Vite inlina).
+        VITE_API_URL: http://localhost:3000
+        VITE_WS_URL: ws://localhost:3000
+    profiles: ["local", "production"]
+    ports:
+      - "8080:80" # SPA servida por nginx
+    depends_on:
+      - api
+    restart: unless-stopped
+    healthcheck:
+      # busybox wget: `localhost` resolve p/ ::1 (IPv6) e o nginx só escuta IPv4 → usar 127.0.0.1.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  datadog:
+    image: gcr.io/datadoghq/agent:7
+    # Opt-in (exige DD_API_KEY válida): profile próprio p/ NÃO bloquear o `make up`.
+    # Suba com `make datadog` (ou docker compose --profile observability up -d datadog).
+    profiles: ["observability"]
+    env_file:
+      - apps/api/.env # DD_API_KEY, DD_SITE
+    environment:
+      - DD_APM_ENABLED=true
+      - DD_APM_NON_LOCAL_TRAFFIC=true # aceita traces de fora do container (API no host/outro container)
+      - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true # idem p/ métricas custom (tokens/cost/refusals)
+    ports:
+      - "8126:8126" # APM (traces → percentis de latência)
+      - "8125:8125/udp" # DogStatsD (métricas custom)
+
+volumes:
+  atena-mysql:
+  atena-tmp:

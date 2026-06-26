@@ -1,0 +1,24 @@
+{
+  "name": "atena",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Atena — assistente conversacional de IA da Acme (monorepo)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "overrides": {
+    "rxjs": "7.8.2"
+  },
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run start:dev --workspace apps/api",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "prisma:generate": "npm run prisma:generate --workspace apps/api",
+    "prisma:migrate": "npm run prisma:migrate --workspace apps/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,257 @@
+// Schema Prisma da Atena — MySQL (hot store de metadados + audit log).
+// Conteúdo bruto de SMS / logs NÃO mora aqui: fica no S3 (origem durável),
+// cacheado transitoriamente no /tmp. snake_case nas tabelas/colunas (@map),
+// camelCase no client. Convenção: PK = `id`; FKs = `<entidade>_id`.
+// Adaptado de docs/design_handoff_atena/02-data-model.md (era PostgreSQL).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  support_lead
+  support_analyst
+  viewer
+}
+
+enum UserStatus {
+  active
+  disabled
+}
+
+enum IncidentSeverity {
+  info
+  warning
+  critical
+}
+
+enum IncidentStatus {
+  detected
+  acknowledged
+  resolved
+  auto_resolved
+}
+
+enum DimensionType {
+  provider
+  customer
+  route
+  global
+}
+
+enum ActionCategory {
+  provider_recovered
+  provider_escalated
+  internal_escalated
+  false_positive
+  customer_communicated
+  monitoring_only
+  other
+}
+
+enum RuleType {
+  delivery_rate_drop
+  failure_spike
+  consistent_error
+  webhook_silence
+}
+
+enum AuditAction {
+  tool_call
+  reveal_phone
+  reveal_content
+  incident_created
+  incident_ack
+  incident_resolve
+  session_start
+  export_report
+  rule_update
+  user_role_update
+  user_status_update
+}
+
+enum AuditSeverity {
+  info
+  warning
+  pii
+  config
+}
+
+enum ChatRole {
+  user
+  assistant
+}
+
+model Incident {
+  id                   String             @id @default(uuid()) @db.Char(36)
+  ruleId               String             @map("rule_id") @db.VarChar(64)
+  severity             IncidentSeverity
+  status               IncidentStatus
+  dimensionType        DimensionType      @map("dimension_type")
+  dimensionValue       String?            @map("dimension_value") @db.VarChar(128)
+  // TSTZRANGE do Postgres → duas colunas DATETIME no MySQL
+  detectionWindowStart DateTime           @map("detection_window_start")
+  detectionWindowEnd   DateTime           @map("detection_window_end")
+  detectionPayload     Json               @map("detection_payload")
+  detectedAt           DateTime           @map("detected_at")
+  acknowledgedAt       DateTime?          @map("acknowledged_at")
+  acknowledgedBy       String?            @map("acknowledged_by") @db.VarChar(128)
+  resolvedAt           DateTime?          @map("resolved_at")
+  resolvedBy           String?            @map("resolved_by") @db.VarChar(128)
+  actionCategory       ActionCategory?    @map("action_category")
+  actionDescription    String?            @map("action_description") @db.Text
+  escalatedTo          String?            @map("escalated_to") @db.VarChar(128)
+  relatedShippingIds   Json?              @map("related_shipping_ids") // UUID[] → Json
+  tags                 Json? // TEXT[] → Json
+  shadow               Boolean            @default(false) // nasceu de regra em shadow mode: registrado, mas não notificado
+  rule                 AnomalyRule        @relation(fields: [ruleId], references: [id])
+  activities           IncidentActivity[]
+  chatLinks            ChatSessionIncident[]
+
+  @@index([status, detectedAt(sort: Desc)])
+  @@index([dimensionType, dimensionValue, detectedAt(sort: Desc)])
+  @@index([severity, detectedAt(sort: Desc)])
+  @@map("incidents")
+}
+
+model IncidentActivity {
+  id           String   @id @default(uuid()) @db.Char(36)
+  incidentId   String   @map("incident_id") @db.Char(36)
+  userId       String?  @map("user_id") @db.VarChar(128)
+  activityType String   @map("activity_type") @db.VarChar(32) // comment | tool_call | status_change
+  occurredAt   DateTime @map("occurred_at")
+  payload      Json
+  incident     Incident @relation(fields: [incidentId], references: [id])
+
+  @@index([incidentId, occurredAt])
+  @@map("incident_activity")
+}
+
+model AnomalyRule {
+  id            String           @id @db.VarChar(64) // ex.: 'r-delivery-rate-drop'
+  name          String           @db.VarChar(160)
+  ruleType      RuleType         @map("rule_type")
+  dimension     DimensionType
+  enabled       Boolean          @default(true)
+  severity      IncidentSeverity
+  threshold     Decimal          @db.Decimal(12, 4)
+  thresholdUnit String           @map("threshold_unit") @db.VarChar(8) // '%' | 'σ' | 'min'
+  windowMinutes Int              @map("window_minutes")
+  category      String?          @db.VarChar(32) // consistent_error: categoria de erro alvo (ex.: 'invalid_number'); null = dominante
+  shadowMode    Boolean          @default(false) @map("shadow_mode") // observação silenciosa: detecta+registra, mas não notifica (calibração)
+  updatedBy     String?          @map("updated_by") @db.VarChar(128)
+  updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at")
+  incidents     Incident[]
+
+  @@map("anomaly_rules")
+}
+
+// Usuário autenticado, persistido no 1º login (upsert por `id` = sub do IdP). Os papéis (RBAC)
+// são gerenciados no app (tabela user_roles), não vêm mais da claim do IdP. Sem papel = acesso
+// pendente (gate no app). `status=disabled` bloqueia mesmo com papéis.
+model User {
+  id          String     @id @db.VarChar(128)
+  email       String     @unique @db.VarChar(320)
+  name        String     @db.VarChar(200)
+  status      UserStatus @default(active)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  lastLoginAt DateTime?  @map("last_login_at")
+  roles       UserRole[]
+
+  @@map("users")
+}
+
+// Papéis atribuídos a um usuário (por um admin). O mapa papel→permissões fica em código.
+model UserRole {
+  userId     String   @map("user_id") @db.VarChar(128)
+  role       Role
+  assignedBy String?  @map("assigned_by") @db.VarChar(128)
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, role])
+  @@map("user_roles")
+}
+
+model ChatSession {
+  id           String                 @id @default(uuid()) @db.Char(36)
+  userId       String                 @map("user_id") @db.VarChar(128)
+  title        String?                @db.VarChar(200)
+  startedAt    DateTime               @default(now()) @map("started_at")
+  lastActivity DateTime               @default(now()) @map("last_activity")
+  pinned       Boolean                @default(false)
+  tags         Json?
+  messages     ChatMessage[]
+  incidents    ChatSessionIncident[] // incidentes discutidos na sessão (many-to-many)
+
+  @@index([userId, lastActivity(sort: Desc)])
+  @@map("chat_sessions")
+}
+
+// Vínculo many-to-many sessão↔incidente: registrado quando o chat referencia um incidente (ex.:
+// tool get_incident no fluxo "Investigar"). Idempotente pela PK composta. Substitui o antigo
+// ChatSession.incident_id (que só guardava 1 e nunca era preenchido).
+model ChatSessionIncident {
+  sessionId  String      @map("session_id") @db.Char(36)
+  incidentId String      @map("incident_id") @db.Char(36)
+  linkedAt   DateTime    @default(now()) @map("linked_at")
+  session    ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  incident   Incident    @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, incidentId])
+  @@index([incidentId])
+  @@map("chat_session_incidents")
+}
+
+model ChatMessage {
+  id        String      @id @default(uuid()) @db.Char(36)
+  sessionId String      @map("session_id") @db.Char(36)
+  role      ChatRole
+  content   Json
+  createdAt DateTime    @default(now()) @map("created_at")
+  session   ChatSession @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId, createdAt])
+  @@map("chat_messages")
+}
+
+// Append-only / imutável. Conceder ao app role apenas INSERT + SELECT (sem UPDATE/DELETE).
+model AuditLog {
+  id         String        @id @default(uuid()) @db.Char(36)
+  occurredAt DateTime      @default(now()) @map("occurred_at")
+  userId     String?       @map("user_id") @db.VarChar(128)
+  action     AuditAction
+  resource   String        @db.VarChar(256)
+  detail     String?       @db.Text
+  severity   AuditSeverity
+  ipAddress  String?       @map("ip_address") @db.VarChar(45) // INET → VARCHAR(45)
+  metadata   Json?
+
+  @@index([occurredAt(sort: Desc)])
+  @@index([userId, occurredAt(sort: Desc)])
+  @@index([action, occurredAt(sort: Desc)])
+  @@map("audit_log")
+}
+
+// Evento de scan do S3 por consulta do motor de auditoria (custo). Base da JANELA TEMPORAL das
+// métricas de leitura do S3 (observability) — persistido para sobreviver a restart, em vez do
+// acumulador em memória "desde a subida". Podável por idade (retenção).
+model AuditScanEvent {
+  id                String   @id @default(uuid()) @db.Char(36)
+  at                DateTime @default(now())
+  partitionsTotal   Int      @map("partitions_total")
+  partitionsCached  Int      @map("partitions_cached")
+  partitionsScanned Int      @map("partitions_scanned") // frias (cold) + recentes (live) = leram o S3
+  s3Objects         Int      @map("s3_objects")
+  readMs            Int      @map("read_ms")
+
+  @@index([at])
+  @@map("audit_scan_events")
+}

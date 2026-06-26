@@ -1,0 +1,33 @@
+# dotcontext runtime state
+.context/plans/
+.context/runtime/
+.context/cache/semantic/
+.context/workflow/
+.context/harness/sessions/
+.context/harness/traces/
+.context/harness/artifacts/
+.context/harness/contracts/
+.context/harness/workflows/
+.context/harness/replays/
+.context/harness/datasets/
+.context/**/archive/
+
+# secrets / variáveis de ambiente
+.env
+.env.*
+!.env.example
+
+# artefatos de validação do Playwright MCP (snapshots/screenshots) — não versionar
+.playwright-mcp/
+report-card.png
+
+# Node / build
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+coverage/
+# saída compilada nunca deve cair ao lado do source dos pacotes
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
