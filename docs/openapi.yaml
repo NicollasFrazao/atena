@@ -2,31 +2,48 @@ openapi: 3.1.0
 
 info:
   title: Atena API
-  version: "0.2.0"
+  version: "1.0.0"
   contact:
     name: Time Atena
     url: https://example.com
   description: |
     API da **Atena** — assistente de suporte da plataforma de SMS da Acme.
 
-    Cobre as tools de mensagens/catálogo (Fase 1) e detecção de anomalias,
-    incidentes, regras, observabilidade e chat (Fase 2).
+    Cobre as tools de envios/catálogo (self-service) e a detecção de anomalias,
+    incidentes, regras, observabilidade, auditoria, administração e chat.
 
     ## Convenções
     - Todos os objetos de **request** e **response** são `snake_case`.
-    - Datas em **ISO 8601 UTC** (string).
+    - Datas em **ISO 8601** (string); o motor opera em UTC e converte para o fuso de
+      exibição (`APP_TIMEZONE`, default UTC-3/BRT) só nas bordas.
     - Erros sempre no shape `{ "error": { "code": "...", "message": "..." } }`.
     - Envelope paginado: `{ rows, page, total_pages, total, latency_ms }`.
     - Todos os endpoints ficam sob o prefixo **`/api`**, exceto `GET /health`.
+    - A entidade de entrega é o **shipping** (envio). As rotas ficam sob `/shippings`
+      e o identificador é `shipping_id`.
+
+    ## Origem dos dados
+    Os dados de envio **não** ficam no banco: vêm do **detailed report no S3**
+    (fonte da verdade), consultado via **DuckDB** com cache transitório em `/tmp`.
+    O MySQL guarda só o estado da aplicação (incidentes, regras, sessões de chat,
+    usuários/papéis e o audit log). A janela de envios/taxas é **send-based**
+    (medida pelo instante de envio, `requested_at`).
 
     ## Autenticação
-    A API usa OIDC + RBAC por papel (`support_analyst` / `support_lead`).
-    Em **desenvolvimento** o bypass de auth (`AUTH_DEV_BYPASS=true`) está ligado,
-    então o token Bearer é **opcional** — os requests funcionam sem ele.
-    O `securityScheme` `bearerAuth` está declarado para quando o OIDC real existir.
+    A sessão é por **cookie JWT** emitido após o login **OIDC** (Microsoft Entra).
+    O fluxo é `GET /auth/login` → IdP → `GET /auth/callback` (emite o cookie) →
+    `GET /auth/me` (usuário da sessão) → `POST /auth/logout`. Em **desenvolvimento**
+    o bypass (`AUTH_DEV_BYPASS=true`) injeta um usuário e dispensa o login.
 
-    > **PII:** telefone e conteúdo saem mascarados por padrão. Os endpoints
-    > `reveal-phone`/`reveal-content` retornam o valor em claro e são auditados.
+    ## Autorização (RBAC, gerenciado no app)
+    Papéis ficam **no banco** (atribuídos por um admin), não vêm do IdP. São 4:
+    `admin`, `support_lead`, `support_analyst`, `viewer`. Cada papel concede um
+    conjunto de **permissões** (`@Requires`); os handlers exigem permissões específicas.
+
+    > **PII:** telefone e conteúdo saem mascarados por padrão. Os endpoints de
+    > `reveal-phone`/`reveal-content` e **os exports CSV com telefone em claro**
+    > (`/shippings/export`, `/reports/delivery/export`, `/incidents/{id}/shippings/export`)
+    > exigem a permissão **`pii:reveal`** e são auditados (severidade `pii`).
 
 servers:
   - url: http://localhost:3000
@@ -36,26 +53,30 @@ tags:
   - name: Health
     description: Sonda de saúde da aplicação (fora do prefixo /api)
   - name: Catálogo
-    description: Providers e customers distintos
-  - name: Mensagens
-    description: Busca, trilha, análise de conteúdo e reveal de PII
+    description: Providers e customers distintos (com atividade na janela)
+  - name: Envios
+    description: Busca, export, trilha, análise de conteúdo e reveal de PII de envios (shippings)
   - name: Relatórios
-    description: Relatórios de entregabilidade e de incidentes
+    description: Relatórios de entregabilidade (JSON, stream SSE e export CSV) e de incidentes
   - name: Regras
     description: Leitura e edição das regras de anomalia
   - name: Incidentes
-    description: Leitura (read-only) e lifecycle (ack/resolve/comment) de incidentes
+    description: Leitura (read-only), envios impactados (+ export) e lifecycle (ack/resolve/comment)
   - name: Observabilidade
     description: Métricas agregadas do assistente
+  - name: Auditoria
+    description: Leitura do audit log (lista, sumário, usuários, export)
+  - name: Administração
+    description: Gestão de usuários, papéis e status (RBAC)
   - name: Chat
     description: Sessões e mensagens de chat (resposta em stream SSE)
-  - name: Detector (dev)
-    description: Gatilho de desenvolvimento do detector de anomalias
+  - name: Operação (dev)
+    description: Gatilhos de desenvolvimento/ops (detector e retenção)
   - name: Auth
-    description: Fluxo de login social (OIDC) — stubs até o IdP real
+    description: Login social institucional (OIDC / Microsoft Entra) + sessão por cookie JWT
 
 security:
-  - bearerAuth: []
+  - sessionCookie: []
 
 paths:
   # ---------------------------------------------------------------------------
@@ -90,9 +111,13 @@ paths:
   /api/providers:
     get:
       tags: [Catálogo]
-      summary: Lista providers distintos
+      summary: Lista providers com atividade na janela
       operationId: listProviders
-      description: Tool `list_providers`. Nomes de provedores distintos, em ordem ascendente.
+      description: "Tool `list_providers`. Nomes de provedores distintos com atividade na janela, em ordem ascendente. Permissão: `app:use`."
+      parameters:
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/DateRangeQuery"
       responses:
         "200":
           description: Lista de providers
@@ -109,9 +134,9 @@ paths:
   /api/customers:
     get:
       tags: [Catálogo]
-      summary: Lista customers distintos
+      summary: Lista customers com atividade na janela
       operationId: listCustomers
-      description: Tool `list_customers`. `id === name` por ora.
+      description: "Tool `list_customers`. Top-N clientes por volume na janela (`id === name` por ora) + total distinto. Permissão: `app:use`."
       parameters:
         - name: search
           in: query
@@ -119,34 +144,44 @@ paths:
           description: Termo para filtrar o `customer_id` (match parcial).
           schema:
             type: string
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/DateRangeQuery"
       responses:
         "200":
-          description: Lista de clientes
+          description: Clientes (top-N por volume) e total distinto na janela
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id: { type: string }
-                    name: { type: string }
-                  required: [id, name]
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                      required: [id, name]
+                  total: { type: integer }
+                required: [items, total]
                 example:
-                  - { id: "1001", name: "1001" }
-                  - { id: "8349", name: "8349" }
+                  items:
+                    - { id: "1001", name: "1001" }
+                    - { id: "8349", name: "8349" }
+                  total: 2
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
   # ---------------------------------------------------------------------------
-  # Mensagens
+  # Envios (shippings)
   # ---------------------------------------------------------------------------
-  /api/messages/search:
+  /api/shippings/search:
     get:
-      tags: [Mensagens]
-      summary: Busca paginada de mensagens
-      operationId: searchMessages
-      description: Tool `search_messages`. Todos os filtros são opcionais. PII mascarada.
+      tags: [Envios]
+      summary: Busca paginada de envios
+      operationId: searchShippings
+      description: "Tool `search_shippings`. Todos os filtros são opcionais; a janela é sobre o instante de envio (`requested_at`). PII mascarada. Permissão: `messages:search`."
       parameters:
         - name: phone
           in: query
@@ -164,14 +199,21 @@ paths:
           in: query
           description: Id do cliente (match exato).
           schema: { type: string, example: "1001" }
+        - name: campaign_id
+          in: query
+          description: "Id da campanha (match exato); devolve os destinatários daquela campanha."
+          schema: { type: string }
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/DateRangeQuery"
         - name: page
           in: query
           description: Página (>= 1; default 1).
           schema: { type: integer, minimum: 1, default: 1 }
         - name: limit
           in: query
-          description: Itens por página (1–100; default 20).
-          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          description: Itens por página (1–100; default 50).
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
       responses:
         "200":
           description: Envelope paginado de resultados
@@ -188,33 +230,74 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/messages/{id}/trail:
+  /api/shippings/export:
     get:
-      tags: [Mensagens]
-      summary: Trilha completa de uma mensagem
-      operationId: getMessageTrail
-      description: Tool `get_message_trail`. PII mascarada (sem `content_preview`).
+      tags: [Envios]
+      summary: Exporta os envios do filtro como CSV (PII em claro)
+      operationId: exportShippings
+      description: |
+        Exporta TODOS os envios que casam o filtro (paginação ignorada) como CSV de download.
+        Diferente do `search`, o **telefone sai em claro** — por isso exige a permissão
+        **`pii:reveal`** e é auditado como `export_report` (severidade `pii`). O CSV é gerado pelo
+        DuckDB e enviado em stream com BOM UTF-8 (Excel pt-BR).
       parameters:
-        - $ref: "#/components/parameters/MessageId"
+        - name: phone
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: provider
+          in: query
+          schema: { type: string }
+        - name: customer_id
+          in: query
+          schema: { type: string }
+        - name: campaign_id
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/DateRangeQuery"
       responses:
         "200":
-          description: Trilha da mensagem
+          description: Arquivo CSV (download)
+          content:
+            text/csv:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/shippings/{id}/trail:
+    get:
+      tags: [Envios]
+      summary: Trilha completa de um envio
+      operationId: getShippingTrail
+      description: "Tool `get_shipping_trail`. PII mascarada (sem `content_preview`). Permissão: `messages:trail`. A janela opcional (`date_from`/`date_to`/`date_range`) ajuda a reusar o cache quente."
+      parameters:
+        - $ref: "#/components/parameters/ShippingId"
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/DateRangeQuery"
+      responses:
+        "200":
+          description: Trilha do envio
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/MessageTrail" }
+              schema: { $ref: "#/components/schemas/ShippingTrail" }
         "404": { $ref: "#/components/responses/NotFound" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/messages/analyze:
+  /api/shippings/analyze:
     post:
-      tags: [Mensagens]
+      tags: [Envios]
       summary: Análise de risco de conteúdo
-      operationId: analyzeMessageContent
+      operationId: analyzeShippingContent
       description: |
-        Tool `analyze_message_content`. Forneça `text` OU `message_id`
+        Tool `analyze_shipping_content`. Forneça `text` OU `shipping_id`
         (o serviço resolve o conteúdo via cache `/tmp`↔S3). Se ambos faltarem,
-        responde `invalid_request`.
+        responde `invalid_request`. Permissão: `messages:search`.
       requestBody:
         required: true
         content:
@@ -224,9 +307,9 @@ paths:
               porTexto:
                 summary: Analisar texto direto
                 value: { text: "Clique aqui para resgatar seu prêmio: http://bit.ly/xyz" }
-              porMensagem:
-                summary: Analisar conteúdo de uma mensagem existente
-                value: { message_id: "m-1001" }
+              porEnvio:
+                summary: Analisar conteúdo de um envio existente
+                value: { shipping_id: "s-1001" }
       responses:
         "201":
           description: Resultado da análise de risco
@@ -237,14 +320,17 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/messages/{id}/reveal-phone:
+  /api/shippings/{id}/reveal-phone:
     post:
-      tags: [Mensagens]
+      tags: [Envios]
       summary: Revela o telefone completo (PII)
-      operationId: revealMessagePhone
-      description: Auditado como `reveal_phone` (severidade `pii`). O valor vai só na resposta.
+      operationId: revealShippingPhone
+      description: "Exige `pii:reveal`. Auditado como `reveal_phone` (severidade `pii`). O valor vai só na resposta. A janela opcional ajuda o lookup pontual."
       parameters:
-        - $ref: "#/components/parameters/MessageId"
+        - $ref: "#/components/parameters/ShippingId"
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/DateRangeQuery"
       responses:
         "201":
           description: Telefone revelado (não mascarado)
@@ -255,14 +341,17 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/messages/{id}/reveal-content:
+  /api/shippings/{id}/reveal-content:
     post:
-      tags: [Mensagens]
+      tags: [Envios]
       summary: Revela o conteúdo bruto (PII)
-      operationId: revealMessageContent
-      description: Auditado como `reveal_content` (severidade `pii`). Conteúdo hidratado do S3 via `content_ref`.
+      operationId: revealShippingContent
+      description: "Exige `pii:reveal`. Auditado como `reveal_content` (severidade `pii`). Conteúdo hidratado do S3 via `content_ref`."
       parameters:
-        - $ref: "#/components/parameters/MessageId"
+        - $ref: "#/components/parameters/ShippingId"
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+        - $ref: "#/components/parameters/DateRangeQuery"
       responses:
         "201":
           description: Conteúdo revelado (não mascarado)
@@ -281,7 +370,7 @@ paths:
       tags: [Relatórios]
       summary: Relatório de entregabilidade
       operationId: generateDeliveryReport
-      description: Tool `generate_delivery_report`. Sempre quebra por provider.
+      description: "Tool `generate_delivery_report`. Sempre quebra por provider. Permissão (classe): `reports:view`."
       requestBody:
         required: false
         content:
@@ -304,6 +393,68 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/DeliveryReport" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/reports/delivery/stream:
+    post:
+      tags: [Relatórios]
+      summary: Relatório de entregabilidade em stream SSE (com progresso)
+      operationId: generateDeliveryReportStream
+      description: |
+        Igual ao `POST /reports/delivery`, mas responde em **stream SSE**
+        (`text/event-stream`). Emite frames `event: progress` durante a varredura no S3
+        (`mapping` → `reading X/Y` → `querying`) e, ao fim, `event: result` com o relatório
+        (ou `event: error`). A tela de Relatórios consome isto para mostrar o progresso.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeliveryReportRequest" }
+      responses:
+        "200":
+          description: Stream de eventos SSE
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: progress
+                  data: {"phase":"reading","done":2,"total":7}
+
+                  event: result
+                  data: {"window":"24h","totals":{"sent":1000,"delivered":940,"failed":50,"pending":10}}
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/reports/delivery/export:
+    get:
+      tags: [Relatórios]
+      summary: Exporta as mensagens do recorte do relatório como CSV (PII em claro)
+      operationId: exportDeliveryReport
+      description: |
+        Baixa as mensagens do recorte do relatório como CSV. O **telefone sai em claro** — por isso
+        exige **`pii:reveal`** (além de `reports:view`) e é auditado como `export_report` (severidade
+        `pii`). Janela e filtros vêm flat na query string. CSV via DuckDB, com BOM UTF-8.
+      parameters:
+        - name: customer_id
+          in: query
+          schema: { type: string }
+        - name: provider
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/DateRangeQuery"
+        - $ref: "#/components/parameters/DateFrom"
+        - $ref: "#/components/parameters/DateTo"
+      responses:
+        "200":
+          description: Arquivo CSV (download)
+          content:
+            text/csv:
+              schema: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -345,7 +496,7 @@ paths:
       tags: [Regras]
       summary: Lista regras de anomalia
       operationId: listRules
-      description: "Lista todas as regras de anomalia configuradas (tabela `anomaly_rules`)."
+      description: "Lista todas as regras de anomalia configuradas (tabela `anomaly_rules`). Permissão: `rules:view`."
       responses:
         "200":
           description: Regras (snake_case)
@@ -362,7 +513,7 @@ paths:
       tags: [Regras]
       summary: Edita campos permitidos de uma regra
       operationId: updateRule
-      description: "`rule_type` é imutável (não aceito). Atualização parcial; auditada como `rule_update`."
+      description: "`rule_type` é imutável (não aceito). Atualização parcial; auditada como `rule_update`. Permissão: `rules:edit`."
       parameters:
         - name: id
           in: path
@@ -400,7 +551,7 @@ paths:
       tags: [Incidentes]
       summary: Lista paginada de incidentes
       operationId: listIncidents
-      description: Tool `list_incidents` (§C.5). Filtros via CSV.
+      description: "Tool `list_incidents`. Filtros via CSV. Permissão (classe): `incidents:view`."
       parameters:
         - name: status
           in: query
@@ -441,7 +592,7 @@ paths:
       tags: [Incidentes]
       summary: Incidente + atividades
       operationId: getIncident
-      description: Tool `get_incident`.
+      description: "Tool `get_incident`. Permissão (classe): `incidents:view`."
       parameters:
         - $ref: "#/components/parameters/IncidentId"
       responses:
@@ -454,6 +605,51 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /api/incidents/{id}/shippings:
+    get:
+      tags: [Incidentes]
+      summary: Amostra de envios impactados pelo incidente
+      operationId: getIncidentShippings
+      description: |
+        Amostra REAL de envios relacionados ao incidente (escopada pela dimensão + janela de
+        detecção). PII mascarada. `limit` aumenta a amostra (teto 5000). Permissão: `incidents:view`.
+      parameters:
+        - $ref: "#/components/parameters/IncidentId"
+        - name: limit
+          in: query
+          description: "Tamanho da amostra (default no serviço; teto 5000)."
+          schema: { type: integer, minimum: 1, maximum: 5000 }
+      responses:
+        "200":
+          description: "Amostra de envios impactados (ou `available: false`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IncidentShippings" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/incidents/{id}/shippings/export:
+    get:
+      tags: [Incidentes]
+      summary: Exporta os envios impactados pelo incidente como CSV (PII em claro)
+      operationId: exportIncidentShippings
+      description: |
+        Baixa os envios impactados (exatamente os ids que o detector persistiu) como CSV. O
+        **telefone sai em claro** — exige **`pii:reveal`** (além de `incidents:view`) e é auditado
+        como `export_report` (severidade `pii`). CSV via DuckDB, com BOM UTF-8.
+      parameters:
+        - $ref: "#/components/parameters/IncidentId"
+      responses:
+        "200":
+          description: Arquivo CSV (download)
+          content:
+            text/csv:
+              schema: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   # ---------------------------------------------------------------------------
   # Incidentes — lifecycle (UI-only, não-LLM)
   # ---------------------------------------------------------------------------
@@ -462,7 +658,7 @@ paths:
       tags: [Incidentes]
       summary: Reconhece um incidente
       operationId: acknowledgeIncident
-      description: "Transição `detected` → `acknowledged`. Validação server-side (§D)."
+      description: "Transição `detected` → `acknowledged`. Validação server-side. Permissão: `incidents:ack`."
       parameters:
         - $ref: "#/components/parameters/IncidentId"
       responses:
@@ -482,9 +678,9 @@ paths:
       summary: Resolve manualmente um incidente
       operationId: resolveIncident
       description: |
-        Validação §D no serviço: `action_description` ≥ 20 chars (≥ 10 em `auto_resolved`)
+        Validação no serviço: `action_description` ≥ 20 chars (≥ 10 em `auto_resolved`)
         e `escalated_to` obrigatório quando `action_category` ∈ {`provider_escalated`,
-        `internal_escalated`}.
+        `internal_escalated`}. Permissão: `incidents:resolve`.
       parameters:
         - $ref: "#/components/parameters/IncidentId"
       requestBody:
@@ -522,7 +718,7 @@ paths:
       tags: [Incidentes]
       summary: Adiciona um comentário
       operationId: addIncidentComment
-      description: Não muda o estado do incidente.
+      description: "Não muda o estado do incidente. Permissão: `incidents:comment`."
       parameters:
         - $ref: "#/components/parameters/IncidentId"
       requestBody:
@@ -553,8 +749,13 @@ paths:
       summary: Snapshot de métricas do assistente
       operationId: getObservability
       description: |
-        Métricas básicas (§E) a partir do audit log/sessões/WS. Tokens/custo/MTTA/
-        percentis ficam `null` (pendentes — OpenTelemetry/Prometheus).
+        Métricas básicas a partir do audit log/sessões/WS. Tokens/custo/MTTA/percentis
+        podem vir `null` (pendentes de instrumentação). Permissão: `observability:view`.
+      parameters:
+        - name: window
+          in: query
+          description: "Janela (`24h`/`7d`/`30d`/`all`; default `all`)."
+          schema: { $ref: "#/components/schemas/DateRange" }
       responses:
         "200":
           description: Snapshot de observabilidade
@@ -565,14 +766,14 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
 
   # ---------------------------------------------------------------------------
-  # Chat
+  # Chat (permissão da classe: app:use; as sessões pertencem ao usuário logado)
   # ---------------------------------------------------------------------------
   /api/chat/sessions:
     post:
       tags: [Chat]
       summary: Cria uma sessão de chat
       operationId: createChatSession
-      description: Auditado como `session_start`.
+      description: "Auditado como `session_start`. Permissão (classe): `app:use`."
       requestBody:
         required: false
         content:
@@ -609,6 +810,39 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /api/chat/sessions/{id}:
+    patch:
+      tags: [Chat]
+      summary: Renomeia / fixa uma sessão
+      operationId: updateChatSession
+      description: Atualiza o título e/ou o estado fixado (`pinned`) da sessão do usuário logado.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RenameSessionRequest" }
+            examples:
+              renomear:
+                value: { title: "Falhas do cliente 1001 — 24/06" }
+              fixar:
+                value: { pinned: true }
+      responses:
+        "200":
+          description: Sessão atualizada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                  title: { type: string }
+                required: [session_id, title]
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /api/chat/sessions/{id}/messages:
     get:
       tags: [Chat]
@@ -635,11 +869,14 @@ paths:
         Responde em **stream SSE** (`text/event-stream`), não JSON. Os frames seguem
         `event: <tipo>` / `data: <json>`:
 
-        - `tool_call`   — orquestrador iniciou uma tool (`status: running`)
-        - `tool_result` — tool concluiu (`status: success|error`, `result`)
-        - `text_delta`  — fragmento incremental do texto (`delta`)
-        - `done`        — fim da resposta (`message_id`, `refusal: null`)
-        - `refusal`     — recusa estruturada (`reason`, `explanation`, `can_do`)
+        - `tool_call`     — orquestrador iniciou uma tool (`status: running`)
+        - `tool_progress` — progresso de uma tool em andamento (ex.: varredura no S3)
+        - `tool_result`   — tool concluiu (`status: success|error`, `result`)
+        - `text_delta`    — fragmento incremental do texto (`delta`)
+        - `done`          — fim da resposta (`message_id`, `refusal: null`)
+        - `refusal`       — recusa estruturada (`reason`, `explanation`, `can_do`)
+
+        Permissão (classe): `app:use`.
 
         > No Insomnia, use o tipo de requisição **Event Stream (SSE)** para ver os frames.
       parameters:
@@ -673,14 +910,222 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
 
   # ---------------------------------------------------------------------------
-  # Detector (dev)
+  # Auditoria (leitura; permissão: audit:view)
+  # ---------------------------------------------------------------------------
+  /api/audit:
+    get:
+      tags: [Auditoria]
+      summary: Lista paginada do audit log
+      operationId: listAudit
+      description: "Registros mais recentes primeiro, com filtros e paginação. Append-only (sem PII em claro). Permissão: `audit:view`."
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - name: action
+          in: query
+          description: "Filtro por tipo de ação (ex.: `reveal_phone`, `tool_call`, `rule_update`)."
+          schema: { type: string }
+        - name: severity
+          in: query
+          description: "Filtro por severidade (`info`/`pii`)."
+          schema: { type: string }
+        - name: user_id
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Página de registros
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      rows:
+                        type: array
+                        items: { $ref: "#/components/schemas/AuditLogEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/audit/summary:
+    get:
+      tags: [Auditoria]
+      summary: Contadores do topo da tela de auditoria
+      operationId: getAuditSummary
+      description: "Contadores agregados (hoje, PII, mudanças de regra, total). Permissão: `audit:view`."
+      responses:
+        "200":
+          description: Contadores agregados
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/audit/users:
+    get:
+      tags: [Auditoria]
+      summary: Usuários distintos no audit log (para o filtro)
+      operationId: getAuditUsers
+      description: "Usuários distintos no log (id + nome de exibição) para o filtro da tela. Permissão: `audit:view`."
+      responses:
+        "200":
+          description: Usuários distintos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    name: { type: string }
+                  required: [id, name]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/audit/export:
+    get:
+      tags: [Auditoria]
+      summary: Exporta os registros que casam os filtros (sem paginação)
+      operationId: exportAudit
+      description: "Registros que casam os filtros, até o teto de exportação (download JSONL). Sem PII em claro. Permissão: `audit:view`."
+      parameters:
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: severity
+          in: query
+          schema: { type: string }
+        - name: user_id
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Registros (até o teto)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AuditLogEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Administração (RBAC; permissão: users:manage → papel admin)
+  # ---------------------------------------------------------------------------
+  /api/admin/users:
+    get:
+      tags: [Administração]
+      summary: Lista todos os usuários
+      operationId: listAdminUsers
+      description: "Usuários com status, papéis e último login. Permissão: `users:manage`."
+      responses:
+        "200":
+          description: Usuários
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AdminUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/roles:
+    get:
+      tags: [Administração]
+      summary: Catálogo de papéis e permissões (para a UI)
+      operationId: listRoles
+      description: "Papéis disponíveis e as permissões que cada um concede. Permissão: `users:manage`."
+      responses:
+        "200":
+          description: Catálogo de papéis
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RoleCatalogItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/users/{id}/roles:
+    put:
+      tags: [Administração]
+      summary: Define o conjunto de papéis de um usuário
+      operationId: setUserRoles
+      description: "Substitui os papéis do usuário-alvo. Auditado como `user_role_update`. Permissão: `users:manage`."
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                roles:
+                  type: array
+                  items: { $ref: "#/components/schemas/Role" }
+              required: [roles]
+            examples:
+              definePapeis:
+                value: { roles: [support_analyst] }
+      responses:
+        "200":
+          description: Usuário atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/users/{id}/status:
+    patch:
+      tags: [Administração]
+      summary: Habilita/desabilita um usuário
+      operationId: setUserStatus
+      description: "Altera o status do usuário-alvo. Auditado como `user_status_update`. Permissão: `users:manage`."
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { $ref: "#/components/schemas/UserStatus" }
+              required: [status]
+            examples:
+              desabilita:
+                value: { status: disabled }
+      responses:
+        "200":
+          description: Usuário atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Operação (dev/ops; permissão: ops:run)
   # ---------------------------------------------------------------------------
   /api/dev/detect:
     post:
-      tags: [Detector (dev)]
+      tags: [Operação (dev)]
       summary: Dispara um scan imediato do detector
       operationId: runDetector
-      description: Gatilho de DEV (independente do `@Interval`/`detect.enabled`). Detecta → cria incidente → push WS.
+      description: "Gatilho de DEV/ops (independente do `@Interval`/`detect.enabled`). Detecta → cria incidente → push WS. Permissão: `ops:run`."
       responses:
         "200":
           description: Resumo da execução
@@ -690,8 +1135,28 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /api/dev/retention:
+    post:
+      tags: [Operação (dev)]
+      summary: Roda a retenção do chat sob demanda
+      operationId: runRetention
+      description: "Gatilho de DEV/ops (independente do `@Cron`/`retention.enabled`). Limpa sessões/mensagens de chat fora da janela de retenção. Permissão: `ops:run`."
+      responses:
+        "200":
+          description: Resumo da retenção (contagens removidas)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions: { type: integer }
+                  messages: { type: integer }
+                required: [sessions, messages]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   # ---------------------------------------------------------------------------
-  # Auth (OIDC — stubs)
+  # Auth (OIDC / Microsoft Entra + sessão por cookie JWT)
   # ---------------------------------------------------------------------------
   /api/auth/login:
     get:
@@ -712,7 +1177,7 @@ paths:
       tags: [Auth]
       summary: Callback do IdP
       operationId: authCallback
-      description: Recebe o redirect do IdP e conclui o login.
+      description: "Recebe o redirect do IdP, troca o `code` por claims, emite o cookie de sessão JWT e redireciona (302) de volta ao frontend."
       security: []
       parameters:
         - name: code
@@ -727,6 +1192,23 @@ paths:
           headers:
             Location:
               schema: { type: string }
+            Set-Cookie:
+              description: Cookie de sessão JWT (HttpOnly, SameSite=None, Secure).
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Usuário da sessão atual
+      operationId: authMe
+      description: "Devolve a identidade da sessão (lida do cookie pelo guard): `sub`, `email`, `name`, `roles`."
+      responses:
+        "200":
+          description: Usuário autenticado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionUser" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /api/auth/logout:
@@ -734,7 +1216,7 @@ paths:
       tags: [Auth]
       summary: Encerra a sessão
       operationId: authLogout
-      description: Encerra a sessão do usuário (HTTP 204).
+      description: Limpa o cookie de sessão (HTTP 204).
       security: []
       responses:
         "204":
@@ -742,21 +1224,23 @@ paths:
 
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: atena_session
       description: |
-        Token OIDC. Em desenvolvimento (`AUTH_DEV_BYPASS=true`) o token é opcional —
-        os requests funcionam sem o header `Authorization`.
+        Sessão por **cookie JWT** (`atena_session`), emitido após o login OIDC (Microsoft Entra)
+        em `GET /auth/callback`. O cookie é HttpOnly, `SameSite=None; Secure` (acesso cross-origin
+        web↔api). Em desenvolvimento (`AUTH_DEV_BYPASS=true`) o guard injeta um usuário e o cookie
+        é dispensado.
 
   parameters:
-    MessageId:
+    ShippingId:
       name: id
       in: path
       required: true
-      description: Id (PK) da mensagem.
-      schema: { type: string, example: m-1001 }
+      description: Id (PK) do envio (shipping).
+      schema: { type: string, example: s-1001 }
     IncidentId:
       name: id
       in: path
@@ -769,6 +1253,30 @@ components:
       required: true
       description: Id da sessão de chat.
       schema: { type: string, example: cs-1001 }
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: "`sub` do usuário-alvo."
+      schema: { type: string }
+    DateFrom:
+      name: date_from
+      in: query
+      required: false
+      description: Início da janela (ISO 8601, inclusive); tem precedência sobre `date_range`.
+      schema: { type: string, format: date-time }
+    DateTo:
+      name: date_to
+      in: query
+      required: false
+      description: Fim da janela (ISO 8601, exclusivo); tem precedência sobre `date_range`.
+      schema: { type: string, format: date-time }
+    DateRangeQuery:
+      name: date_range
+      in: query
+      required: false
+      description: "Atalho de janela (`24h`/`7d`/`30d`/`all`); ignorado se `date_from`/`date_to` vierem."
+      schema: { $ref: "#/components/schemas/DateRange" }
 
   responses:
     BadRequest:
@@ -804,9 +1312,15 @@ components:
 
   schemas:
     # --- Enums / unions de domínio --------------------------------------------
-    MessageStatus:
+    ShippingStatus:
       type: string
       enum: [delivered, failed, pending, unknown]
+    Role:
+      type: string
+      enum: [admin, support_lead, support_analyst, viewer]
+    UserStatus:
+      type: string
+      enum: [active, disabled]
     IncidentSeverity:
       type: string
       enum: [info, warning, critical]
@@ -863,22 +1377,31 @@ components:
         latency_ms: { type: integer }
       required: [rows, page, total_pages, total, latency_ms]
 
-    # --- Mensagens ------------------------------------------------------------
+    # --- Envios (shippings) ---------------------------------------------------
     SearchResultRow:
       type: object
       properties:
         id: { type: string }
+        campaign_id:
+          type: [string, "null"]
         phone_masked: { type: string, example: "+55 11 9****-1234" }
         phone_full:
           type: string
-          description: "PII: só com permissão + reveal auditado."
-        status: { $ref: "#/components/schemas/MessageStatus" }
+          description: "PII: só com permissão + reveal auditado (ou export com `pii:reveal`)."
+        status: { $ref: "#/components/schemas/ShippingStatus" }
         provider: { type: string }
         customer: { type: string }
+        channel:
+          type: [string, "null"]
+          description: "Canal: `sms` (SMS Short) ou `sms_flash` (SMS Flash)."
+        app_id:
+          type: [string, "null"]
         requested_at: { type: string, format: date-time }
+        finalized_at:
+          type: [string, "null"]
         error_hint:
           type: [string, "null"]
-      required: [id, phone_masked, status, provider, customer, requested_at, error_hint]
+      required: [id, campaign_id, phone_masked, status, provider, customer, channel, app_id, requested_at, finalized_at, error_hint]
     TrailEvent:
       type: object
       properties:
@@ -889,22 +1412,50 @@ components:
         at: { type: string, format: date-time }
         detail: { type: string }
       required: [type, label, at, detail]
-    MessageTrail:
+    ShippingTrail:
       type: object
       properties:
-        message_id: { type: string }
+        shipping_id: { type: string }
+        campaign_id:
+          type: [string, "null"]
         customer: { type: string }
         provider: { type: string }
         phone_masked: { type: string }
-        final_status: { $ref: "#/components/schemas/MessageStatus" }
+        channel:
+          type: [string, "null"]
+        app_id:
+          type: [string, "null"]
+        final_status: { $ref: "#/components/schemas/ShippingStatus" }
         content_ref: { type: string }
+        content_available:
+          type: boolean
+          description: "Se há texto do SMS para revelar nesta fonte."
         content_preview:
           type: string
           description: "PII: só após reveal auditado; mascarado por padrão."
         events:
           type: array
           items: { $ref: "#/components/schemas/TrailEvent" }
-      required: [message_id, customer, provider, phone_masked, final_status, content_ref, events]
+      required: [shipping_id, campaign_id, customer, provider, phone_masked, channel, app_id, final_status, content_ref, content_available, events]
+    IncidentShippings:
+      type: object
+      properties:
+        available:
+          type: boolean
+          description: "Se foi possível buscar amostra real para a dimensão do incidente."
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/SearchResultRow" }
+        total: { type: integer }
+        top_campaigns:
+          type: array
+          items:
+            type: object
+            properties:
+              campaign_id: { type: string }
+              count: { type: integer }
+            required: [campaign_id, count]
+      required: [available, rows, total, top_campaigns]
     RiskCategory:
       type: object
       properties:
@@ -924,26 +1475,26 @@ components:
     RevealedPhone:
       type: object
       properties:
-        message_id: { type: string }
+        shipping_id: { type: string }
         phone_full: { type: string, example: "+5511987651234" }
-      required: [message_id, phone_full]
+      required: [shipping_id, phone_full]
     RevealedContent:
       type: object
       properties:
-        message_id: { type: string }
+        shipping_id: { type: string }
         content_preview: { type: string }
-      required: [message_id, content_preview]
+      required: [shipping_id, content_preview]
 
-    # --- Requests de mensagens ------------------------------------------------
+    # --- Requests de envios ---------------------------------------------------
     AnalyzeContentRequest:
       type: object
-      description: Forneça `text` OU `message_id`.
+      description: Forneça `text` OU `shipping_id`.
       properties:
         text:
           type: string
           minLength: 1
           maxLength: 4000
-        message_id:
+        shipping_id:
           type: string
       minProperties: 1
 
@@ -1097,12 +1648,24 @@ components:
         dimension_type: { $ref: "#/components/schemas/DimensionType" }
         dimension_value: { type: string }
         detected_at: { type: string, format: date-time }
-        window: { type: string }
+        window:
+          type: string
+          description: "Rótulo legível da janela de detecção, no fuso de exibição."
+        window_from:
+          type: [string, "null"]
+          description: "Início da janela de detecção (ISO 8601 UTC) — usável como `date_from` de relatório."
+        window_to:
+          type: [string, "null"]
+          description: "Fim da janela de detecção (ISO 8601 UTC) — usável como `date_to` de relatório."
         summary: { type: string }
         metrics: { $ref: "#/components/schemas/IncidentMetrics" }
-        related_messages: { type: integer }
+        related_shippings:
+          type: integer
+          description: "Quantidade de envios relacionados."
         assignee:
           type: [string, "null"]
+        shadow:
+          type: boolean
       required:
         - id
         - rule
@@ -1112,10 +1675,13 @@ components:
         - dimension_value
         - detected_at
         - window
+        - window_from
+        - window_to
         - summary
         - metrics
-        - related_messages
+        - related_shippings
         - assignee
+        - shadow
     IncidentActivity:
       type: object
       properties:
@@ -1148,7 +1714,7 @@ components:
         escalated_to:
           type: string
           description: "Obrigatório se action_category ∈ {provider_escalated, internal_escalated}."
-        related_message_ids:
+        related_shipping_ids:
           type: array
           items: { type: string }
         tags:
@@ -1230,6 +1796,16 @@ components:
           minLength: 1
           maxLength: 4000
       required: [text]
+    RenameSessionRequest:
+      type: object
+      description: Atualização parcial do título e/ou do estado fixado da sessão.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        pinned:
+          type: boolean
     ChatSessionListItem:
       type: object
       properties:
@@ -1306,3 +1882,71 @@ components:
         created: { type: integer }
         auto_resolved: { type: integer }
       required: [detected, created, auto_resolved]
+
+    # --- Auth / RBAC ----------------------------------------------------------
+    SessionUser:
+      type: object
+      description: Identidade + autorização da sessão (`GET /auth/me`). Papéis/permissões vêm do banco, não do cookie.
+      properties:
+        sub: { type: string }
+        email: { type: string }
+        name: { type: string }
+        roles:
+          type: array
+          items: { $ref: "#/components/schemas/Role" }
+        permissions:
+          type: array
+          items: { type: string }
+        status: { $ref: "#/components/schemas/UserStatus" }
+        is_super_admin: { type: boolean }
+      required: [sub, email, name, roles, permissions, status, is_super_admin]
+    AdminUser:
+      type: object
+      properties:
+        sub: { type: string }
+        email: { type: string }
+        name: { type: string }
+        status: { $ref: "#/components/schemas/UserStatus" }
+        roles:
+          type: array
+          items: { $ref: "#/components/schemas/Role" }
+        is_super_admin: { type: boolean }
+        last_login_at:
+          type: [string, "null"]
+          format: date-time
+        created_at: { type: string, format: date-time }
+      required: [sub, email, name, status, roles, is_super_admin, last_login_at, created_at]
+    RoleCatalogItem:
+      type: object
+      properties:
+        role: { $ref: "#/components/schemas/Role" }
+        label: { type: string }
+        description: { type: string }
+        permissions:
+          type: array
+          items: { type: string }
+      required: [role, label, description, permissions]
+
+    # --- Auditoria ------------------------------------------------------------
+    AuditLogEntry:
+      type: object
+      properties:
+        id: { type: string }
+        occurred_at: { type: string, format: date-time }
+        user_id:
+          type: [string, "null"]
+        user_name:
+          type: [string, "null"]
+        action: { type: string }
+        resource: { type: string }
+        detail:
+          type: [string, "null"]
+        severity:
+          type: string
+          enum: [info, pii]
+        ip_address:
+          type: [string, "null"]
+        metadata:
+          type: [object, "null"]
+          additionalProperties: true
+      required: [id, occurred_at, user_id, user_name, action, resource, detail, severity, ip_address, metadata]

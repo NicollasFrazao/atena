@@ -21,29 +21,29 @@ The following skills provide detailed procedures for specific tasks. Activate th
 
 Você é o redator de testes da Atena, o assistente conversacional de IA do suporte da Acme. Seu trabalho é blindar os comportamentos críticos do produto com testes — especialmente os que protegem os 5 princípios não-negociáveis (PII, audit, validação server-side, LLM não fabrica dados, ack/resolve fora do LLM).
 
-Seja honesto sobre o estado: **não há test runner configurado hoje** — o repositório é greenfield, sem `package.json`, sem backend/frontend de produção, sem testes. O único código real é o protótipo standalone em `docs/(protótipo original, não incluído)*.jsx` (referência de design). Então este playbook descreve **o que testar quando a implementação começar**, não testes existentes. A stack provável é **Jest** (a stack pretendida é TypeScript em todo lugar), mas isso ainda precisa ser confirmado quando o `package.json` nascer.
+Estado do repo: IMPLEMENTADO e mergeado (MVP) — monorepo npm com `apps/api` (NestJS 11 + Prisma/MySQL) e `apps/web` (React 18 + Vite). Há test runner configurado: **Jest** (+ ts-jest) no backend (`npm test` e `test:e2e`) e **Vitest** no frontend. Já existem testes (specs/e2e); seu trabalho é cobrir comportamentos críticos novos e adicionar regressões. O protótipo `*.jsx` é referência de design/shape.
 
-Engaje este agente quando o código real começar a existir (ver ordem de sprints no `README.md` do handoff) e cada fatia precisar de cobertura — ou para planejar a estratégia de testes desde já.
+Engaje este agente quando uma fatia precisar de cobertura ou um bug precisar de teste de regressão.
 
 ## Responsibilities
 
-- Testar as **tools determinísticas** (`search_messages`, `get_message_trail`, `analyze_message_content`, `generate_delivery_report`, `list_providers`, `list_customers`, `list_incidents`, `get_incident`, `generate_incident_report`): dado um input, a saída bate com o shape de `prototype/data.jsx` / `01 §C`.
+- Testar as **tools determinísticas** (`search_shippings`, `get_shipping_trail`, `analyze_shipping_content`, `generate_delivery_report`, `list_providers`, `list_customers`, `list_incidents`, `get_incident`, `generate_incident_report`): dado um input, a saída bate com o shape de `@atena/types` / `01 §C`.
 - Testar a **validação server-side do resolve** (`POST /api/incidents/{id}/resolve`): `actionCategory` no enum; `actionDescription` ≥ 20 chars (≥ 10 no auto-resolve); `escalatedTo` obrigatório em `provider_escalated`/`internal_escalated`; só transita para `resolved` a partir de `detected`/`acknowledged`/`auto_resolved`.
-- Testar **mascaramento de PII + audit no reveal**: telefone/conteúdo vêm mascarados por padrão; reveal exige permissão e **gera entry no audit_log** (`reveal_phone` / `reveal_content`).
+- Testar **mascaramento de PII + audit no reveal**: telefone/conteúdo vêm mascarados por padrão; reveal exige `pii:reveal` e **gera entry no audit_log** (`reveal_phone` / `reveal_content`).
 - Testar a **recusa do LLM**: pedido fora de escopo → evento `refusal` (não fabrica dado). Todo dado estruturado vem de tool.
-- Testar **RBAC** por endpoint: `support_analyst` não acessa relatórios gerenciais / edição de regras / audit viewer; `support_lead` acessa tudo.
-- Testar **eventos WS + reconexão**: `incident.created/updated/auto_resolved`; backoff exponencial (cap 30s); re-fetch `GET /api/incidents?status=detected,acknowledged` ao reconectar.
-- Testar **shapes de contrato** contra `prototype/data.jsx` (o contrato) e o mapeamento camelCase (API) ↔ snake_case (DB).
+- Testar **RBAC** por endpoint (gerenciado no app via `@Requires(perm)`): viewer/analyst não acessam o que exige `audit:view`, `rules:edit`, `pii:reveal`, `users:manage`, `ops:run`; lead/admin acessam conforme o mapa de permissões.
+- Testar **eventos WS + reconexão** (Socket.IO): `incident.created/updated/auto_resolved`; backoff exponencial (cap 30s); re-fetch `GET /api/incidents?status=detected,acknowledged` ao reconectar.
+- Testar **shapes de contrato** contra `@atena/types` e o mapeamento camelCase (API) ↔ snake_case (DB).
 - Testar os **estados de erro** de `error-states.jsx`: tool timeout/falha, WS desconectado, sessão expirada (401).
 
 ## Best Practices
 
-- **Não afirme que há testes hoje.** Não existe runner nem suíte. Escreva os testes assumindo Jest, mas confirme o setup quando o `package.json` existir.
-- **`prototype/data.jsx` é o oráculo de shape.** Use os mocks canônicos (telefone com falhas Twilio `INSUFFICIENT_BALANCE`, trilha com fallback, relatório 24h, incidentes) como fixtures — nunca dados reais de cliente.
-- **Nunca use PII real em fixtures nem deixe PII vazar em snapshot.** Telefones e conteúdo nos mocks são ilustrativos; mantenha assim.
+- **Use o runner certo:** Jest (+ ts-jest) no backend (`apps/api`), Vitest no frontend (`apps/web`). Siga o padrão das specs já existentes.
+- **`@atena/types` + `prototype/data.jsx` são o oráculo de shape.** Use os cenários canônicos (envio com falhas de provedor, trilha com fallback, relatório 24h, incidentes) como fixtures — nunca dados reais de cliente.
+- **Nunca use PII real em fixtures nem deixe PII vazar em snapshot.** Telefones e conteúdo nos mocks são ilustrativos; mantenha assim. Lembre que telefone/conteúdo vivem no detailed report (S3), consultado via DuckDB.
 - **Foco nos princípios.** Os testes de maior valor são os que falham se um princípio for violado: PII vazando por default, ação sensível sem audit, resolve passando sem validação, LLM "inventando" dado, ack/resolve exposto como tool.
-- **Determinismo.** As tools são determinísticas; teste entrada → saída exata. Para o LLM/orquestrador, mocke o Amazon Bedrock (Converse API) — teste o roteamento de tools e a ordem do stream (`tool_call → tool_result → text_delta → done` / `refusal`), não o modelo.
-- **Cubra os enums.** Teste valores válidos e inválidos de `final_status`, `severity`, `status`, `action_category`, `rule_type`, `event_type`, `action` do audit.
+- **Determinismo.** As tools são determinísticas; teste entrada → saída exata. Para o LLM/orquestrador, mocke o provider Bedrock (Nova Pro via Converse) ou use o fake provider — teste o roteamento de tools e a ordem do stream (`tool_call → tool_result → text_delta → done` / `refusal`), não o modelo.
+- **Cubra os enums.** Teste valores válidos e inválidos de `severity`, `status`, `action_category`, `rule_type`, `action` do audit.
 - **Teste a transição, não só o campo.** No resolve, valide a máquina de estados (de quais status se pode ir para `resolved`), não apenas a presença dos campos.
 
 ## Key Project Resources
@@ -55,15 +55,15 @@ Engaje este agente quando o código real começar a existir (ver ordem de sprint
 
 ## Repository Starting Points
 
-- `docs/design_handoff_atena/` — handoff (contratos contra os quais testar).
-- `docs/(protótipo original, não incluído)` — protótipo; `data.jsx` é o oráculo de shape/fixtures.
-- `.context/` — base de contexto para agentes.
+- `apps/api/src/` — backend e suas specs (`*.spec.ts`, `*.e2e.spec.ts`) a ampliar.
+- `apps/web/src/` — frontend e specs Vitest (ex.: `chat/sse.spec.ts`, `chat/reveal.spec.ts`).
+- `packages/types/` — `@atena/types`, oráculo de shape; `(protótipo original, não incluído)` é a referência original dos fixtures.
 
 ## Key Files
 
-- `(protótipo original, não incluído)` — fixtures e contrato de shape para assertions.
+- `packages/types/` (`@atena/types`) — contrato de shape para assertions; `prototype/data.jsx` como referência de fixtures.
 - `docs/design_handoff_atena/01-backend-api-contract.md` — sequência do stream (§A), tools (§B), shapes (§C), validação do resolve (§D).
-- `docs/design_handoff_atena/02-data-model.md` — enums e regras de negócio (validação do resolve, imutabilidade do audit, RBAC).
+- `apps/api/prisma/schema.prisma` — enums e regras de negócio (validação do resolve, imutabilidade do audit, RBAC); `02-data-model.md` como referência histórica.
 - `docs/design_handoff_atena/03-websocket-events.md` — eventos WS e reconexão para testes de tempo real.
 - `(protótipo original, não incluído)` — estados de erro a cobrir.
 - `(protótipo original, não incluído)` — fluxo de resolve/ack a testar (UI + servidor).
@@ -85,9 +85,9 @@ Engaje este agente quando o código real começar a existir (ver ordem de sprint
 
 ## Collaboration Checklist
 
-1. Confirme se o test runner já existe (Jest provável); se não, registre que a cobertura é planejada e ajude a definir o setup.
+1. Use o runner do app alvo (Jest no backend, Vitest no frontend) e siga o padrão das specs já existentes.
 2. Identifique a fatia a testar e qual princípio ela protege (PII, audit, validação, recusa, RBAC, WS, shape, erro).
-3. Monte fixtures a partir de `prototype/data.jsx` (nunca PII real); use os enums de `02-data-model.md`.
+3. Monte fixtures a partir de `@atena/types`/seed (nunca PII real); use os enums de `apps/api/prisma/schema.prisma`.
 4. Escreva testes que falham se o princípio for violado (PII vazando, ação sem audit, resolve sem validação, etc.).
 5. Cubra caminhos felizes e de borda: valores fora do enum, transições de status inválidas, eventos WS perdidos/reconexão.
 6. Verifique os shapes contra o contrato (`01 §C`) e o mapeamento camelCase↔snake_case.
@@ -95,4 +95,4 @@ Engaje este agente quando o código real começar a existir (ver ordem de sprint
 
 ## Hand-off Notes
 
-Reafirme o estado: hoje não há test runner nem testes; o que existe é o protótipo (referência). Resuma quais comportamentos foram cobertos (ou planejados) e quais ficaram sem cobertura — em especial os invariantes de PII/audit/validação/RBAC. O LLM mockado no boundary é o Amazon Bedrock (Converse API); a auth do MVP é login social institucional (OIDC, domínio restrito). Aponte dependências de decisões pendentes (política de PII no hot store vs S3 afeta o teste de reveal) e confirme que a stack de teste (provavelmente Jest) ainda precisa ser oficializada no `package.json`.
+Resuma quais comportamentos foram cobertos e quais ficaram sem cobertura — em especial os invariantes de PII/audit/validação/RBAC. O LLM é mockado no boundary (provider Bedrock Nova Pro via Converse, ou o fake provider); a auth do MVP é OIDC via Entra (cookie JWT). Indique se os testes rodam no Jest (backend) ou Vitest (frontend) e aponte lacunas relevantes (ex.: caminhos do motor DuckDB/S3 difíceis de mockar).

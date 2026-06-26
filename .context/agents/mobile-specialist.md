@@ -11,9 +11,9 @@ scaffoldVersion: "2.0.0"
 
 ## Mission
 
-Seja honesto antes de tudo: **mobile está FORA do MVP da Atena.** A Atena é o assistente conversacional de IA do suporte da Acme, e a v1 é explicitamente **desktop-first**. Mobile aparece no roadmap só como **v1.1** (ver `decisions.md` → "Próximas ondas"), junto com refino de microcopy, estados de loading/erro e as telas de login social institucional (OIDC) em mobile + configuração de regras.
+Seja honesto antes de tudo: **mobile está FORA do MVP da Atena.** A Atena é o assistente conversacional de IA do suporte da Acme, e a v1 é explicitamente **desktop-first**. Mobile aparece no roadmap só como **v1.1** (ver `decisions.md` → "Próximas ondas"), junto com refino de microcopy, estados de loading/erro e as telas de login (OIDC) em mobile + configuração de regras.
 
-Não existe app mobile, não existe stack mobile escolhida, e **não há código de produção nenhum** no repositório — só o protótipo standalone em `docs/(protótipo original, não incluído)*.jsx` (referência de design, desktop). Portanto este playbook **não inventa** uma stack (não há React Native, Flutter, nem app nativo). O papel deste agente hoje é: deixar claro que mobile não está no escopo atual e registrar o que precisará ser considerado quando mobile entrar.
+O produto desktop já está IMPLEMENTADO e mergeado (MVP) — monorepo npm com `apps/api` (NestJS 11 + Prisma/MySQL) e `apps/web` (React 18 + Vite, desktop-first). Mas **não existe app mobile nem stack mobile escolhida** no repositório. Portanto este playbook **não inventa** uma stack (não há React Native, Flutter, nem app nativo). O papel deste agente hoje é: deixar claro que mobile não está no escopo atual e registrar o que precisará ser considerado quando mobile entrar.
 
 Engaje este agente apenas para planejar a futura entrada de mobile (v1.1+) — não para implementar algo agora.
 
@@ -35,11 +35,11 @@ Engaje este agente apenas para planejar a futura entrada de mobile (v1.1+) — n
 ## Considerações para quando mobile entrar (v1.1)
 
 - **Responsividade do chat largo:** o layout immersive é desenhado para uma área de chat ampla; em telas estreitas, o Composer, a `ToolCallPill`, a `TrailTimeline` (timeline densa) e as tabelas de `SearchResults`/relatórios precisam de um layout repensado.
-- **Design system mobile:** confirmar se o `atena-design-system` tem variante/tokens para mobile; se não, isso é pré-requisito.
+- **Design system mobile:** os tokens `--at-*` e os componentes próprios de `apps/web/src/` são desktop-first; uma variante/tokens para mobile é pré-requisito.
 - **PII em telas pequenas:** repensar `PhoneCell`/`ContentRevealBox` (reveal, confirmação, risco de exposição) no contexto de toque e telas compartilhadas.
 - **Banner e notificações:** o push de incidente é um banner persistente no topo do chat no desktop; em mobile isso provavelmente vira push notification nativa + tratamento de banner em viewport reduzido, mantendo a conexão WS / reconexão com backoff.
 - **WebSocket em background:** mobile suspende conexões; reconexão (backoff cap 30s) e o re-fetch `GET /api/incidents?status=detected,acknowledged` ao voltar de background ganham mais importância.
-- **Login social institucional (OIDC) em mobile:** o MVP usa login social institucional (OIDC, domínio restrito a `@example.com`); em mobile o fluxo OIDC pode exigir tratamento diferente (deep link / in-app browser).
+- **Login OIDC em mobile:** o MVP usa OIDC via Microsoft Entra com sessão em cookie JWT (domínio restrito a `@example.com`); em mobile o fluxo OIDC pode exigir tratamento diferente (deep link / in-app browser, persistência da sessão).
 
 ## Key Project Resources
 
@@ -50,9 +50,9 @@ Engaje este agente apenas para planejar a futura entrada de mobile (v1.1+) — n
 
 ## Repository Starting Points
 
-- `docs/design_handoff_atena/` — handoff (a fonte da verdade; tudo desktop hoje).
-- `docs/(protótipo original, não incluído)` — protótipo desktop (referência de design; não há variante mobile).
-- `.context/` — base de contexto para agentes.
+- `apps/web/` — frontend React (desktop-first; sem variante mobile hoje).
+- `docs/design_handoff_atena/` — handoff (contratos agnósticos de cliente + design desktop).
+- `docs/(protótipo original, não incluído)` — protótipo desktop (referência de design).
 
 ## Key Files
 
@@ -88,4 +88,4 @@ Engaje este agente apenas para planejar a futura entrada de mobile (v1.1+) — n
 
 ## Hand-off Notes
 
-Reafirme o estado real: mobile está fora do MVP (desktop-first; mobile é v1.1) e não há app nem stack mobile no repositório. Se este agente foi acionado, deixe claro o que foi apenas planejado vs. o que (se algo) foi feito. Liste as decisões que precisam ser batidas antes de mobile sair do papel: escolha de stack, variante mobile do design system, fluxo de login social institucional (OIDC) em mobile, e tratamento de PII/notificações em tela pequena.
+Reafirme o estado real: o desktop já está implementado (MVP), mas mobile está fora do escopo (desktop-first; mobile é v1.1) e não há app nem stack mobile no repositório. Se este agente foi acionado, deixe claro o que foi apenas planejado vs. o que (se algo) foi feito. Liste as decisões que precisam ser batidas antes de mobile sair do papel: escolha de stack, variante mobile do design, fluxo de login OIDC em mobile, e tratamento de PII/notificações em tela pequena.

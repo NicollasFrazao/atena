@@ -2,6 +2,14 @@
 
 > Itens conscientemente adiados ou simplificados no MVP, para revisitar depois. Criado em 12/06/2026. Decisões relacionadas em [decisions.md](../../docs/design_handoff_atena/decisions.md).
 
+## 0. Já resolvido (resumo)
+- **Auth OIDC Microsoft Entra** ligada e validada (state/nonce/PKCE + sessão por cookie JWT). Ver item 1.
+- **RBAC gerenciado no app** (papéis no banco, `@Requires`), supera o antigo débito de App Roles do Entra. Ver item 1.
+- **LLM real:** Amazon Nova Pro (`us.amazon.nova-pro-v1:0`) via Bedrock Converse; provider fake sem credencial.
+- **Fonte de entrega = detailed report no S3** (`s3://example-sms-delivery-reports`), via DuckDB + cache `/tmp`; `messages`/`message_events` dropados. O contrato de logs gerais do `messaging-api` foi **abandonado** (docs `handoff-at-api-log-contract.md`/`ticket-messaging-api-logs.md` marcados como obsoletos).
+- **Rename message→shipping concluído** (tools `search_shippings`/`get_shipping_trail`, `shipping_id`, rotas `/shippings/*`, incidentes com `related_shipping_ids`). "campaign" permanece.
+- **Top-3 cenários de anomalia** definidos (item 3) e detectores implementados (4 regras + shadow mode).
+
 ## 1. Autenticação: login social institucional (OIDC via Microsoft 365) no MVP
 - **Decisão:** o MVP autentica via **login social do email institucional** — OIDC pelo **Microsoft 365 (Entra ID)**, restrito ao domínio `@example.com`. Sem senha própria. RBAC (`support_analyst` / `support_lead`) mapeado após o login.
 - **Trocabilidade:** o provedor fica atrás de uma **abstração de auth** (interface OIDC) para trocar de IdP facilmente (ex.: Google Workspace) sem reescrever o resto. É um requisito da decisão, não débito.
@@ -53,3 +61,15 @@ O modelo em [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md)
 - **Contexto:** no loop do orquestrador, o turno que gera o TEXTO final após um `tool_result` às vezes abre o stream do Bedrock (`ConverseStreamCommand`) e **não emite nenhum chunk** — observado ~minutos, sem erro. Reproduzido várias vezes em `list_customers`→texto; o relatório completou em outras. É intermitente.
 - **(mitigado) hang infinito:** `withIdleTimeout` (60s) no consumo do stream (commit `6055790`) transforma o hang em `event: error` gracioso (o frontend trata e reabilita o composer). Mas o usuário recebe ERRO em vez de resposta nessas queries.
 - **A investigar (causa raiz):** por que o Bedrock não responde no turno pós-tool? Hipóteses: (a) shape do `tool_result`/conversa remontada para o turno seguinte (`buildConverseInput`) que faz o modelo travar; (b) throttling/limite da conta; (c) auth Bearer (`AWS_BEARER_TOKEN_BEDROCK`)/região/inference profile. Próximo passo: logar request/latência do Converse por turno e inspeccionar metadata/erros do SDK; testar o mesmo prompt+tool_result fora do app.
+
+## 9. Credenciais AWS estáticas → IAM Role da EC2 (pendente)
+- **Contexto:** hoje o acesso ao S3 (detailed report) e ao Bedrock usa credenciais estáticas — `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (leitura S3) e `AWS_BEARER_TOKEN_BEDROCK` (LLM). O `.env.example` já reflete os valores reais (`ATENA_SMS_STATUS_BUCKET=example-sms-delivery-reports`, `BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0`).
+- **Débito:** em produção (deploy numa EC2), preferir **IAM Role da instância** (sem chaves estáticas no `.env`) para S3 e Bedrock; manter as estáticas/STS só para dev local.
+- **Quando:** ao formalizar o deploy em EC2.
+
+## 10. Sem CI
+- **Contexto:** não há `.github/workflows`. Lint/tsc/testes rodam localmente (`make test`/`make test-e2e`, `npm run lint`).
+- **Débito:** pipeline de CI rodando lint + build + testes antes do merge na `master`.
+
+## 11. SSO corporativo completo (SAML + SCIM)
+- O MVP usa OIDC (Microsoft Entra) com papéis gerenciados no app. SSO corporativo completo (SAML + provisionamento via SCIM) segue como **débito residual** — não bloqueia o MVP. Ver item 1.

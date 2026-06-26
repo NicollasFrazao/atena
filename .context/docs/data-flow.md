@@ -10,19 +10,18 @@ scaffoldVersion: "2.0.0"
 
 ## Data Flow & Integrations
 
-Este documento descreve como os dados deverão se mover pela Atena. **Importante:** não há código de produção ainda — só o handoff e o protótipo de referência em [`docs/(protótipo original, não incluído)`](../../docs/(protótipo original, não incluído)). Os fluxos abaixo são a **direção pretendida** pelo handoff ([01](../../docs/design_handoff_atena/01-backend-api-contract.md), [03](../../docs/design_handoff_atena/03-websocket-events.md), [04](../../docs/design_handoff_atena/04-screen-to-endpoint-map.md)), com os shapes ancorados nos mocks de `prototype/data.jsx` (que são o contrato).
+Este documento descreve como os dados se movem pela Atena (MVP implementado). Os shapes vivem em `@atena/types`; a API serializa em **`snake_case`** na borda.
 
-A entrada principal de dados é a mensagem em linguagem natural do analista no chat. Daí o orquestrador LLM decide se invoca uma tool. **A IA nunca acessa o banco**: ela só interpreta NL → tool; a aplicação executa a query, aplica RBAC e devolve o resultado estruturado. PII chega mascarada por padrão; revelar gera entry no audit log. Na Fase 2, há também uma entrada *server-push*: o detector de anomalias cria incidentes que chegam ao cliente por WebSocket.
+A entrada principal de dados é a mensagem em linguagem natural do analista no chat. Daí o orquestrador LLM decide se invoca uma tool. **A IA nunca acessa o banco**: ela só interpreta NL → tool; a aplicação executa a query, aplica RBAC e devolve o resultado estruturado. PII chega mascarada por padrão; revelar exige `pii:reveal` e gera entry no audit log. Há também uma entrada *server-push*: o detector de anomalias cria incidentes que chegam ao cliente por **socket.io** (`/ws/support`).
 
-> **Atualização (2026-06-18) — motor de consulta de auditoria (S3 = fonte de verdade).**
-> O dado de ENTREGA não mora mais no MySQL. As tabelas `messages`/`message_events` foram
-> **dropadas**; o `AuditQueryService` (token `AUDIT_QUERY`, DuckDB embarcado + cache `/tmp`)
-> consulta os logs no **S3 sob demanda** (`at-api-logs-prod`, JSON.gz Hive), normalizando por
-> destinatário (status `status-webhook-receiver` ⊕ envio `process-messages-sms` classificado por
-> `log.level`). Os 6 pontos (search/trail/report/catálogo/detector/reveal-análise) leem por aí;
-> `correlation_id` e janela (`date_from`/`date_to`/`date_range`) são filtros. **MySQL = só dado da
-> app** (chat, incidentes, regras, audit log). Detalhe: `.context/plans/audit-query-engine.md`.
-> As seções abaixo descrevem o modelo anterior (hot store em MySQL) — mantidas como histórico.
+> **Dado de ENTREGA = detailed report no S3 (fonte da verdade).**
+> O dado de ENTREGA **não mora no MySQL** — `messages`/`message_events` foram **dropadas**.
+> O `DuckDbAuditQueryService` (token `AUDIT_QUERY`, DuckDB embarcado + cache parquet no `/tmp`)
+> consulta o **detailed report no S3 sob demanda** (`s3://example-sms-delivery-reports`, JSON.gz Hive, do
+> webhook-dispatcher), agregando por destinatário em `atena_records`. Os pontos
+> (search/trail/report/catálogo/detector/reveal-análise) leem por aí; janela
+> (`date_from`/`date_to`/`date_range`) e filtros são parâmetros. **MySQL = só dado da app** (chat,
+> incidentes, regras, audit log, usuários/papéis). Detalhe: `.context/plans/audit-query-engine.md`.
 
 > **Atualização (2026-06-23) — semântica de JANELA: por envio vs. por desfecho.**
 > O `materialize` agrega os eventos do detailed report em `atena_records` por destinatário, com
@@ -56,25 +55,32 @@ A entrada principal de dados é a mensagem em linguagem natural do analista no c
 
 ## Module Dependencies
 
-Dependências entre módulos pretendidos (direção, não implementadas):
+Dependências entre módulos (`apps/api/src`):
 
-- **Chat & Sessões** → `Orquestrador LLM`, `chat_sessions`/`chat_messages` (MySQL)
-- **Orquestrador LLM** → `Amazon Bedrock`, `Catálogo de tools` (nunca o banco diretamente)
-- **Catálogo de tools** → `Guards RBAC`, `messages`/`message_events`/`incidents` (MySQL), `S3` (via `content_ref`)
-- **WS Gateway** → `incidents` (MySQL), `Detector de anomalias`
-- **Acknowledge/Resolve (REST, UI-only)** → `incidents`, `incident_activity`, `Interceptor de audit`
-- **Interceptor de audit (global)** → `audit_log` (append-only)
-- **Todos os endpoints** → `Guards Auth/RBAC` (login social institucional (OIDC, domínio restrito); SSO corporativo completo é débito residual, ver [tech-debt.md](./tech-debt.md))
+- **Chat & Sessões** (`chat`) → `Orquestrador LLM`, `chat_sessions`/`chat_messages` (MySQL)
+- **Orquestrador LLM** (`chat`/`llm`) → `Amazon Bedrock` (Nova Pro) ou fake, `Catálogo de tools` (nunca o banco diretamente)
+- **Catálogo de tools** (`shippings`/`catalog`/`reports`/`incidents`) → `Guards RBAC/permissões`, `AuditQueryService` (S3 via DuckDB + cache `/tmp`), `incidents` (MySQL)
+- **Gateway socket.io** (`realtime`) → `incidents` (MySQL), `Detector de anomalias`
+- **Acknowledge/Resolve (REST, UI-only)** (`incidents`) → `incidents`, `incident_activity`, `Interceptor de audit`
+- **Detector** (`detector`) → `AuditQueryService`, `anomaly_rules` (MySQL), cria `incidents`, notifica via `realtime`
+- **Interceptor de audit (global)** (`audit`) → `audit_log` (append-only)
+- **Admin/Users** (`admin`/`users`) → `users`/`user_roles` (MySQL), `audit_log`
+- **Todos os endpoints** → `AuthGuard` + guard de permissões (`@Requires`); papéis lidos do banco
 
 ## Service Layer
 
-Não existem classes de serviço de produção. Os serviços pretendidos (do contrato [01](../../docs/design_handoff_atena/01-backend-api-contract.md)) e seus análogos de referência no protótipo:
+Serviços implementados (`apps/api/src`):
 
-- **ChatSessionService** (pretendido) — referência: [`prototype/chat.jsx`](../../(protótipo original, não incluído)) (Composer, ToolCallPill, RefusalCard).
-- **ToolService / catálogo** (pretendido) — referência: [`prototype/tool-results.jsx`](../../(protótipo original, não incluído)) (`SearchResults`, `TrailTimeline`, `RiskCard`, `ContentRevealBox`, `PhoneCell`, `useMaskedPhone`).
-- **IncidentService** (pretendido) — referência: [`prototype/incidents.jsx`](../../(protótipo original, não incluído)) (lista, detalhe, banner, ResolveModal).
-- **AuditService / interceptor** (pretendido) — referência: [`prototype/audit.jsx`](../../(protótipo original, não incluído)).
-- **RulesService** (pretendido) — referência: [`prototype/rules.jsx`](../../(protótipo original, não incluído)).
+- **OrchestratorService** (`chat/orchestrator.service.ts`) — loop de tool use, stream SSE, recusa; `ThinkingSplitter` separa `<thinking>`.
+- **LlmProvider** (`llm/`) — `BedrockProvider` (Nova Pro via Converse) ou `FakeLlmProvider`.
+- **ShippingsService / AnalysisService / RevealService** (`shippings/`) — busca/trilha, análise de risco, reveal de PII auditado.
+- **DuckDbAuditQueryService** (`audit-query/`, token `AUDIT_QUERY`) — consulta o detailed report no S3 via DuckDB + cache `/tmp`.
+- **IncidentService / IncidentLifecycleService** (`incidents/`) — read + ciclo de vida (ack/resolve/comment) com validação server-side.
+- **DetectorService** (`detector/`) — regras de anomalia, shadow mode, auto-resolve.
+- **RulesService** (`rules/`) — CRUD de `anomaly_rules` (incl. `shadow_mode`); cada edição gera `rule_update`.
+- **AuditService / interceptor** (`audit/`) — `@Audit` + escrita append-only.
+- **UsersService / AdminService** (`users/`, `admin/`) — identidade, papéis, status.
+- **MetricsService** (`observability/`) — DogStatsD (opcional).
 
 ## High-level Flow
 
@@ -86,13 +92,13 @@ O cliente faz `POST /api/chat/sessions/{id}/messages` com `{ "text": "..." }`. A
 event: tool_call    data: { "name": "search_shippings", "args": {...}, "status": "running" }
 event: tool_result  data: { "name": "search_shippings", "status": "success", "result": {...} }
 event: text_delta   data: { "delta": "Encontrei 6 envios…" }   // token a token
-event: done         data: { "messageId": "...", "refusal": null }
+event: done         data: { "message_id": "...", "refusal": null }
 ```
 
 Se o pedido for fora de escopo, em vez de `tool_call` o stream emite uma recusa (princípio "LLM não fabrica dados"):
 
 ```
-event: refusal  data: { "reason": "fora_de_escopo", "explanation": "...", "canDo": [...] }
+event: refusal  data: { "reason": "fora_de_escopo", "explanation": "...", "can_do": [...] }
 ```
 
 No frontend isso vira: `ToolCallPill` ("Buscando envios…") → render do resultado de tool → texto da IA streamando token a token → ou `RefusalCard` quando há recusa.
@@ -103,29 +109,29 @@ sequenceDiagram
     participant CHAT as Chat & Sessões
     participant ORCH as Orquestrador LLM
     participant T as Tool + RBAC
-    participant PG as MySQL
+    participant AQ as AuditQueryService (DuckDB→S3)
     FE->>CHAT: POST /messages {text}
     CHAT->>ORCH: turno do usuário
     ORCH-->>FE: event: tool_call (running)
     ORCH->>T: invoca search_shippings(args)
-    T->>PG: query (aplica RBAC)
-    PG-->>T: rows
+    T->>AQ: query (aplica RBAC; /tmp read-through, S3 origem)
+    AQ-->>T: rows
     T-->>ORCH: result estruturado
     ORCH-->>FE: event: tool_result (success)
     ORCH-->>FE: event: text_delta (…token…)
-    ORCH-->>FE: event: done {messageId}
+    ORCH-->>FE: event: done {message_id}
 ```
 
-### Fluxo 2 — Tool determinística (ex.: `search_shippings` → MySQL)
+### Fluxo 2 — Tool determinística (ex.: `search_shippings` → S3 via DuckDB)
 
-O orquestrador chama `search_shippings` com `{ phone?, shippingId?, dateRange, status?, provider?, customerId?, limit, page }`. A aplicação (não o LLM) executa `GET /api/shippings/search` contra a tabela `messages`, aplicando os guards de RBAC. Retorna o envelope paginado `{ rows, page, totalPages, total, latencyMs }`, com cada linha no shape §C.1: `phoneMasked` sempre presente, `phoneFull` só com permissão + reveal. A tool call em si gera audit (`action: 'tool_call'`). `get_shipping_trail` segue o mesmo padrão contra `messages` + `message_events` (shape §C.2 com a timeline de `event.type` ∈ `api_request | routing | provider_attempt | webhook_status | final`).
+O orquestrador chama `search_shippings` com `{ phone?, shipping_id?, date_range, date_from?, date_to?, status?, provider?, customer_id?, channel?, app_id?, limit, page }`. A aplicação (não o LLM) executa `GET /api/shippings/search` via `AuditQueryService` (DuckDB sobre o detailed report no S3, cache `/tmp`), aplicando os guards de permissão. Retorna o envelope paginado `{ rows, page, total_pages, total, latency_ms }`: `phone` sempre mascarado; o telefone em claro só por reveal (`pii:reveal`). A tool call gera audit (`action: 'tool_call'`). `get_shipping_trail` segue o mesmo padrão (timeline com `type` ∈ `api_request | routing | provider_attempt | webhook_status | final`). Janela por **envio** (`requested_at`), scan simétrico ±`lateStatusBuffer`.
 
 ### Fluxo 3 — Reveal de PII (mascarado → confirmação → S3 → audit)
 
-Por padrão, telefone e conteúdo chegam mascarados (`useMaskedPhone`, `phoneMasked`, `contentPreview` ausente). Ao revelar:
+Por padrão, telefone e conteúdo chegam mascarados (`phone` mascarado, `content_preview` ausente). Ao revelar (exige permissão `pii:reveal`):
 
-1. **Reveal de telefone** (`PhoneCell`): retorna `phoneFull` e escreve audit `reveal_phone` (severity `pii`).
-2. **Reveal de conteúdo** (`ContentRevealBox`): exige **confirmação** explícita. A aplicação lê primeiro o **cache transitório (read-through) dos dados brutos** — arquivos temporários no `/tmp` (volume Docker numa EC2); se o conteúdo/trilha não estiver lá, **busca no bucket S3** via `s3_log_pointer`/`contentRef` (ex.: `s3://at-msg-content/2026/05/28/4f3a2b1c-1111.txt`), popula o `/tmp` e escreve audit `reveal_content`. O `/tmp` é cache efêmero/rebuildável; o conteúdo bruto durável vive no S3 (o MySQL só guarda metadados e o ponteiro).
+1. **Reveal de telefone** (`POST /shippings/:id/reveal-phone`): retorna o telefone em claro e escreve audit `reveal_phone` (severity `pii`).
+2. **Reveal de conteúdo** (`POST /shippings/:id/reveal-content`): exige **confirmação** explícita. A aplicação lê primeiro o **cache transitório (read-through)** no `/tmp`; se o conteúdo não estiver lá, **busca no S3** via `content_ref`, popula o `/tmp` e escreve audit `reveal_content`. O `/tmp` é cache efêmero/rebuildável; o conteúdo bruto durável vive no S3.
 
 ```mermaid
 sequenceDiagram
@@ -133,69 +139,69 @@ sequenceDiagram
     participant API as App + RBAC
     participant S3 as S3
     participant AUD as audit_log
-    FE->>API: revelar conteúdo (confirmado)
-    API->>S3: GET via content_ref
+    FE->>API: revelar conteúdo (confirmado, pii:reveal)
+    API->>S3: GET via content_ref (miss no /tmp)
     S3-->>API: texto do SMS
     API->>AUD: INSERT reveal_content (pii)
-    API-->>FE: contentPreview
+    API-->>FE: content_preview
 ```
 
-### Fluxo 4 — Incidente (Fase 2)
+### Fluxo 4 — Incidente
 
-O **detector** de anomalias (começa via webhook do Grafana Alertmanager) cria um registro em `incidents` e o WS gateway emite `incident.created` a todos os usuários conectados. No frontend isso vira **três coisas**: um **banner persistente** no topo do chat, um **badge** na navegação e uma **mensagem da IA** no chat (som opcional por preferência do usuário).
+O **detector** de anomalias (scan agendado `DETECT_ENABLED` ou gatilho dev `POST /api/dev/detect`) cria um registro em `incidents` (com `related_shipping_ids`) e o gateway socket.io emite `incident.created` aos usuários conectados — **a menos que** a regra esteja em **shadow mode** (registra `shadow=true`, não notifica). No frontend isso vira um **banner persistente**, um **badge** na navegação e uma **mensagem da IA** no chat.
 
-`acknowledge`/`resolve` **não são tools do LLM** — vão por REST (`POST /api/incidents/{id}/acknowledge|resolve`) com validação server-side (categoria obrigatória, `actionDescription` ≥ 20 chars / ≥ 10 no auto_resolved, `escalatedTo` obrigatório se `*_escalated`, transição de estado válida). Cada mudança escreve em `incident_activity` (status_change) + audit log e o servidor emite `incident.updated` para os demais clientes. Quando a métrica volta à baseline sem ação, o detector emite `incident.auto_resolved`.
+`acknowledge`/`resolve`/`comment` **não são tools do LLM** — vão por REST (`POST /api/incidents/:id/acknowledge|resolve|comment`) com validação server-side (categoria obrigatória, `action_description` ≥ 20 chars / ≥ 10 no auto_resolved, `escalated_to` obrigatório se `*_escalated`, transição de estado válida). Cada mudança escreve em `incident_activity` (status_change) + audit log e o servidor emite `incident.updated`. Quando a métrica volta à baseline sem ação, o detector emite `incident.auto_resolved`.
 
 ```mermaid
 sequenceDiagram
     participant DET as Detector
-    participant WS as WS Gateway
+    participant WS as Gateway socket.io
     participant FE as Clientes conectados
     participant API as REST
     DET->>WS: cria incidente
     WS-->>FE: incident.created (banner + badge + msg IA)
-    FE->>API: POST /incidents/{id}/acknowledge
+    FE->>API: POST /incidents/:id/acknowledge
     API->>WS: emite incident.updated
     WS-->>FE: incident.updated (sincroniza badge/lista)
 ```
 
-### Fluxo 5 — Reconexão WebSocket
+### Fluxo 5 — Reconexão socket.io
 
-O cliente conecta em `WS /ws/support` com o token/sessão OIDC (login social institucional) no handshake (query `?token=` ou header `Authorization` no upgrade); o WS valida esse token e conexão sem token válido é rejeitada. (Auth via login social institucional (OIDC, domínio restrito); SSO corporativo completo é débito residual, ver [tech-debt.md](./tech-debt.md).) Em queda de conexão, exibe uma faixa de aviso persistente e reconecta com **backoff exponencial (1s, 2s, 4s, … cap 30s)**. Ao reconectar, faz `GET /api/incidents?status=detected,acknowledged` para repreencher o estado — não confia só no stream, pois eventos podem ter sido perdidos durante a queda. Heartbeat opcional via `connection.status`.
+O cliente conecta em `/ws/support` (socket.io); o handshake é autenticado pela **sessão por cookie JWT** (`atena_session`) — conexão sem identidade válida é rejeitada (em dev, `AUTH_DEV_BYPASS` aceita sem cookie). Em queda de conexão, exibe uma faixa de aviso persistente e o `socket.io-client` reconecta com backoff. Ao reconectar, faz `GET /api/incidents?status=detected,acknowledged` para repreencher o estado — não confia só no stream, pois eventos podem ter sido perdidos. Heartbeat via `connection.status`.
 
 ## Internal Movement
 
-A colaboração entre módulos é majoritariamente **síncrona via DI** dentro do monólito NestJS (chat → orquestrador → tool → repositório). Dois canais assíncronos importantes:
+A colaboração entre módulos é majoritariamente **síncrona via DI** dentro do monólito NestJS (chat → orquestrador → tool → AuditQueryService/Prisma). Dois canais assíncronos importantes:
 
 - **Streaming SSE** do orquestrador para o cliente (eventos incrementais do chat).
-- **Push WebSocket** do gateway para os clientes (eventos de incidente), alimentado pelo detector.
+- **Push socket.io** do gateway para os clientes (eventos de incidente), alimentado pelo detector.
 
-O audit log é alimentado de forma transversal por um **interceptor global** que observa toda ação auditável, independentemente do módulo de origem.
+O audit log é alimentado de forma transversal por um **interceptor global** (`@Audit`) que observa toda ação auditável, independentemente do módulo de origem.
 
 ## External Integrations
 
-- **Amazon Bedrock (modelo Nova Pro via Bedrock, Converse API, streaming + tool use)** — orquestração com tool use + streaming. O orquestrador roda as tools; a IA nunca acessa o banco. Preferir cliente sem retenção de prompt (*decisão pendente*).
-- **MySQL (hot store de metadados)** — metadados estruturados (retenção 90d; audit log 1 ano). Acesso via Prisma (snake_case no DB, camelCase na API). Guarda os metadados duráveis; o conteúdo/trilha volumoso **não** mora aqui — fica no cache transitório de `/tmp` e tem origem no S3.
-- **Cache transitório de conteúdo/trilha (`/tmp`)** — dados brutos volumosos derivados dos logs materializados como arquivos temporários no `/tmp` do host, montado como volume Docker (deploy pretendido: imagem Docker numa EC2). Cache transitório (read-through) dos dados brutos: lê do `/tmp`; se faltar, busca no S3 (`s3_log_pointer`/`content_ref`) e popula o `/tmp`. Propósito: (a) evitar muitas requisições ao S3 num curto período e (b) manter os dados brutos fora do banco (não onerar o MySQL). Cache efêmero/rebuildável — nada que precise sobreviver a restart/redeploy mora só aqui.
-- **S3** — conteúdo de SMS/PII (via `content_ref`) e logs `json.gz` (~100 GB/mês); **origem durável**. Toda leitura de conteúdo é logada. Popula o cache transitório de `/tmp` quando o dado pedido não está nele. **Athena** para janelas além da retenção.
-- **Auth (Acme)** — login social institucional (OIDC) + RBAC: OIDC via Microsoft 365 (Entra ID), atrás de uma abstração de auth para trocar de IdP facilmente (ex.: Google Workspace), restrito ao domínio `@example.com`, sem senha própria. O token/sessão OIDC vai no Bearer de todos os endpoints REST e é validado no handshake WS. SSO corporativo completo (SAML + SCIM) é débito residual, ver [tech-debt.md](./tech-debt.md).
-- **Grafana Alertmanager (Fase 2)** — webhook que alimenta o detector de anomalias → cria incidente.
-- **OpenTelemetry / Prometheus** — métricas reais que alimentam `GET /api/observability`.
+- **Amazon Bedrock (Amazon Nova Pro `us.amazon.nova-pro-v1:0`, Converse API, streaming + tool use)** — orquestração com tool use + streaming. Auth via `AWS_BEARER_TOKEN_BEDROCK` (ou IAM role da EC2). Sem credencial → `FakeLlmProvider` determinístico. O orquestrador roda as tools; a IA nunca acessa o banco.
+- **S3 (`s3://example-sms-delivery-reports`)** — detailed report de SMS (**fonte da verdade da entrega**) + conteúdo bruto/PII; **origem durável**. Consultado por DuckDB sob demanda; popula o cache transitório de `/tmp`. Toda leitura de conteúdo é logada.
+- **Cache transitório (`/tmp`)** — dados brutos derivados do detailed report materializados como parquet no `/tmp` (volume Docker numa EC2 em prod). Read-through: lê do `/tmp`; se faltar, busca no S3 e popula. Efêmero/rebuildável; eviction por idade+tamanho.
+- **MySQL (dado da aplicação)** — chat, incidentes, regras, audit log, usuários/papéis. Acesso via Prisma (snake_case no DB). O dado de entrega **não** mora aqui.
+- **Auth (Microsoft Entra)** — OIDC (state/nonce/PKCE) via Microsoft 365 (Entra ID), atrás de `IdentityProviderInterface` (trocável de IdP), restrito a `@example.com`, sem senha própria. Sessão por cookie JWT validada nos endpoints REST e no handshake socket.io. Papéis lidos do banco. SSO completo (SAML + SCIM) é débito residual, ver [tech-debt.md](./tech-debt.md).
+- **Datadog (opcional)** — APM via dd-trace + métricas via DogStatsD (hot-shots); alimenta `GET /api/observability`. Opt-in (`make datadog`).
 
 ## Observability & Failure Modes
 
-`GET /api/observability` expõe a saúde do próprio assistente: sessões, tokens, custo, MTTA, latência por tool (p50/p95/p99), erros por tool, consumo de tokens por hora, status do WebSocket e contagem de recusas por motivo — alimentado de OpenTelemetry/Prometheus.
+`GET /api/observability` expõe a saúde do próprio assistente: sessões, uso/latência por tool, tokens, custo, recusas e conexões WS — métricas via DogStatsD/Datadog (opcional). Sem PII.
 
-Modos de falha e tratamento (do protótipo `error-states.jsx` e [04](../../docs/design_handoff_atena/04-screen-to-endpoint-map.md)):
+Modos de falha e tratamento:
 
 - **Tool timeout/falha**: tool result com erro → `ToolError` inline no chat + botão "tentar de novo".
-- **WebSocket desconectado**: faixa persistente + reconexão com backoff exponencial (cap 30s) + re-fetch de `GET /api/incidents?status=detected,acknowledged`.
-- **Sessão expirada (401)**: overlay full-screen → re-login via login social institucional (OIDC, domínio restrito).
+- **Socket.io desconectado**: faixa persistente + reconexão com backoff + re-fetch de `GET /api/incidents?status=detected,acknowledged`.
+- **Sessão expirada (401)**: overlay full-screen → re-login via OIDC.
 - **Recusa do LLM**: `refusal` no stream (fail-closed quando não há tool aplicável).
+- **Hang do turno pós-tool no Bedrock**: idle timeout (60s) converte o hang em `event: error` gracioso (ver [tech-debt.md](./tech-debt.md)).
 - **Validação de resolve**: revalidada server-side mesmo que a UI já desabilite o botão (validação dupla).
 
 ## Cross-References
 
 - [Architecture Notes](./architecture.md)
 - [Glossary & Domain Concepts](./glossary.md)
-- Handoff: [01 — API Contract](../../docs/design_handoff_atena/01-backend-api-contract.md) · [03 — WebSocket Events](../../docs/design_handoff_atena/03-websocket-events.md) · [04 — Screen→Endpoint Map](../../docs/design_handoff_atena/04-screen-to-endpoint-map.md)
+- Handoff (referência histórica): [01 — API Contract](../../docs/design_handoff_atena/01-backend-api-contract.md) · [03 — WebSocket Events](../../docs/design_handoff_atena/03-websocket-events.md)

@@ -1,5 +1,15 @@
 # Handoff: Atena — Assistente Conversacional de Envios
 
+> ⚠️ **AVISO — documento histórico (handoff de design ORIGINAL / entrada do projeto).**
+> Este pacote registra o **design de entrada**, a partir do qual a implementação começou. O **estado atual do produto divergiu** dele em pontos importantes:
+> - **Entidade renomeada:** `message` → **`shipping`** (rotas `/shippings/*`, campo `shipping_id`).
+> - **LLM:** **Amazon Nova Pro** via Bedrock — **não** o SDK/cliente Anthropic (Claude) sugerido aqui.
+> - **Banco:** **MySQL** (não PostgreSQL) e **só estado do app**; os dados de envio vêm do **detailed report no S3** (consultado via DuckDB), **não** dos logs gerais.
+> - **Janela de entrega:** **send-based** (medida pelo instante de envio, `requested_at`), em fuso BRT nas bordas.
+> - **Auth/RBAC:** OIDC (Microsoft Entra) com **RBAC gerenciado no app** (papéis no banco, atribuídos por admin) — não derivados do IdP.
+>
+> **Contrato e estado VIGENTES:** veja [`docs/openapi.yaml`](../openapi.yaml) (contrato HTTP atual) e a base de contexto em [`.context/docs/`](../../.context/docs/). Os demais arquivos deste handoff seguem **como referência histórica** do design original.
+
 > Pacote de handoff para implementação. Serve tanto para um **desenvolvedor humano** quanto para o **Claude Code**.
 > Gerado a partir do protótipo (HTML/React) + da especificação V1 (`spec-assistente-suporte.md`).
 
