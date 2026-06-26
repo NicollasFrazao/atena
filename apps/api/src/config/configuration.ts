@@ -199,11 +199,13 @@ export default (): AtenaConfig => ({
       process.env.ATENA_AUDIT_CACHE_MAX_AGE_HOURS ?? '168',
       10,
     ),
-    // Recursos do DuckDB (máquina enxuta): teto de RAM e threads por consulta. Default conservador;
-    // suba em hardware maior. Ao exceder o memory_limit, o DuckDB derrama em disco (temp_directory).
+    // Recursos do DuckDB. `memory_limit` capa a RAM (spill em disco ao exceder). `threads` controla
+    // a CONCORRÊNCIA de leitura dos objetos S3 (read_json paraleliza a lista entre threads) — os GETs
+    // são network-bound, então 8 acelera a leitura fria sem estourar a CPU (capada pelo `cpus` do
+    // container) nem a RAM (capada pelo memory_limit). Suba/baixe conforme o hardware.
     duckdbMemoryLimit: process.env.DUCKDB_MEMORY_LIMIT ?? '2GB',
     duckdbThreads: Number.parseInt(
-      process.env.DUCKDB_THREADS ?? '2',
+      process.env.DUCKDB_THREADS ?? '8',
       10,
     ),
   },

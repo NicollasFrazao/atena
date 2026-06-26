@@ -218,7 +218,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   /** Teto de memória do DuckDB (ex.: `2GB`). Limita o uso de RAM por consulta na máquina enxuta. */
   private readonly duckdbMemoryLimit: string;
 
-  /** Threads do DuckDB. Limita o uso de CPU por consulta (default conservador p/ recursos enxutos). */
+  /** Threads do DuckDB = concorrência de leitura dos objetos S3 (GETs network-bound). CPU/RAM seguem capadas pelo container + memory_limit. */
   private readonly duckdbThreads: number;
 
   /** Diretório dos CSVs de export (transitórios; removidos após o stream pela borda). */
@@ -300,7 +300,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     );
 
     this.duckdbMemoryLimit = config.get<string>('auditQuery.duckdbMemoryLimit') ?? '2GB';
-    this.duckdbThreads = config.get<number>('auditQuery.duckdbThreads') ?? 2;
+    this.duckdbThreads = config.get<number>('auditQuery.duckdbThreads') ?? 8;
 
     this.exportDir = join(
       tmpDir,
