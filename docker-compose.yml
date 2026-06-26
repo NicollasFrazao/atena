@@ -31,8 +31,8 @@ services:
       dockerfile: apps/api/Dockerfile
     profiles: ["local", "production"]
     # Limite de recursos (máquina enxuta): teto p/ a api não devorar o host num scan DuckDB. Alinhado
-    # ao DUCKDB_MEMORY_LIMIT (default 2GB) + folga p/ Node/buffers. Suba em hardware maior.
-    mem_limit: 3g
+    # ao DUCKDB_MEMORY_LIMIT (default 3GB) + folga p/ Node/buffers. Suba em hardware maior.
+    mem_limit: 4g
     cpus: 2.0
     env_file:
       - apps/api/.env # único .env (nunca versionado); lido pela API e pelo Prisma (cwd=apps/api)

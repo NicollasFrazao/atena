@@ -203,7 +203,7 @@ export default (): AtenaConfig => ({
     // a CONCORRÊNCIA de leitura dos objetos S3 (read_json paraleliza a lista entre threads) — os GETs
     // são network-bound, então 8 acelera a leitura fria sem estourar a CPU (capada pelo `cpus` do
     // container) nem a RAM (capada pelo memory_limit). Suba/baixe conforme o hardware.
-    duckdbMemoryLimit: process.env.DUCKDB_MEMORY_LIMIT ?? '2GB',
+    duckdbMemoryLimit: process.env.DUCKDB_MEMORY_LIMIT ?? '3GB',
     duckdbThreads: Number.parseInt(
       process.env.DUCKDB_THREADS ?? '8',
       10,

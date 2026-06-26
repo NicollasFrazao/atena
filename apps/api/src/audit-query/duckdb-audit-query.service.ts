@@ -299,7 +299,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       'duckdb-spill',
     );
 
-    this.duckdbMemoryLimit = config.get<string>('auditQuery.duckdbMemoryLimit') ?? '2GB';
+    this.duckdbMemoryLimit = config.get<string>('auditQuery.duckdbMemoryLimit') ?? '3GB';
     this.duckdbThreads = config.get<number>('auditQuery.duckdbThreads') ?? 8;
 
     this.exportDir = join(
