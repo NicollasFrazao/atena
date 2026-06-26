@@ -62,6 +62,8 @@ export interface AtenaConfig {
     minQueryDate: string | null;
     cacheMaxMb: number;
     cacheMaxAgeHours: number;
+    duckdbMemoryLimit: string;
+    duckdbThreads: number;
   };
   /**
    * Detector de anomalias (Fase 2): liga o scan agendado e calibra a regra
@@ -188,6 +190,13 @@ export default (): AtenaConfig => ({
     ),
     cacheMaxAgeHours: Number.parseInt(
       process.env.ATENA_AUDIT_CACHE_MAX_AGE_HOURS ?? '168',
+      10,
+    ),
+    // Recursos do DuckDB (máquina enxuta): teto de RAM e threads por consulta. Default conservador;
+    // suba em hardware maior. Ao exceder o memory_limit, o DuckDB derrama em disco (temp_directory).
+    duckdbMemoryLimit: process.env.DUCKDB_MEMORY_LIMIT ?? '2GB',
+    duckdbThreads: Number.parseInt(
+      process.env.DUCKDB_THREADS ?? '2',
       10,
     ),
   },

@@ -200,6 +200,15 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
   private readonly extensionDir: string;
 
+  /** Diretório de spill do DuckDB: quando o `memory_limit` estoura, derrama em disco em vez de OOM. */
+  private readonly spillDir: string;
+
+  /** Teto de memória do DuckDB (ex.: `2GB`). Limita o uso de RAM por consulta na máquina enxuta. */
+  private readonly duckdbMemoryLimit: string;
+
+  /** Threads do DuckDB. Limita o uso de CPU por consulta (default conservador p/ recursos enxutos). */
+  private readonly duckdbThreads: number;
+
   /** Diretório dos CSVs de export (transitórios; removidos após o stream pela borda). */
   private readonly exportDir: string;
 
@@ -268,6 +277,15 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       tmpDir,
       'duckdb-ext',
     );
+
+    // Spill em disco quando o `memory_limit` estoura — evita o DuckDB devorar a RAM do host enxuto.
+    this.spillDir = join(
+      tmpDir,
+      'duckdb-spill',
+    );
+
+    this.duckdbMemoryLimit = config.get<string>('auditQuery.duckdbMemoryLimit') ?? '2GB';
+    this.duckdbThreads = config.get<number>('auditQuery.duckdbThreads') ?? 2;
 
     this.exportDir = join(
       tmpDir,
@@ -1718,10 +1736,26 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       { recursive: true },
     );
 
+    mkdirSync(
+      this.spillDir,
+      { recursive: true },
+    );
+
+    // Recursos LIMITADOS (máquina enxuta): `memory_limit` + `threads` capam RAM/CPU por consulta;
+    // `temp_directory` faz o DuckDB derramar em disco ao exceder o limite (em vez de OOM/swap do
+    // host); `preserve_insertion_order=false` reduz a memória em agregações/ordenações grandes.
     const created = await DuckDBInstance.create(
       ':memory:',
-      { extension_directory: this.extensionDir },
+      {
+        extension_directory: this.extensionDir,
+        memory_limit: this.duckdbMemoryLimit,
+        threads: String(this.duckdbThreads),
+        temp_directory: this.spillDir,
+        preserve_insertion_order: 'false',
+      },
     );
+
+    this.logger.log(`DuckDB: memory_limit=${this.duckdbMemoryLimit} · threads=${this.duckdbThreads} · spill=${this.spillDir}`);
 
     if (this.sourceRoot.startsWith('s3://')) {
       const connection = await created.connect();

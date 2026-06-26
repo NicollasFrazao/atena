@@ -8,6 +8,10 @@ services:
   mysql:
     image: mysql:8.4
     profiles: ["local"]
+    # Limite de recursos (máquina enxuta): MySQL guarda só estado do app. 1 GiB dá folga sobre o
+    # baseline do mysql:8.4 (~450 MiB) — 512m ficava no limite e arriscava OOM-kill sob carga.
+    mem_limit: 1g
+    cpus: 1.0
     environment:
       MYSQL_DATABASE: atena
       MYSQL_ROOT_PASSWORD: atena
@@ -26,6 +30,10 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     profiles: ["local", "production"]
+    # Limite de recursos (máquina enxuta): teto p/ a api não devorar o host num scan DuckDB. Alinhado
+    # ao DUCKDB_MEMORY_LIMIT (default 2GB) + folga p/ Node/buffers. Suba em hardware maior.
+    mem_limit: 3g
+    cpus: 2.0
     env_file:
       - apps/api/.env # único .env (nunca versionado); lido pela API e pelo Prisma (cwd=apps/api)
     environment:
@@ -58,8 +66,11 @@ services:
       args:
         # O browser (host) fala com a API publicada no host; build-time (Vite inlina).
         VITE_API_URL: http://localhost:3000
-        VITE_WS_URL: ws://localhost:3000
+        VITE_WS_URL: http://localhost:3000
     profiles: ["local", "production"]
+    # Limite de recursos: nginx servindo estático é leve.
+    mem_limit: 128m
+    cpus: 0.5
     ports:
       - "8080:80" # SPA servida por nginx
     depends_on:
