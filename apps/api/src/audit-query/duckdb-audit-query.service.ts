@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, renameSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   Injectable,
@@ -34,12 +34,24 @@ import {
   evDdlFromSources,
   globSql,
   partitionDescriptors,
+  type PartitionDescriptorInterface,
   recordsDdl,
   RECORDS_TABLE,
   trailEventsSql,
 } from './audit-query.sql';
 import { cleanOrphanCacheVersions, evictCacheDir } from './cache-eviction';
 import { RecordCache } from './record-cache';
+
+/**
+ * Resultado da materialização de UMA partição (settled ou recente). `parquet` (cache a usar) OU
+ * `json` (objetos live a ler); `s3Objects` lidos; `kind` p/ a contabilidade de custo do scan.
+ */
+interface PartitionMaterializeResultInterface {
+  parquet: string | null;
+  json: string[];
+  s3Objects: number;
+  kind: 'cached' | 'cold' | 'live';
+}
 
 /** Valor aceito no bind posicional (`$1..`) do DuckDB nesta camada. */
 type BindValue = string | number;
@@ -217,6 +229,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
   private readonly settleMs: number;
 
+  /** TTL (ms) do cache da partição recente; 0 desliga (re-lê o S3 live a cada query). */
+  private readonly liveCacheTtlMs: number;
+
   private readonly lateStatusBufferMs: number;
 
   private readonly cacheMaxBytes: number;
@@ -299,6 +314,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
     const settleMinutes = config.get<number>('auditQuery.cacheSettleMinutes') ?? 60;
     this.settleMs = settleMinutes * 60 * 1000;
+
+    const liveCacheTtlSeconds = config.get<number>('auditQuery.liveCacheTtlSeconds') ?? 60;
+    this.liveCacheTtlMs = liveCacheTtlSeconds * 1000;
 
     const bufferHours = config.get<number>('auditQuery.lateStatusBufferHours') ?? 48;
     this.lateStatusBufferMs = bufferHours * 60 * 60 * 1000;
@@ -1395,10 +1413,13 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     const jsonFiles: string[] = [];
 
     // Contadores de custo de S3 desta consulta: partições servidas do cache (0 S3) vs. lidas do S3
-    // (frias = settled sem cache; recentes = live) + objetos lidos do S3.
-    let cachedCount = 0;
-    let coldCount = 0;
-    let liveCount = 0;
+    // (frias = settled sem cache; recentes = live, salvo cache TTL) + objetos lidos do S3.
+    const counts = {
+      cached: 0,
+      cold: 0,
+      live: 0,
+    };
+
     let s3Objects = 0;
 
     for (let index = 0; index < descriptors.length; index++) {
@@ -1422,49 +1443,20 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
         total,
       });
 
-      const settled = descriptor.endsAt !== null
-        && descriptor.endsAt.getTime() <= settledBefore;
-
-      if (!settled) {
-        const live = await this.expandPartition(
-          connection,
-          descriptor.glob,
-        );
-
-        jsonFiles.push(...live);
-        liveCount += 1;
-        s3Objects += live.length;
-
-        continue;
-      }
-
-      const cachePath = this.cachePathFor(descriptor.cacheKey);
-
-      if (existsSync(cachePath)) {
-        parquetFiles.push(cachePath);
-        cachedCount += 1;
-
-        continue;
-      }
-
-      // Partição fria (settled, sem cache): lê o S3 uma vez e grava o Parquet — é aqui que o tempo mora.
-      const files = await this.expandPartition(
+      const result = await this.materializePartition(
         connection,
-        descriptor.glob,
+        descriptor,
+        settledBefore,
+        now,
       );
 
-      coldCount += 1;
-      s3Objects += files.length;
-
-      if (files.length > 0) {
-        await this.cachePartition(
-          connection,
-          files,
-          cachePath,
-        );
-
-        parquetFiles.push(cachePath);
+      if (result.parquet !== null) {
+        parquetFiles.push(result.parquet);
       }
+
+      jsonFiles.push(...result.json);
+      s3Objects += result.s3Objects;
+      counts[result.kind] += 1;
     }
 
     onProgress?.({
@@ -1475,9 +1467,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     this.recordScan(
       {
         total,
-        cachedCount,
-        coldCount,
-        liveCount,
+        cachedCount: counts.cached,
+        coldCount: counts.cold,
+        liveCount: counts.live,
         s3Objects,
       },
       Date.now() - startedAt,
@@ -1669,6 +1661,137 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       this.cacheDir,
       `${digest}.parquet`,
     );
+  }
+
+  /**
+   * Path do cache TTL de uma partição RECENTE (não-settled). Sufixo `|live` → hash distinto do cache
+   * permanente (settled), sem colisão; a validade é pela mtime do arquivo (ver `materialize`).
+   *
+   * @param {string} cacheKey - Chave da partição.
+   * @returns {string} Caminho do Parquet de cache live.
+   */
+  private liveCachePathFor(cacheKey: string): string {
+    return this.cachePathFor(`${cacheKey}|live`);
+  }
+
+  /**
+   * Resolve uma partição RECENTE (não-settled): reusa o Parquet de cache live se fresco (≤ TTL); senão
+   * lê o S3 (live) e, com TTL > 0, materializa o Parquet (atômico) p/ as próximas queries reusarem.
+   *
+   * @param {DuckDBConnection} connection - Conexão DuckDB.
+   * @param {string} cacheKey - Chave da partição.
+   * @param {string} glob - Glob S3 da partição.
+   * @param {Date} now - Instante de referência p/ a validade do TTL.
+   * @returns {Promise<{ parquet: string | null; json: string[]; s3Objects: number; cached: boolean }>}
+   *   `parquet` (cache live a usar) OU `json` (objetos live a ler); `s3Objects` lidos; `cached` = 0 S3.
+   */
+  /**
+   * Materializa UMA partição: recente (live, com cache TTL) ou settled (cache permanente / fria).
+   * Extraída do laço de `materialize` p/ manter a complexidade no limite. Não muta estado — devolve
+   * o que usar (parquet/json), os objetos S3 lidos e o `kind` p/ a contabilidade.
+   *
+   * @param {DuckDBConnection} connection - Conexão DuckDB.
+   * @param {PartitionDescriptorInterface} descriptor - Partição candidata (glob/cacheKey/endsAt).
+   * @param {number} settledBefore - Limiar (epoch ms): partição fechada antes disto é "settled".
+   * @param {Date} now - Instante de referência (TTL do cache live).
+   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado da partição.
+   */
+  private async materializePartition(
+    connection: DuckDBConnection,
+    descriptor: PartitionDescriptorInterface,
+    settledBefore: number,
+    now: Date,
+  ): Promise<PartitionMaterializeResultInterface> {
+    const settled = descriptor.endsAt !== null
+      && descriptor.endsAt.getTime() <= settledBefore;
+
+    // Partição RECENTE (live): reusa o cache TTL se fresco; senão lê o S3 e (com TTL>0) materializa.
+    if (!settled) {
+      const livePath = this.liveCachePathFor(descriptor.cacheKey);
+
+      if (
+        this.liveCacheTtlMs > 0
+        && existsSync(livePath)
+        && now.getTime() - statSync(livePath).mtimeMs < this.liveCacheTtlMs
+      ) {
+        return {
+          parquet: livePath,
+          json: [],
+          s3Objects: 0,
+          kind: 'cached',
+        };
+      }
+
+      const live = await this.expandPartition(
+        connection,
+        descriptor.glob,
+      );
+
+      if (
+        this.liveCacheTtlMs > 0
+        && live.length > 0
+      ) {
+        await this.cachePartition(
+          connection,
+          live,
+          livePath,
+        );
+
+        return {
+          parquet: livePath,
+          json: [],
+          s3Objects: live.length,
+          kind: 'live',
+        };
+      }
+
+      return {
+        parquet: null,
+        json: live,
+        s3Objects: live.length,
+        kind: 'live',
+      };
+    }
+
+    // Partição SETTLED com cache permanente: 0 S3.
+    const cachePath = this.cachePathFor(descriptor.cacheKey);
+
+    if (existsSync(cachePath)) {
+      return {
+        parquet: cachePath,
+        json: [],
+        s3Objects: 0,
+        kind: 'cached',
+      };
+    }
+
+    // Partição FRIA (settled, sem cache): lê o S3 uma vez e grava o Parquet (write-through).
+    const files = await this.expandPartition(
+      connection,
+      descriptor.glob,
+    );
+
+    if (files.length > 0) {
+      await this.cachePartition(
+        connection,
+        files,
+        cachePath,
+      );
+
+      return {
+        parquet: cachePath,
+        json: [],
+        s3Objects: files.length,
+        kind: 'cold',
+      };
+    }
+
+    return {
+      parquet: null,
+      json: [],
+      s3Objects: 0,
+      kind: 'cold',
+    };
   }
 
   /** Expande um glob de partição nos objetos existentes (via `glob()`, que tolera padrão sem match). */

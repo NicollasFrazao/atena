@@ -58,6 +58,7 @@ export interface AtenaConfig {
     sourceRoot: string;
     defaultWindowDays: number;
     cacheSettleMinutes: number;
+    liveCacheTtlSeconds: number;
     lateStatusBufferHours: number;
     minQueryDate: string | null;
     cacheMaxMb: number;
@@ -171,6 +172,12 @@ export default (): AtenaConfig => ({
     // Partição "settled" (cacheável) só depois deste tempo fechada; partições recentes vão live.
     cacheSettleMinutes: Number.parseInt(
       process.env.ATENA_AUDIT_CACHE_SETTLE_MINUTES ?? '60',
+      10,
+    ),
+    // TTL (s) do cache da partição RECENTE: dentro dele, queries reusam o Parquet em vez de re-varrer
+    // o S3 (ganho de latência); custo = dado recente até este tempo velho. 0 desliga (sempre live).
+    liveCacheTtlSeconds: Number.parseInt(
+      process.env.ATENA_AUDIT_LIVE_CACHE_TTL_SECONDS ?? '60',
       10,
     ),
     // Buffer SIMÉTRICO (horas) do scan: à frente capta status atrasados do fornecedor; pra trás capta
