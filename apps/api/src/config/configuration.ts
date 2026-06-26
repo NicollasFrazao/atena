@@ -65,6 +65,7 @@ export interface AtenaConfig {
     cacheMaxAgeHours: number;
     duckdbMemoryLimit: string;
     duckdbThreads: number;
+    prefetchConcurrency: number;
   };
   /**
    * Detector de anomalias (Fase 2): liga o scan agendado e calibra a regra
@@ -206,6 +207,12 @@ export default (): AtenaConfig => ({
     duckdbMemoryLimit: process.env.DUCKDB_MEMORY_LIMIT ?? '3GB',
     duckdbThreads: Number.parseInt(
       process.env.DUCKDB_THREADS ?? '8',
+      10,
+    ),
+    // Concorrência do pré-fetch paralelo dos objetos S3 (Node/SDK), desacoplada dos threads do
+    // DuckDB. Alto (32) corta a latência da leitura fria (GETs network-bound). 0 desliga (lê via httpfs).
+    prefetchConcurrency: Number.parseInt(
+      process.env.ATENA_AUDIT_PREFETCH_CONCURRENCY ?? '32',
       10,
     ),
   },

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import {
   Injectable,
   Logger,
@@ -8,6 +8,7 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
 } from '@nestjs/common';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
 import { Interval } from '@nestjs/schedule';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
@@ -222,6 +223,15 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   /** Threads do DuckDB = concorrência de leitura dos objetos S3 (GETs network-bound). CPU/RAM seguem capadas pelo container + memory_limit. */
   private readonly duckdbThreads: number;
 
+  /** Concorrência do pré-fetch paralelo dos objetos S3 (Node/SDK); `0` desliga → lê via DuckDB httpfs. */
+  private readonly prefetchConcurrency: number;
+
+  /** Dir local dos objetos pré-buscados — espelha o path S3 (year=/month=/…); transitório, limpo por lote. */
+  private readonly prefetchDir: string;
+
+  /** Client S3 p/ o pré-fetch paralelo (credential chain padrão da AWS, igual ao DuckDB). */
+  private readonly s3: S3Client;
+
   /** Diretório dos CSVs de export (transitórios; removidos após o stream pela borda). */
   private readonly exportDir: string;
 
@@ -302,6 +312,15 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
     this.duckdbMemoryLimit = config.get<string>('auditQuery.duckdbMemoryLimit') ?? '3GB';
     this.duckdbThreads = config.get<number>('auditQuery.duckdbThreads') ?? 8;
+
+    this.prefetchConcurrency = config.get<number>('auditQuery.prefetchConcurrency') ?? 32;
+
+    this.prefetchDir = join(
+      tmpDir,
+      'prefetch',
+    );
+
+    this.s3 = new S3Client({ region: this.region });
 
     this.exportDir = join(
       tmpDir,
@@ -1828,7 +1847,118 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       .filter((file) => file !== '');
   }
 
-  /** Grava o cache de eventos da partição (write atômico: arquivo tmp + rename). */
+  /**
+   * Pré-busca os objetos S3 em PARALELO (concorrência própria, desacoplada dos threads do DuckDB)
+   * para um dir local que ESPELHA o path S3 (`year=/month=/…` → `hive_partitioning` idêntico). Os
+   * GETs são network-bound → concorrência alta (default 32) corta a latência da leitura fria sem
+   * subir a CPU/RAM do DuckDB. Limpa o dir do lote se algum GET falhar.
+   *
+   * @param {string[]} urls - URLs `s3://bucket/key` dos objetos da partição.
+   * @returns {Promise<{ files: string[]; dir: string }>} Paths locais + dir do lote (rm após o uso).
+   */
+  private async prefetchToLocal(urls: string[]): Promise<{
+    files: string[];
+    dir: string
+  }> {
+    const dir = join(
+      this.prefetchDir,
+      randomUUID(),
+    );
+
+    const files = new Array<string>(urls.length);
+    let next = 0;
+
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const index = next;
+        next += 1;
+
+        if (index >= urls.length) {
+          return;
+        }
+
+        files[index] = await this.fetchObjectToLocal(
+          urls[index],
+          dir,
+        );
+      }
+    };
+
+    try {
+      await Promise.all(Array.from(
+        {
+          length: Math.min(
+            this.prefetchConcurrency,
+            urls.length,
+          ),
+        },
+        () => worker(),
+      ));
+
+      return {
+        files,
+        dir,
+      };
+    } catch (error) {
+      rmSync(
+        dir,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+
+      throw error;
+    }
+  }
+
+  /** Baixa UM objeto `s3://bucket/key` para `<dir>/<key>` (espelha o path) e devolve o path local. */
+  private async fetchObjectToLocal(
+    url: string,
+    dir: string,
+  ): Promise<string> {
+    const without = url.slice('s3://'.length);
+    const slash = without.indexOf('/');
+
+    const bucket = without.slice(
+      0,
+      slash,
+    );
+
+    const key = without.slice(slash + 1);
+
+    const local = join(
+      dir,
+      key,
+    );
+
+    mkdirSync(
+      dirname(local),
+      { recursive: true },
+    );
+
+    const response = await this.s3.send(new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    }));
+
+    const body = response.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined;
+
+    writeFileSync(
+      local,
+      body?.transformToByteArray
+        ? await body.transformToByteArray()
+        : new Uint8Array(),
+    );
+
+    return local;
+  }
+
+  /**
+   * Grava o cache de eventos da partição (write atômico: arquivo tmp + rename). Com o pré-fetch
+   * ligado e fonte S3, baixa os objetos em paralelo p/ local e o DuckDB lê LOCAL (sem latência
+   * por-GET via httpfs); o dir do lote é removido ao fim. Fonte local ou pré-fetch off → lê direto.
+   */
   private async cachePartition(
     connection: DuckDBConnection,
     files: string[],
@@ -1841,15 +1971,35 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
     const tmpPath = `${cachePath}.${randomUUID()}.tmp`;
 
-    await connection.run(evCopyToParquetSql(
-      files,
-      tmpPath,
-    ));
+    const prefetch = this.prefetchConcurrency > 0
+      && files.every((file) => file.startsWith('s3://'))
+      ? await this.prefetchToLocal(files)
+      : null;
 
-    renameSync(
-      tmpPath,
-      cachePath,
-    );
+    try {
+      await connection.run(evCopyToParquetSql(
+        prefetch
+          ? prefetch.files
+          : files,
+        tmpPath,
+      ));
+
+      renameSync(
+        tmpPath,
+        cachePath,
+      );
+    }
+    finally {
+      if (prefetch) {
+        rmSync(
+          prefetch.dir,
+          {
+            recursive: true,
+            force: true,
+          },
+        );
+      }
+    }
   }
 
   /** Roda uma query com bind posicional e devolve as linhas como objetos JS. */
