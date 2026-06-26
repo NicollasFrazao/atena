@@ -36,6 +36,7 @@ import {
   partitionDescriptors,
   type PartitionDescriptorInterface,
   recordsDdl,
+  recordsDdlFromSources,
   RECORDS_TABLE,
   trailEventsSql,
 } from './audit-query.sql';
@@ -592,6 +593,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
         };
       },
       onProgress,
+      undefined, // signal
+      undefined, // bufferMs
+      true, // withRawEvents: a trilha lê `atena_ev` (eventos crus) p/ a linha do tempo
     );
   }
 
@@ -1316,6 +1320,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     onProgress?: AuditProgressCallback,
     signal?: AbortSignal,
     bufferMs?: number,
+    withRawEvents = false,
   ): Promise<T> {
     const instance = await this.ensureInstance();
     const connection = await instance.connect();
@@ -1344,6 +1349,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
         onProgress,
         signal,
         bufferMs,
+        withRawEvents,
       );
 
       return await run(connection);
@@ -1382,6 +1388,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     onProgress?: AuditProgressCallback,
     signal?: AbortSignal,
     bufferMs?: number,
+    withRawEvents = false,
   ): Promise<void> {
     const startedAt = Date.now();
     const now = new Date();
@@ -1479,16 +1486,27 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       parquetFiles.length === 0
       && jsonFiles.length === 0
     ) {
+      // Janela sem objetos: `ev` vazio + `records` vazio (resultado vazio, sem erro).
       await connection.run(EMPTY_EV_DDL);
+      await connection.run(recordsDdl());
     }
-    else {
+    else if (withRawEvents) {
+      // Trilha: precisa dos eventos crus (`atena_ev`) p/ a linha do tempo → materializa ev + records.
       await connection.run(evDdlFromSources(
         parquetFiles,
         jsonFiles,
       ));
-    }
 
-    await connection.run(recordsDdl());
+      await connection.run(recordsDdl());
+    }
+    else {
+      // Busca/relatório/catálogo/reveal: só leem `atena_records` → agrega DIRETO da fonte, SEM
+      // materializar `atena_ev` (todos os eventos crus). Menos materialização intermediária.
+      await connection.run(recordsDdlFromSources(
+        parquetFiles,
+        jsonFiles,
+      ));
+    }
   }
 
   /**

@@ -290,7 +290,7 @@ export function evCopyToParquetSql(
  * @param {string[]} jsonFiles - Objetos JSON.gz live; podem ser vazios.
  * @returns {string} `CREATE OR REPLACE TEMP TABLE ... AS SELECT ...`.
  */
-export function evDdlFromSources(
+function evSourcesUnion(
   parquetFiles: string[],
   jsonFiles: string[],
 ): string {
@@ -304,7 +304,17 @@ export function evDdlFromSources(
     sources.push(evSelect(jsonFiles));
   }
 
-  return `CREATE OR REPLACE TEMP TABLE ${EV_TABLE} AS\n${sources.join('\n  UNION ALL\n  ')}`;
+  return sources.join('\n  UNION ALL\n  ');
+}
+
+export function evDdlFromSources(
+  parquetFiles: string[],
+  jsonFiles: string[],
+): string {
+  return `CREATE OR REPLACE TEMP TABLE ${EV_TABLE} AS\n${evSourcesUnion(
+    parquetFiles,
+    jsonFiles,
+  )}`;
 }
 
 /** DDL de uma `atena_ev` vazia (mesmo schema) — quando a janela não casa nenhum objeto. */
@@ -325,7 +335,7 @@ export const EMPTY_EV_DDL = `CREATE OR REPLACE TEMP TABLE ${EV_TABLE} (`
  *
  * @returns {string} `CREATE OR REPLACE TEMP TABLE atena_records AS ...`.
  */
-export function recordsDdl(): string {
+export function recordsDdl(fromSource: string = EV_TABLE): string {
   return `
 CREATE OR REPLACE TEMP TABLE ${RECORDS_TABLE} AS
 WITH grouped AS (
@@ -347,7 +357,7 @@ WITH grouped AS (
     max(
       CASE WHEN status NOT IN ${NON_OUTCOME_STATUSES} THEN processed_at END
     ) AS terminal_ts
-  FROM ${EV_TABLE}
+  FROM ${fromSource}
   GROUP BY campaign_id, phone
 )
 SELECT
@@ -365,6 +375,27 @@ SELECT
     WHEN terminal_status IS NOT NULL THEN terminal_status
   END AS error_hint
 FROM grouped`;
+}
+
+/**
+ * Igual ao {@link recordsDdl}, mas agrega DIRETO da união das fontes (Parquet de cache ∪ JSON live)
+ * — SEM materializar a TEMP TABLE `atena_ev` intermediária (todos os eventos crus). Para os fluxos
+ * que só leem `atena_records` (busca/relatório/catálogo/reveal), evita materializar ~1 evento por
+ * transição de status (potencialmente ~milhões de linhas) só pra agregar em seguida. A trilha, que
+ * precisa dos eventos crus, continua usando `recordsDdl()` sobre `atena_ev`.
+ *
+ * @param {string[]} parquetFiles - Parquets de cache (formato `ev`); podem ser vazios.
+ * @param {string[]} jsonFiles - Objetos JSON.gz live; podem ser vazios.
+ * @returns {string} `CREATE OR REPLACE TEMP TABLE atena_records AS ...` agregando da fonte.
+ */
+export function recordsDdlFromSources(
+  parquetFiles: string[],
+  jsonFiles: string[],
+): string {
+  return recordsDdl(`(\n${evSourcesUnion(
+    parquetFiles,
+    jsonFiles,
+  )}\n) AS src`);
 }
 
 /**
