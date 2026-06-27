@@ -82,6 +82,7 @@ export async function installMockApi(
     '**/socket.io/**',
     (route) => route.abort(),
   );
+
   await page.routeWebSocket(
     /socket\.io/,
     () => {
@@ -93,6 +94,7 @@ export async function installMockApi(
     '**/api/**',
     async (route) => {
       const { pathname } = new URL(route.request().url());
+
       const path = pathname.replace(
         /^\/api/,
         '',
@@ -102,7 +104,12 @@ export async function installMockApi(
         if (scenario === 'unauthenticated') {
           return json(
             route,
-            { error: { code: 'unauthorized', message: 'Sessão expirada' } },
+            {
+              error: {
+                code: 'unauthorized',
+                message: 'Sessão expirada',
+              },
+            },
             401,
           );
         }

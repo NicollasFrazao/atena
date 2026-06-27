@@ -74,45 +74,51 @@ async function openAdminMenu(page: Page): Promise<void> {
  * Navegação autenticada: a partir do Assistente (`/`), abre o item do nav e confere que a URL muda
  * e a página renderiza (âncora estável). Cada página carrega seus dados via fixtures.
  */
-test.describe('Navegação (autenticado)', () => {
-  test.beforeEach(async ({ page }) => {
-    await installMockApi(page);
-    await page.goto('/');
-    await expect(page.getByRole(
-      'link',
-      { name: 'Assistente' },
-    ).first()).toBeVisible();
-  });
+test.describe(
+  'Navegação (autenticado)',
+  () => {
+    test.beforeEach(async ({ page }) => {
+      await installMockApi(page);
+      await page.goto('/');
 
-  for (const navCase of CASES) {
-    test(`navega para ${navCase.label}`, async ({ page }) => {
-      if (navCase.group === 'admin') {
-        await openAdminMenu(page);
-      }
+      await expect(page.getByRole(
+        'link',
+        { name: 'Assistente' },
+      ).first()).toBeVisible();
+    });
+
+    for (const navCase of CASES) {
+      test(`navega para ${navCase.label}`, async ({ page }) => {
+        if (navCase.group === 'admin') {
+          await openAdminMenu(page);
+        }
+
+        await page.getByRole(
+          'link',
+          { name: navCase.label },
+        ).first().click();
+
+        // `/` não é metacaractere de regex — o path entra literal.
+        await expect(page).toHaveURL(new RegExp(`${navCase.path}$`));
+        await expect(navCase.anchor(page)).toBeVisible();
+      });
+    }
+
+    test('volta para o Assistente (/) e mostra o campo de pergunta', async ({ page }) => {
+      await page.getByRole(
+        'link',
+        { name: 'Incidentes' },
+      ).first().click();
+
+      await expect(page).toHaveURL(/\/incidentes$/);
 
       await page.getByRole(
         'link',
-        { name: navCase.label },
+        { name: 'Assistente' },
       ).first().click();
 
-      // `/` não é metacaractere de regex — o path entra literal.
-      await expect(page).toHaveURL(new RegExp(`${navCase.path}$`));
-      await expect(navCase.anchor(page)).toBeVisible();
+      await expect(page).toHaveURL(/localhost:\d+\/$/);
+      await expect(page.getByPlaceholder(/Pergunte algo/i)).toBeVisible();
     });
-  }
-
-  test('volta para o Assistente (/) e mostra o campo de pergunta', async ({ page }) => {
-    await page.getByRole(
-      'link',
-      { name: 'Incidentes' },
-    ).first().click();
-    await expect(page).toHaveURL(/\/incidentes$/);
-
-    await page.getByRole(
-      'link',
-      { name: 'Assistente' },
-    ).first().click();
-    await expect(page).toHaveURL(/localhost:\d+\/$/);
-    await expect(page.getByPlaceholder(/Pergunte algo/i)).toBeVisible();
-  });
-});
+  },
+);

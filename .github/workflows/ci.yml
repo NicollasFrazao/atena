@@ -16,8 +16,8 @@ jobs:
     name: API · lint + testes
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -32,21 +32,22 @@ jobs:
     name: Web · lint + unit + e2e (Playwright)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build -w @atena/types
       - run: npm run lint -w @atena/web
+      - run: npm run typecheck:e2e -w @atena/web
       - run: npm test -w @atena/web
       # Browser + libs do SO para o Chromium do Playwright.
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
       # Hermético: o webServer do Playwright builda o web e o serve; as chamadas /api/** são mockadas.
       - run: npm run e2e -w @atena/web
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: ${{ !cancelled() }}
         with:
           name: playwright-report
