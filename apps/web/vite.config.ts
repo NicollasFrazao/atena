@@ -14,5 +14,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // Unit (vitest) vive em `src`. Os `e2e/**` são specs do Playwright (browser) — runner próprio.
+    include: ['src/**/*.{spec,test}.{ts,tsx}'],
   },
 });

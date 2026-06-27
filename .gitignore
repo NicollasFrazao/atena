@@ -27,6 +27,12 @@ dist/
 build/
 *.tsbuildinfo
 coverage/
+
+# Playwright (e2e do web): relatórios/artefatos e cache do browser — não versionar
+apps/web/playwright-report/
+apps/web/test-results/
+apps/web/blob-report/
+.cache/ms-playwright/
 # saída compilada nunca deve cair ao lado do source dos pacotes
 packages/*/src/**/*.js
 packages/*/src/**/*.js.map
