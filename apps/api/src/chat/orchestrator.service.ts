@@ -68,9 +68,10 @@ const SHIPPING_ID_PATTERN = /^[0-9a-f]{32}$/i;
 /**
  * Idle-timeout (ms) do stream do LLM por turno: se o provider abrir o stream mas não emitir nenhum
  * chunk nesse intervalo (ex.: Bedrock pendurado), aborta com erro em vez de travar a sessão pra
- * sempre. Generoso o bastante para não cortar geração legítima (first-token costuma ser < 15s).
+ * sempre. 120s dá folga quando o event loop está sob carga (scans pesados do DuckDB concorrentes
+ * podem atrasar a drenagem do stream); first-token legítimo costuma ser < 15s.
  */
-const LLM_STREAM_IDLE_TIMEOUT_MS = 60_000;
+const LLM_STREAM_IDLE_TIMEOUT_MS = 120_000;
 
 /** Logger de observabilidade do orquestrador (latência/erro por tool). */
 const logger = new Logger('Orchestrator');

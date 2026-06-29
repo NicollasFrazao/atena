@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
   Injectable,
@@ -2182,7 +2183,10 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       key,
     );
 
-    mkdirSync(
+    // I/O ASSÍNCRONO no hot path: o pré-fetch baixa dezenas de objetos em paralelo; escrever os bytes
+    // com writeFileSync BLOQUEARIA o event loop a cada objeto e travaria o stream do chat (LLM) que
+    // roda no mesmo loop. `fs/promises` libera o loop entre as escritas.
+    await mkdir(
       dirname(local),
       { recursive: true },
     );
@@ -2194,7 +2198,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
     const body = response.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined;
 
-    writeFileSync(
+    await writeFile(
       local,
       body?.transformToByteArray
         ? await body.transformToByteArray()

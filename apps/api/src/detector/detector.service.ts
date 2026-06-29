@@ -22,8 +22,17 @@ import type {
   ShippingSampleInterface,
 } from './detection.types';
 
-/** Periodicidade do scan agendado (gate por `detect.enabled`). */
-const DETECT_INTERVAL_MS = 60_000;
+/**
+ * Periodicidade do scan agendado (gate por `detect.enabled`), em segundos via env. Default 180s
+ * (3min): o detector compete com as buscas do usuário pela única instância DuckDB, então rodar a
+ * cada 60s mantinha o motor ocupado boa parte do tempo (e atrasava o stream do chat). 3min ainda é
+ * pronto o bastante p/ anomalias de janela de 15min; o trigger manual `POST /api/dev/detect` é imediato.
+ * Lido do `process.env` (a env do container já está disponível na carga do módulo, antes do @Interval).
+ */
+const DETECT_INTERVAL_MS = Number.parseInt(
+  process.env.DETECT_INTERVAL_SECONDS ?? '180',
+  10,
+) * 1000;
 
 /** Nota registrada ao auto-resolver um incidente. */
 const AUTO_RESOLVE_NOTE = 'Métrica voltou à baseline sem intervenção.';

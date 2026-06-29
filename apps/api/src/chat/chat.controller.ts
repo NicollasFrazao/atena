@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Res } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Param, Patch, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { Audit } from '../audit/audit.decorator';
 import { Requires } from '../auth/rbac/requires.decorator';
@@ -23,6 +23,8 @@ import { OrchestratorService } from './orchestrator.service';
 @Requires('app:use')
 @Controller('chat/sessions')
 export class ChatController {
+  private readonly logger = new Logger(ChatController.name);
+
   /**
    * @param {ChatService} chat - Serviço de sessões/mensagens de chat.
    * @param {OrchestratorService} orchestrator - Orquestrador do stream de resposta.
@@ -159,7 +161,18 @@ export class ChatController {
       )) {
         res.write(`event: ${ev.event}\ndata: ${JSON.stringify(ev.data)}\n\n`);
       }
-    } catch {
+    } catch (err) {
+      // NÃO mascarar em silêncio: loga a causa real (idle-timeout do LLM, erro de tool, etc.) — sem
+      // isto o erro é invisível e impossível de diagnosticar. O cliente segue recebendo a msg genérica.
+      this.logger.error(
+        `stream da mensagem da sessão ${id} falhou: ${err instanceof Error
+          ? err.message
+          : String(err)}`,
+        err instanceof Error
+          ? err.stack
+          : undefined,
+      );
+
       res.write(`event: error\ndata: ${JSON.stringify({
         error: {
           code: 'internal',
