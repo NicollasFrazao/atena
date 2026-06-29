@@ -1624,7 +1624,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       // recentes (live) ou já cacheadas (que não fazem leitura fria do S3).
       onProgress?.({
         phase: 'reading',
-        label: 'Varrendo partições no S3',
+        label: 'Varrendo partições',
         current: index + 1,
         total,
       });
