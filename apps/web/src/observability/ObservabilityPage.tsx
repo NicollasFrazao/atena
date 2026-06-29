@@ -428,7 +428,10 @@ function MiniStat({
               fontFamily: 'var(--at-font-body, inherit)',
               fontSize: 'var(--at-fs-12)',
               fontWeight: 400,
-              color: 'var(--at-fg-muted)',
+              // segue o tom do valor: verde quando primary (o "N clientes" fica verde por inteiro).
+              color: tone === 'primary'
+                ? 'var(--at-primary)'
+                : 'var(--at-fg-muted)',
               marginLeft: 'var(--at-space-4)',
             }}
             >
