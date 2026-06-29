@@ -662,6 +662,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       undefined, // signal
       undefined, // bufferMs
       true, // withRawEvents: a trilha lê `atena_ev` (eventos crus) p/ a linha do tempo
+      messageId, // filtra o `atena_ev` a ESTE destinatário já no build → sem materializar o dia inteiro
     );
   }
 
@@ -1472,6 +1473,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     signal?: AbortSignal,
     bufferMs?: number,
     withRawEvents = false,
+    recipientId?: string,
   ): Promise<T> {
     return this.withConnection(
       async (connection) => {
@@ -1482,6 +1484,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
           signal,
           bufferMs,
           withRawEvents,
+          recipientId,
         );
 
         return run(connection);
@@ -1675,6 +1678,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * @param {AbortSignal} [signal] - Aborta a query em curso.
    * @param {number} [bufferMs] - Override do buffer de expansão (só pra frente) da janela (vide {@link scanPartitions}).
    * @param {boolean} [withRawEvents] - `true` materializa `atena_ev` (eventos crus) p/ a trilha; `false` agrega `atena_records` direto da fonte.
+   * @param {string} [recipientId] - Trilha: filtra o `atena_ev` a UM destinatário (md5) já no build (vide {@link evDdlFromSources}).
    * @returns {Promise<void>}
    */
   private async materialize(
@@ -1684,6 +1688,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     signal?: AbortSignal,
     bufferMs?: number,
     withRawEvents = false,
+    recipientId?: string,
   ): Promise<void> {
     const {
       parquetFiles,
@@ -1706,9 +1711,11 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     }
     else if (withRawEvents) {
       // Trilha: precisa dos eventos crus (`atena_ev`) p/ a linha do tempo → materializa ev + records.
+      // Com `recipientId`, o `ev` já sai filtrado a UM destinatário → build trivial (sem dedup de 271k).
       await connection.run(evDdlFromSources(
         parquetFiles,
         jsonFiles,
+        recipientId,
       ));
 
       await connection.run(recordsDdl());

@@ -307,14 +307,37 @@ function evSourcesUnion(
   return sources.join('\n  UNION ALL\n  ');
 }
 
+/** Shipping_id = `md5(campaign_id||phone)` = 32 hex. Guarda contra injeção ao interpolar no filtro. */
+const SHIPPING_ID_HEX = /^[0-9a-f]{32}$/i;
+
+/**
+ * DDL do `atena_ev`. Com `recipientId` (trilha), filtra para UM destinatário JÁ na materialização
+ * (`md5(campaign_id||phone) = id`) → a TEMP TABLE fica com ~os eventos daquele envio, não com os
+ * milhões da janela; o `records` derivado tem 1 linha (sem o dedup sobre 271k+ destinatários). O scan
+ * dos objetos é o mesmo (o filtro roda na leitura), mas o build despenca. `recipientId` é md5 (32 hex)
+ * validado → seguro interpolar (DDL não aceita bind no CREATE … AS).
+ *
+ * @param {string[]} parquetFiles - Parquets de cache (formato `ev`); podem ser vazios.
+ * @param {string[]} jsonFiles - Objetos JSON.gz live; podem ser vazios.
+ * @param {string} [recipientId] - Shipping_id (md5) p/ filtrar o `ev` a um destinatário (trilha).
+ * @returns {string} `CREATE OR REPLACE TEMP TABLE atena_ev AS ...`.
+ */
 export function evDdlFromSources(
   parquetFiles: string[],
   jsonFiles: string[],
+  recipientId?: string,
 ): string {
-  return `CREATE OR REPLACE TEMP TABLE ${EV_TABLE} AS\n${evSourcesUnion(
+  const union = evSourcesUnion(
     parquetFiles,
     jsonFiles,
-  )}`;
+  );
+
+  const body = recipientId && SHIPPING_ID_HEX.test(recipientId)
+    ? `SELECT * FROM (\n${union}\n) AS ev\n  `
+      + `WHERE md5(campaign_id || '|' || coalesce(phone, '')) = '${recipientId.toLowerCase()}'`
+    : union;
+
+  return `CREATE OR REPLACE TEMP TABLE ${EV_TABLE} AS\n${body}`;
 }
 
 /** DDL de uma `atena_ev` vazia (mesmo schema) — quando a janela não casa nenhum objeto. */
