@@ -1014,6 +1014,14 @@ function LatencyCell({
     && value !== null
     && value > heavyThreshold;
 
+  const baseColor = muted
+    ? 'var(--at-fg-muted)'
+    : 'var(--at-fg)';
+
+  const color = heavy
+    ? 'var(--at-warning-200)'
+    : baseColor;
+
   return (
     <td style={{
       padding: '9px 14px',
@@ -1022,11 +1030,7 @@ function LatencyCell({
       fontWeight: heavy
         ? 600
         : 500,
-      color: heavy
-        ? 'var(--at-warning-200)'
-        : muted
-          ? 'var(--at-fg-muted)'
-          : 'var(--at-fg)',
+      color,
     }}
     >
       {value === null
