@@ -115,8 +115,10 @@ const SYSTEM_PROMPT =
   'shipping_id (o usuário forneceu o hash, ou ele veio de um search anterior), NÃO faça um search ' +
   'antes — chame get_shipping_trail DIRETO; a janela vem da data que o usuário indicar (se ele não ' +
   'disse QUANDO foi o envio, PERGUNTE a data aproximada — pode ser só o dia). Quando o id veio de um ' +
-  'search, reaproveite a MESMA janela. NUNCA use search_shippings para ver a trilha (ele só lista o ' +
-  'resumo, não os eventos). ' +
+  'search, passe date_from=date_to = o DIA do envio DAQUELA linha (o campo `requested_at`/"Enviado" '
+  + 'do resultado) — NÃO a janela ampla da busca: a trilha varre só aquele dia e fica MUITO mais '
+  + 'rápida (varrer a janela inteira só pra um envio é desperdício). NUNCA use search_shippings para '
+  + 'ver a trilha (ele só lista o resumo, não os eventos). ' +
   'Ao listar clientes ou provedores (list_customers/list_providers), o resultado traz a JANELA usada no ' +
   'campo `window`; SEMPRE declare essa janela na resposta (ex.: "Clientes ativos nas últimas 24h: …" ou ' +
   '"Provedores ativos desde 18/06 (janela padrão): …"), porque uma lista de "ativos" sem janela é ambígua. ' +
@@ -1821,7 +1823,8 @@ export class OrchestratorService {
               message: 'Para abrir a trilha preciso da DATA aproximada do envio (pode ser só o dia). Sem '
                 + 'ela a varredura cai no padrão de ~30 dias e fica lenta. Pergunte ao usuário QUANDO o '
                 + 'envio ocorreu e repasse em date_from/date_to (ou date_range); se a trilha veio de um '
-                + 'search, reaproveite a MESMA janela daquele resultado.',
+                + 'search, use date_from=date_to = o DIA do envio daquela linha (o `requested_at`/"Enviado" '
+                + 'do resultado), NÃO a janela ampla da busca — assim a trilha varre só aquele dia.',
             },
           });
         }
