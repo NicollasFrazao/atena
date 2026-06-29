@@ -166,6 +166,16 @@ function forwardScanWindow(
   };
 }
 
+/** Início do dia UTC de um instante (00:00:00.000Z). Usado p/ ancorar a janela da trilha no DIA do
+ *  envio — tolerante a skew partição×tempo-lógico (fuso/buffering do firehose), sem cair em minutos. */
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+  ));
+}
+
 /**
  * Impressão estável do CONJUNTO de objetos de uma partição (chaves ordenadas + hash). Detecta
  * objetos novos/removidos numa partição já cacheada SEM reler conteúdo — o detailed report é
@@ -601,10 +611,25 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     window?: AuditWindowInterface,
     onProgress?: AuditProgressCallback,
   ): Promise<DeliveryTrailInterface | null> {
+    // Otimização determinística: se o envio já está no `recordCache` (hidratado por um search/getShipping
+    // recente — o fluxo típico "buscar → abrir trilha"), deriva a janela EXATA do ciclo de vida dele
+    // (`[requested_at, finalized_at]`) → a trilha materializa o `atena_ev` de só ~1 dia (+ buffer), não
+    // da janela ampla da busca nem do default de 30d (que faz o materialize varrer tudo). NÃO depende do
+    // LLM passar a data. Cache frio → cai na janela informada (ou no default). Send-based: o `queued`
+    // está em `requested_at`, e o buffer só-pra-frente alcança o desfecho.
+    const cached = this.recordCache.get(messageId);
+
+    const trailWindow = cached && cached.requestedAt.getTime() > 0
+      ? {
+        // Ancora no DIA do envio (não nos minutos): robusto ao skew partição×tempo-lógico. O buffer
+        // só-pra-frente do materialize alcança o desfecho que caia num dia posterior.
+        from: startOfUtcDay(cached.requestedAt),
+        to: cached.finalizedAt ?? cached.requestedAt,
+      }
+      : window ?? this.defaultWindow();
+
     return this.withRecords(
-      // Send-based: o envio foi achado por `requested_at` (o `queued` está dentro da janela) e o scan
-      // alarga só pra frente → captura o desfecho mesmo que ele caia num dia posterior. Timeline completa.
-      window ?? this.defaultWindow(),
+      trailWindow,
       async (connection) => {
         const rows = await this.query(
           connection,
