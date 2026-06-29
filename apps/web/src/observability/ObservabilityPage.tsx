@@ -383,25 +383,28 @@ function MiniStat({
   label,
   value,
   unit,
+  tone,
 }: {
   label: string;
   value: string;
-  unit?: string
+  unit?: string;
+  /** `primary` destaca o valor em verde (ex.: WebSocket "conectados agora"), como no protótipo. */
+  tone?: 'primary'
 }): JSX.Element {
   return (
     <div style={{
-      background: 'var(--at-white)',
+      background: 'var(--at-bg-soft)',
       border: '1px solid var(--at-border)',
-      borderRadius: 8,
-      padding: '10px 12px',
+      borderRadius: 6,
+      padding: '8px 10px',
     }}
     >
       <div style={{
-        fontSize: 'var(--at-fs-12)',
+        fontSize: 'var(--at-fs-10)',
         fontWeight: 600,
         color: 'var(--at-fg-subtle)',
         textTransform: 'uppercase',
-        letterSpacing: 0.5,
+        letterSpacing: 0.4,
         marginBottom: 'var(--at-space-4)',
       }}
       >
@@ -409,9 +412,11 @@ function MiniStat({
       </div>
       <div style={{
         fontFamily: 'var(--at-font-heading)',
-        fontSize: 'var(--at-fs-18)',
-        fontWeight: 700,
-        color: 'var(--at-fg)',
+        fontSize: 'var(--at-fs-14)',
+        fontWeight: 600,
+        color: tone === 'primary'
+          ? 'var(--at-primary)'
+          : 'var(--at-fg)',
         lineHeight: 1.1,
         fontVariantNumeric: 'tabular-nums',
       }}
@@ -510,6 +515,7 @@ function WebSocketPanel({ websocket }: { websocket: ObservabilityInterface['webs
           label="Conectados agora"
           value={String(websocket.connected)}
           unit="clientes"
+          tone="primary"
         />
         <MiniStat
           label="Pico na janela"
@@ -793,6 +799,7 @@ function ToolsPanel({ tools }: { tools: ToolUsageStatInterface[] }): JSX.Element
               'p50',
               'p95',
               'p99',
+              '',
             ].map((column) => (
               <th
                 key={column}
@@ -873,7 +880,107 @@ function ToolRow({ tool }: { tool: ToolUsageStatInterface }): JSX.Element {
       <LatencyCell value={tool.p50_ms} />
       <LatencyCell value={tool.p95_ms} />
       <LatencyCell value={tool.p99_ms} />
+      <td style={{
+        padding: '9px 14px',
+        width: 92,
+      }}
+      >
+        <LatencySparkline
+          p50={tool.p50_ms}
+          p95={tool.p95_ms}
+          p99={tool.p99_ms}
+        />
+      </td>
     </tr>
+  );
+}
+
+/**
+ * Mini-barra de latência (p50 preenchido · p95 marcado · p99 no fim), escala 0..p99 — leitura visual
+ * rápida da distribuição por tool. Sem amostra (qualquer p* nulo ou p99≤0) → não renderiza.
+ *
+ * @param {{ p50: number | null; p95: number | null; p99: number | null }} props - Percentis (ms).
+ * @returns {JSX.Element | null} A barra, ou `null` quando não há amostra.
+ */
+function LatencySparkline({
+  p50,
+  p95,
+  p99,
+}: {
+  p50: number | null;
+  p95: number | null;
+  p99: number | null
+}): JSX.Element | null {
+  if (
+    p50 === null
+    || p95 === null
+    || p99 === null
+    || p99 <= 0
+  ) {
+    return null;
+  }
+
+  const width = 80;
+
+  const p50W = Math.max(
+    0,
+    Math.min(
+      1,
+      p50 / p99,
+    ),
+  ) * width;
+
+  const p95X = Math.max(
+    0,
+    Math.min(
+      1,
+      p95 / p99,
+    ),
+  ) * width;
+
+  return (
+    <svg
+      width={width}
+      height={24}
+      viewBox={`0 0 ${width} 24`}
+      role="img"
+      aria-label={`p50 ${p50}ms, p95 ${p95}ms, p99 ${p99}ms`}
+    >
+      <rect
+        x={0}
+        y={9}
+        width={width}
+        height={6}
+        rx={2}
+        fill="var(--at-bg-soft)"
+        stroke="var(--at-border)"
+        strokeWidth={0.5}
+      />
+      <rect
+        x={0}
+        y={9}
+        width={p50W}
+        height={6}
+        rx={2}
+        fill="var(--at-primary)"
+      />
+      <line
+        x1={p95X}
+        y1={6}
+        x2={p95X}
+        y2={18}
+        stroke="var(--at-warning-200)"
+        strokeWidth={1.5}
+      />
+      <line
+        x1={width - 1}
+        y1={6}
+        x2={width - 1}
+        y2={18}
+        stroke="var(--at-fg-muted)"
+        strokeWidth={1}
+      />
+    </svg>
   );
 }
 
@@ -895,8 +1002,18 @@ function LatencyCell({ value }: { value: number | null }): JSX.Element {
 }
 
 /**
- * Painel "Recusas do assistente": total (badge) + um card por motivo (`reason` + contagem). Recusa =
- * quando o LLM se nega a responder (proteção contra alucinação). Largura cheia, abaixo do grid.
+ * Exemplo ESTÁTICO por motivo de recusa (o backend manda só `{reason, count}`; o exemplo é ilustrativo,
+ * como no protótipo). Motivo sem exemplo mapeado → o card mostra só reason + contagem.
+ */
+const REFUSAL_REASON_EXAMPLE: Record<string, string> = {
+  fora_de_escopo: 'Reenviar mensagem',
+  falta_de_contexto: 'Sem message_id ou telefone',
+  prompt_injection: 'Tentativa em conteúdo de SMS',
+};
+
+/**
+ * Painel "Recusas do assistente": total (badge) + um card por motivo (`reason` + contagem + exemplo).
+ * Recusa = quando o LLM se nega a responder (proteção contra alucinação). Largura cheia, abaixo do grid.
  *
  * @param {{ refusals: ObservabilityInterface['refusals'] }} props - Total + quebra por motivo.
  * @returns {JSX.Element} O painel.
@@ -967,34 +1084,58 @@ function RefusalsPanel({ refusals }: { refusals: ObservabilityInterface['refusal
               <div
                 key={item.reason}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 'var(--at-space-12)',
+                  background: 'var(--at-bg-soft)',
                   border: '1px solid var(--at-border)',
-                  borderRadius: 8,
-                  padding: '10px 12px',
+                  borderRadius: 6,
+                  padding: '12px 14px',
                 }}
               >
-                <span style={{
-                  fontFamily: 'ui-monospace, Menlo, monospace',
-                  fontSize: 'var(--at-fs-12)',
-                  color: 'var(--at-fg)',
-                  wordBreak: 'break-word',
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  justifyContent: 'space-between',
+                  gap: 'var(--at-space-8)',
+                  marginBottom: 'var(--at-space-4)',
                 }}
                 >
-                  {item.reason}
-                </span>
-                <b style={{
-                  fontFamily: 'var(--at-font-heading)',
-                  fontSize: 'var(--at-fs-18)',
-                  fontWeight: 700,
-                  color: 'var(--at-fg)',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-                >
-                  {item.count}
-                </b>
+                  <code style={{
+                    fontFamily: 'ui-monospace, Menlo, monospace',
+                    fontSize: 'var(--at-fs-12)',
+                    fontWeight: 600,
+                    color: 'var(--at-fg)',
+                    wordBreak: 'break-word',
+                  }}
+                  >
+                    {item.reason}
+                  </code>
+                  <b style={{
+                    fontFamily: 'var(--at-font-heading)',
+                    fontSize: 'var(--at-fs-18)',
+                    fontWeight: 700,
+                    color: 'var(--at-fg)',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                  >
+                    {item.count}
+                  </b>
+                </div>
+                {REFUSAL_REASON_EXAMPLE[item.reason]
+                  ? (
+                    <div style={{
+                      fontSize: 'var(--at-fs-12)',
+                      color: 'var(--at-fg-muted)',
+                    }}
+                    >
+                      ex.:
+                      {' '}
+                      <i>
+                        &quot;
+                        {REFUSAL_REASON_EXAMPLE[item.reason]}
+                        &quot;
+                      </i>
+                    </div>
+                  )
+                  : null}
               </div>
             ))}
           </div>

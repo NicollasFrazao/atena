@@ -346,7 +346,7 @@ const REPORT_STEPS: Record<ReportType, {
   delivery: {
     title: 'Gerando relatório de entregabilidade',
     steps: [
-      'Consultando os envios do período (S3 · DuckDB)',
+      'Consultando os envios do período',
       'Agregando por fornecedor e por hora',
       'Calculando taxa de entrega e top erros',
     ],
@@ -372,7 +372,7 @@ const DELIVERY_PHASES: Array<{
   },
   {
     phase: 'reading',
-    label: 'Lendo os envios do período (S3 · DuckDB)',
+    label: 'Lendo os envios do período',
   },
   {
     phase: 'querying',
