@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
   Injectable,
@@ -137,26 +137,25 @@ function toText(value: unknown): string | null {
 }
 
 /**
- * Janela de SCAN com buffer SIMÉTRICO (±`bufferMs`) em torno de `window`, capando o fim em `now`:
- * - PRA FRENTE capta status atrasados do fornecedor (o desfecho chega até ~`bufferMs` após o envio);
- * - PRA TRÁS capta o `queued` de envios cujo DESFECHO caiu na janela mas o envio foi ANTES de `from`
- *   — sem o recuo, `requested_at` (= min(processed_at) sobre o varrido) COLAPSA pro desfecho e o envio
- *   aparece na janela ERRADA. O filtro por `requested_at` (janela ORIGINAL) descarta o que não pertence.
+ * Janela de SCAN com buffer SÓ PRA FRENTE (`+bufferMs` no fim, capado em `now`); o início é o `from`
+ * ORIGINAL — sem recuo. A ponta da frente capta status que o fornecedor finaliza DEPOIS do envio (o
+ * desfecho chega até ~`bufferMs` após o `queued`). Não recua pra trás porque tudo é send-based: o
+ * filtro é por `requested_at` (= instante do `queued` real, lido do próprio evento — não colapsa), e
+ * o `queued` de um envio in-window está, por definição, dentro de `[from, to]`. Varrer antes de `from`
+ * só traria envios de fora da janela (descartados no filtro) — puro custo.
  *
  * @param {AuditWindowInterface} window - Janela base (do usuário ou default).
- * @param {number} bufferMs - Buffer (ms) aplicado nas duas pontas.
+ * @param {number} bufferMs - Buffer (ms) aplicado SÓ no fim (captura de desfecho atrasado).
  * @param {Date} now - Teto do fim (partições futuras não existem → evita globs vazios e lentos).
- * @returns {AuditWindowInterface} Janela alargada simetricamente.
+ * @returns {AuditWindowInterface} Janela alargada só pra frente.
  */
-function symmetricScanWindow(
+function forwardScanWindow(
   window: AuditWindowInterface,
   bufferMs: number,
   now: Date,
 ): AuditWindowInterface {
   return {
-    from: window.from
-      ? new Date(window.from.getTime() - bufferMs)
-      : null,
+    from: window.from,
     to: window.to
       ? new Date(Math.min(
         window.to.getTime() + bufferMs,
@@ -164,6 +163,21 @@ function symmetricScanWindow(
       ))
       : null,
   };
+}
+
+/**
+ * Impressão estável do CONJUNTO de objetos de uma partição (chaves ordenadas + hash). Detecta
+ * objetos novos/removidos numa partição já cacheada SEM reler conteúdo — o detailed report é
+ * append-only (lag de horas), então dado novo = chave nova. Gravada num sidecar ao lado do Parquet
+ * e comparada na reconciliação (ver `materializePartition`).
+ *
+ * @param {string[]} files - Objetos (URLs/keys) atuais da partição.
+ * @returns {string} Digest hex do conjunto ordenado.
+ */
+function objectsFingerprint(files: string[]): string {
+  return createHash('sha256')
+    .update([...files].sort().join('\n'))
+    .digest('hex');
 }
 
 /**
@@ -245,6 +259,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   private readonly liveCacheTtlMs: number;
 
   private readonly lateStatusBufferMs: number;
+
+  /** Horizonte (ms) de lag do detailed report: partição settled DENTRO dele é reconciliada por LIST. */
+  private readonly lagMs: number;
 
   private readonly cacheMaxBytes: number;
 
@@ -341,6 +358,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
     const bufferHours = config.get<number>('auditQuery.lateStatusBufferHours') ?? 48;
     this.lateStatusBufferMs = bufferHours * 60 * 60 * 1000;
+
+    const lagHours = config.get<number>('auditQuery.lagHours') ?? 48;
+    this.lagMs = lagHours * 60 * 60 * 1000;
 
     const cacheMaxMb = config.get<number>('auditQuery.cacheMaxMb') ?? 0;
 
@@ -581,8 +601,8 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     onProgress?: AuditProgressCallback,
   ): Promise<DeliveryTrailInterface | null> {
     return this.withRecords(
-      // O `materialize` já alarga o scan pra trás (buffer simétrico) → captura o `queued` mesmo que
-      // o desfecho na janela seja de um dia posterior; não precisa de recuo extra aqui.
+      // Send-based: o envio foi achado por `requested_at` (o `queued` está dentro da janela) e o scan
+      // alarga só pra frente → captura o desfecho mesmo que ele caia num dia posterior. Timeline completa.
       window ?? this.defaultWindow(),
       async (connection) => {
         const rows = await this.query(
@@ -1457,7 +1477,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * @param {(connection: DuckDBConnection, sources: { parquetFiles: string[]; jsonFiles: string[] }) => Promise<T>} run - Trabalho sobre a união das fontes.
    * @param {AuditProgressCallback} [onProgress] - Callback de andamento da varredura.
    * @param {AbortSignal} [signal] - Aborta a query em curso.
-   * @param {number} [bufferMs] - Override do buffer de expansão simétrica da janela.
+   * @param {number} [bufferMs] - Override do buffer de expansão (só pra frente) da janela.
    * @returns {Promise<T>} O resultado de `run`.
    */
   private async withSources<T>(
@@ -1504,7 +1524,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * @param {AuditWindowInterface} window - Janela que define as partições candidatas.
    * @param {AuditProgressCallback} [onProgress] - Callback de andamento (mapping → reading → querying).
    * @param {AbortSignal} [signal] - Aborta a varredura entre partições.
-   * @param {number} [bufferMs] - Override do buffer de expansão simétrica da janela. Default
+   * @param {number} [bufferMs] - Override do buffer de expansão (só pra frente) da janela. Default
    *   `this.lateStatusBufferMs` (cobre status que finalizam fora da janela). Passe `0` num lookup
    *   pontual por id (reveal) p/ varrer SÓ a janela/filtros — o evento `queued` (com telefone) está
    *   no próprio dia, então não precisa expandir, e o scan frio cai de ~6 dias para ~1.
@@ -1523,7 +1543,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     const startedAt = Date.now();
     const now = new Date();
 
-    const scanWindow = symmetricScanWindow(
+    const scanWindow = forwardScanWindow(
       window,
       bufferMs ?? this.lateStatusBufferMs,
       now,
@@ -1627,7 +1647,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * @param {AuditWindowInterface} window - Janela que define as partições candidatas.
    * @param {AuditProgressCallback} [onProgress] - Callback de andamento (mapping → reading → querying).
    * @param {AbortSignal} [signal] - Aborta a query em curso.
-   * @param {number} [bufferMs] - Override do buffer de expansão simétrica da janela (vide {@link scanPartitions}).
+   * @param {number} [bufferMs] - Override do buffer de expansão (só pra frente) da janela (vide {@link scanPartitions}).
    * @param {boolean} [withRawEvents] - `true` materializa `atena_ev` (eventos crus) p/ a trilha; `false` agrega `atena_records` direto da fonte.
    * @returns {Promise<void>}
    */
@@ -1939,10 +1959,19 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       };
     }
 
-    // Partição SETTLED com cache permanente: 0 S3.
+    // Partição SETTLED.
     const cachePath = this.cachePathFor(descriptor.cacheKey);
+    const cached = existsSync(cachePath);
 
-    if (existsSync(cachePath)) {
+    const withinLag = descriptor.endsAt !== null
+      && descriptor.endsAt.getTime() > now.getTime() - this.lagMs;
+
+    // Cache válido e ALÉM do lag: o detailed report não ganha mais objetos aqui (append-only) →
+    // imutável, serve do Parquet sem nem listar o S3 (0 requests).
+    if (
+      cached
+      && !withinLag
+    ) {
       return {
         parquet: cachePath,
         json: [],
@@ -1951,33 +1980,105 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       };
     }
 
-    // Partição FRIA (settled, sem cache): lê o S3 uma vez e grava o Parquet (write-through).
+    // Fria (sem cache) OU settled DENTRO do lag: LIST barato p/ saber o conjunto ATUAL de objetos.
     const files = await this.expandPartition(
       connection,
       descriptor.glob,
     );
 
-    if (files.length > 0) {
-      await this.cachePartition(
+    if (cached) {
+      // Reconciliação: o detailed report é append-only, então só re-lê se SURGIU objeto novo (a
+      // impressão mudou). LIST vazio = transitório/fonte indisponível → mantém o cache (não dropa).
+      const unchanged = files.length === 0
+        || objectsFingerprint(files) === this.readCacheFingerprint(cachePath);
+
+      if (unchanged) {
+        return {
+          parquet: cachePath,
+          json: [],
+          s3Objects: 0,
+          kind: 'cached',
+        };
+      }
+
+      return this.writeColdCache(
         connection,
         files,
         cachePath,
       );
+    }
 
+    // Fria sem cache: nada a ler (janela vazia) ou primeira leitura (write-through).
+    if (files.length === 0) {
       return {
-        parquet: cachePath,
+        parquet: null,
         json: [],
-        s3Objects: files.length,
+        s3Objects: 0,
         kind: 'cold',
       };
     }
 
+    return this.writeColdCache(
+      connection,
+      files,
+      cachePath,
+    );
+  }
+
+  /**
+   * (Re)lê os objetos da partição p/ o Parquet de cache (write-through) e grava a impressão do
+   * conjunto (sidecar) p/ a reconciliação futura. Usado na leitura fria e no refresh por lag.
+   *
+   * @param {DuckDBConnection} connection - Conexão DuckDB.
+   * @param {string[]} files - Objetos S3 a ler (não-vazio).
+   * @param {string} cachePath - Destino do Parquet de cache.
+   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado `cold` apontando p/ o cache.
+   */
+  private async writeColdCache(
+    connection: DuckDBConnection,
+    files: string[],
+    cachePath: string,
+  ): Promise<PartitionMaterializeResultInterface> {
+    await this.cachePartition(
+      connection,
+      files,
+      cachePath,
+    );
+
+    this.writeCacheFingerprint(
+      cachePath,
+      objectsFingerprint(files),
+    );
+
     return {
-      parquet: null,
+      parquet: cachePath,
       json: [],
-      s3Objects: 0,
+      s3Objects: files.length,
       kind: 'cold',
     };
+  }
+
+  /** Lê a impressão dos objetos que geraram o Parquet de cache (sidecar `.objects`); null se ausente. */
+  private readCacheFingerprint(cachePath: string): string | null {
+    const sidecar = `${cachePath}.objects`;
+
+    return existsSync(sidecar)
+      ? readFileSync(
+        sidecar,
+        'utf8',
+      )
+      : null;
+  }
+
+  /** Grava a impressão do conjunto de objetos que gerou o Parquet de cache (sidecar `.objects`). */
+  private writeCacheFingerprint(
+    cachePath: string,
+    fingerprint: string,
+  ): void {
+    writeFileSync(
+      `${cachePath}.objects`,
+      fingerprint,
+    );
   }
 
   /** Expande um glob de partição nos objetos existentes (via `glob()`, que tolera padrão sem match). */

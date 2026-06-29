@@ -328,9 +328,10 @@ export const EMPTY_EV_DDL = `CREATE OR REPLACE TEMP TABLE ${EV_TABLE} (`
  * `phone` — 1 linha por DESTINATÁRIO, pois um lote de `campaign_id` pode ter vários telefones).
  * Resolução terminal do desfecho: `delivered` vence; senão, o último
  * status de desfecho (não-intermediário) vira `failed`; senão `pending` (só queued/sent/in_progress).
- * `requested_at` = `min(processed_at)` (instante do `queued` ≈ envio — preciso, p/ janela intra-dia,
- * já que `sent_at` é só a DATA); `finalized_at` = instante (processed_at) do desfecho;
- * `error_hint` = a categoria de falha terminal (`bounce`/`request_error`/...).
+ * `requested_at` = `processed_at` do **evento `queued`** (o envio real) — NÃO `min` sobre tudo (que
+ * colapsaria pro desfecho se o `queued` não fosse lido); `NULL` se o `queued` não estiver na fonte.
+ * `finalized_at` = `processed_at` do **próprio desfecho** (o `delivered`, ou a última falha terminal);
+ * `NULL` enquanto `pending`. `error_hint` = a categoria de falha terminal (`bounce`/`request_error`/...).
  * `id = md5(campaign_id || '|' || phone)` (chave do destinatário; casa a trilha em {@link trailEventsSql}).
  *
  * @returns {string} `CREATE OR REPLACE TEMP TABLE atena_records AS ...`.
@@ -348,22 +349,25 @@ WITH grouped AS (
     any_value(campaign_type) AS channel,
     any_value(app_id) AS app_id,
     max(provider) AS provider,
-    min(processed_at) AS requested_at,
+    -- requested_at = instante do ENVIO real (evento queued); NULL se o queued não foi lido (não
+    -- colapsa pro desfecho como faria min(processed_at) sobre todos os eventos).
+    min(processed_at) FILTER (WHERE status = 'queued') AS requested_at,
+    -- instante do delivered (o 1º) — registrado só do status certo.
+    min(processed_at) FILTER (WHERE status = 'delivered') AS delivered_at,
     bool_or(status = 'delivered') AS has_delivered,
-    arg_max(
-      status,
-      CASE WHEN status NOT IN ${NON_OUTCOME_STATUSES} THEN processed_at END
-    ) AS terminal_status,
-    max(
-      CASE WHEN status NOT IN ${NON_OUTCOME_STATUSES} THEN processed_at END
-    ) AS terminal_ts
+    arg_max(status, processed_at)
+      FILTER (WHERE status NOT IN ${NON_OUTCOME_STATUSES}) AS terminal_status,
+    max(processed_at)
+      FILTER (WHERE status NOT IN ${NON_OUTCOME_STATUSES}) AS terminal_ts
   FROM ${fromSource}
   GROUP BY campaign_id, phone
 )
 SELECT
   id, correlation_id, phone, customer, message, channel, app_id, provider, requested_at,
+  -- finalized_at = instante do PRÓPRIO desfecho: o delivered (se entregue) ou a última falha terminal.
   CASE
-    WHEN has_delivered OR terminal_status IS NOT NULL THEN terminal_ts
+    WHEN has_delivered THEN delivered_at
+    WHEN terminal_status IS NOT NULL THEN terminal_ts
   END AS finalized_at,
   CASE
     WHEN has_delivered THEN 'delivered'

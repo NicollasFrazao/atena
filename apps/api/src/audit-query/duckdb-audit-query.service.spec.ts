@@ -154,7 +154,18 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
         },
         processed_at: '2026-06-17T15:01:00Z',
       }),
-      // C5 (req-5, sms_flash/zapsms): canal sms_flash => INCLUÍDO (decisão revista 2026-06-25: cobre Flash)
+      // C5 (req-5, sms_flash/zapsms): canal sms_flash => INCLUÍDO (decisão revista 2026-06-25: cobre Flash).
+      // queued -> delivered (envio real sempre tem o queued; requested_at vem dele).
+      detailedRecord({
+        campaign_id: 'req-5',
+        campaign_type: 'sms_flash',
+        status: 'queued',
+        phone: '+5511900000009',
+        client_id: '9001',
+        provider_name: 'zapsms',
+        app_id: 'app-flash-1',
+        processed_at: '2026-06-17T14:59:00Z',
+      }),
       detailedRecord({
         campaign_id: 'req-5',
         campaign_type: 'sms_flash',
@@ -429,12 +440,12 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
 });
 
 /**
- * Regressão do COLAPSO do `requested_at` (fix do scan simétrico): um envio cujo `queued` é de um dia
- * mas cujo DESFECHO cruza a meia-noite para o dia seguinte NÃO pode aparecer na busca (send-based) do
- * dia do desfecho — o `requested_at` deve refletir o `queued` real, não colapsar pro desfecho. Exige
- * `lateStatusBufferHours > 0` (o materialize alarga o scan pra trás e captura o `queued`).
+ * Send-based através da meia-noite: um envio cujo `queued` é de um dia mas cujo DESFECHO cruza para o
+ * dia seguinte aparece SÓ na busca do dia do `queued` (o `requested_at` vem do evento `queued` real,
+ * nunca do desfecho). O buffer (só pra frente) garante que o desfecho do dia seguinte seja alcançado
+ * a partir do dia do envio.
  */
-describe('DuckDbAuditQueryService — scan simétrico (colapso do requested_at)', () => {
+describe('DuckDbAuditQueryService — send-based através da meia-noite (buffer só pra frente)', () => {
   let root: string;
   let service: DuckDbAuditQueryService;
 
@@ -519,7 +530,7 @@ describe('DuckDbAuditQueryService — scan simétrico (colapso do requested_at)'
       'auditQuery.sourceRoot': root,
       'auditQuery.defaultWindowDays': 30,
       'auditQuery.cacheSettleMinutes': 0,
-      // 48h: o materialize alarga o scan pra TRÁS e captura o `queued` de 16/06.
+      // 48h pra FRENTE: a busca do dia 16 alcança o desfecho do dia 17 (o `queued` já está no dia 16).
       'auditQuery.lateStatusBufferHours': 48,
       'cache.tmpDir': join(
         root,
@@ -614,7 +625,7 @@ describe('DuckDbAuditQueryService — scan simétrico (colapso do requested_at)'
       expect(record).not.toBeNull();
       expect(record?.phoneE164).toBeTruthy();
       // O bounce do 17/06 está FORA da janela do 16/06 e o buffer NÃO foi aplicado (expand:false) → o
-      // registro reflete só o `queued` (não-terminal). Prova que o scan ficou em ~1 dia (não ±48h).
+      // registro reflete só o `queued` (não-terminal). Prova que o scan ficou em ~1 dia (sem buffer).
       expect(record?.finalStatus).toBe('pending');
     }
     finally {
@@ -622,7 +633,7 @@ describe('DuckDbAuditQueryService — scan simétrico (colapso do requested_at)'
     }
   });
 
-  it('getShipping(expand:true): janela AMPLA — o buffer ±48h alcança o bounce do 17/06 (desfecho terminal)', async () => {
+  it('getShipping(expand:true): janela AMPLA — o buffer +48h (pra frente) alcança o bounce do 17/06 (desfecho terminal)', async () => {
     const svc = freshService();
 
     try {
@@ -639,5 +650,209 @@ describe('DuckDbAuditQueryService — scan simétrico (colapso do requested_at)'
     finally {
       svc.onModuleDestroy();
     }
+  });
+});
+
+/**
+ * Redesenho send-based ESTRITO: `requested_at` vem do evento `queued` (senão NULL → fora da janela),
+ * `finalized_at` vem do PRÓPRIO desfecho (delivered ou última falha) — não de um max sobre tudo. E a
+ * reconciliação por lag: objeto que chega DEPOIS do settle não pode ficar faltando.
+ */
+describe('DuckDbAuditQueryService — send-based estrito + reconciliação de cache (lag)', () => {
+  let root: string;
+  let dir: string;
+  let service: DuckDbAuditQueryService;
+
+  const SEND_WINDOW: AuditWindowInterface = {
+    from: new Date('2026-06-10T00:00:00Z'),
+    to: new Date('2026-06-11T00:00:00Z'),
+  };
+
+  beforeAll(() => {
+    root = mkdtempSync(join(
+      tmpdir(),
+      'atena-sendbased-',
+    ));
+
+    dir = join(
+      root,
+      'year=2026/month=06/day=10/hour=12',
+    );
+
+    mkdirSync(
+      dir,
+      { recursive: true },
+    );
+
+    const lines = [
+      // R1: queued -> delivered (normal).
+      detailedRecord({
+        campaign_id: 'req-a',
+        status: 'queued',
+        phone: '+5511900000010',
+        client_id: '7000',
+        provider_name: 'sinch',
+        processed_at: '2026-06-10T12:00:00Z',
+      }),
+      detailedRecord({
+        campaign_id: 'req-a',
+        status: 'delivered',
+        phone: '+5511900000010',
+        client_id: '7000',
+        provider_name: 'sinch',
+        processed_at: '2026-06-10T12:05:00Z',
+      }),
+      // R2: SÓ delivered (sem queued) → requested_at NULL → fora da busca send-based.
+      detailedRecord({
+        campaign_id: 'req-b',
+        status: 'delivered',
+        phone: '+5511900000011',
+        client_id: '7000',
+        provider_name: 'sinch',
+        processed_at: '2026-06-10T12:10:00Z',
+      }),
+      // Rprec: queued -> delivered -> bounce TARDIO → finalized_at deve ser o do DELIVERED, não o do bounce.
+      detailedRecord({
+        campaign_id: 'req-c',
+        status: 'queued',
+        phone: '+5511900000012',
+        client_id: '7000',
+        provider_name: 'sinch',
+        processed_at: '2026-06-10T12:00:00Z',
+      }),
+      detailedRecord({
+        campaign_id: 'req-c',
+        status: 'delivered',
+        phone: '+5511900000012',
+        client_id: '7000',
+        provider_name: 'sinch',
+        processed_at: '2026-06-10T12:05:00Z',
+      }),
+      detailedRecord({
+        campaign_id: 'req-c',
+        status: 'bounce',
+        phone: '+5511900000012',
+        client_id: '7000',
+        provider_name: 'sinch',
+        provider_code: '21211',
+        error: {
+          name: 'SmsStatusError',
+          message: 'late bounce',
+        },
+        processed_at: '2026-06-10T12:09:00Z',
+      }),
+    ];
+
+    writeFileSync(
+      join(
+        dir,
+        'part.json.gz',
+      ),
+      gzipSync(Buffer.from(`${lines.join('\n')}\n`)),
+    );
+
+    service = new DuckDbAuditQueryService(configStub({
+      'auditQuery.sourceRoot': root,
+      'auditQuery.defaultWindowDays': 30,
+      'auditQuery.cacheSettleMinutes': 0, // partição já fechada → settled (cacheável).
+      'auditQuery.lateStatusBufferHours': 0, // dado numa só partição.
+      'auditQuery.lagHours': 24 * 365 * 100, // lag "infinito" → settled é SEMPRE reconciliada por LIST.
+      'cache.tmpDir': join(
+        root,
+        '.cache',
+      ),
+      's3.logsBucket': '',
+      'aws.region': 'us-east-1',
+    }));
+  });
+
+  afterAll(() => {
+    service.onModuleDestroy();
+
+    rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  });
+
+  it('#3 envio SEM queued fica fora (requested_at vem do queued, senão NULL)', async () => {
+    const page = await service.search(
+      { window: SEND_WINDOW },
+      1,
+      20,
+    );
+
+    const phones = page.rows.map((row) => row.phoneE164);
+
+    expect(phones).toContain('5511900000010'); // R1 tem queued
+    expect(phones).toContain('5511900000012'); // Rprec tem queued
+    expect(phones).not.toContain('5511900000011'); // R2 sem queued → fora
+    expect(page.total).toBe(2);
+  });
+
+  it('#3 finalized_at vem do DELIVERED, não do último terminal (bounce tardio)', async () => {
+    const page = await service.search(
+      { window: SEND_WINDOW },
+      1,
+      20,
+    );
+
+    const rprec = page.rows.find((row) => row.phoneE164 === '5511900000012');
+
+    expect(rprec?.finalStatus).toBe('delivered');
+    // delivered raw 12:05 (+3h BRT→UTC) = 15:05 — NÃO o bounce de 12:09 (=15:09).
+    expect(rprec?.finalizedAt?.toISOString()).toBe('2026-06-10T15:05:00.000Z');
+    // requested_at = queued 12:00 (+3h) = 15:00.
+    expect(rprec?.requestedAt?.toISOString()).toBe('2026-06-10T15:00:00.000Z');
+  });
+
+  it('#5 objeto que chega DEPOIS do settle é relido (reconciliação por LIST — não fica faltando)', async () => {
+    const before = await service.search(
+      { window: SEND_WINDOW },
+      1,
+      20,
+    );
+
+    expect(before.total).toBe(2); // partição cacheada + sidecar de impressão gravado.
+
+    // Lag do detailed report: chega um novo objeto na MESMA partição (novo destinatário com queued).
+    const late = [
+      detailedRecord({
+        campaign_id: 'req-d',
+        status: 'queued',
+        phone: '+5511900000013',
+        client_id: '7000',
+        provider_name: 'sinch',
+        processed_at: '2026-06-10T12:30:00Z',
+      }),
+      detailedRecord({
+        campaign_id: 'req-d',
+        status: 'delivered',
+        phone: '+5511900000013',
+        client_id: '7000',
+        provider_name: 'sinch',
+        processed_at: '2026-06-10T12:35:00Z',
+      }),
+    ];
+
+    writeFileSync(
+      join(
+        dir,
+        'part-late.json.gz',
+      ),
+      gzipSync(Buffer.from(`${late.join('\n')}\n`)),
+    );
+
+    const after = await service.search(
+      { window: SEND_WINDOW },
+      1,
+      20,
+    );
+
+    expect(after.total).toBe(3);
+    expect(after.rows.map((row) => row.phoneE164)).toContain('5511900000013');
   });
 });

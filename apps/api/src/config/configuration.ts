@@ -60,6 +60,7 @@ export interface AtenaConfig {
     cacheSettleMinutes: number;
     liveCacheTtlSeconds: number;
     lateStatusBufferHours: number;
+    lagHours: number;
     minQueryDate: string | null;
     cacheMaxMb: number;
     cacheMaxAgeHours: number;
@@ -181,12 +182,19 @@ export default (): AtenaConfig => ({
       process.env.ATENA_AUDIT_LIVE_CACHE_TTL_SECONDS ?? '60',
       10,
     ),
-    // Buffer SIMÉTRICO (horas) do scan: à frente capta status atrasados do fornecedor; pra trás capta
-    // o `queued` de envios cujo desfecho caiu na janela (evita o colapso do requested_at). 72h (3 dias)
-    // — mais completo p/ precisão dos dados, ao custo de varrer mais partições (velhas → cacheadas).
-    // Tunável por env; reduza p/ 48 se o custo do scan em janela curta incomodar.
+    // Buffer do scan SÓ PRA FRENTE (horas): estende o fim da janela p/ captar status que o fornecedor
+    // finaliza depois do envio (o desfecho chega até ~este tempo após o queued). NÃO recua pra trás —
+    // o `requested_at` vem do evento `queued` real (não colapsa), então varrer antes da janela seria só
+    // custo. 48h ≈ lag do detailed report. Tunável por env.
     lateStatusBufferHours: Number.parseInt(
-      process.env.ATENA_AUDIT_LATE_STATUS_BUFFER_HOURS ?? '72',
+      process.env.ATENA_AUDIT_LATE_STATUS_BUFFER_HOURS ?? '48',
+      10,
+    ),
+    // Janela de LAG (horas) do detailed report: objetos podem chegar a uma partição até este tempo
+    // após ela "fechar" (lag do Firehose/webhook). Partição settled DENTRO deste horizonte é
+    // reconciliada por LIST a cada consulta (re-lê só se surgiram objetos); além dele, é imutável.
+    lagHours: Number.parseInt(
+      process.env.ATENA_AUDIT_LAG_HOURS ?? '48',
       10,
     ),
     // Data mínima de consulta (ISO): barra dados pré-contrato enriquecido; vazio/0 desliga.
