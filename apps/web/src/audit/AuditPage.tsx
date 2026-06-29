@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { Fragment, type ReactNode, useState } from 'react';
 import {
+  CaretDown,
   ChatsCircle,
   CheckCircle,
   Download,
@@ -8,6 +9,7 @@ import {
   Gear,
   type Icon,
   MagnifyingGlass,
+  ShieldCheck,
   UsersThree,
   Warning,
   Wrench,
@@ -145,6 +147,11 @@ export function AuditPage(): JSX.Element {
     page,
     setPage,
   ] = useState(1);
+
+  const [
+    openId,
+    setOpenId,
+  ] = useState<string | null>(null);
 
   const summary = useAuditSummary().data;
   const users = useAuditUsers().data ?? [];
@@ -405,6 +412,7 @@ export function AuditPage(): JSX.Element {
                 'Ação',
                 'Recurso',
                 'Detalhe',
+                '',
               ].map((column) => (
                 <th
                   key={column}
@@ -429,6 +437,10 @@ export function AuditPage(): JSX.Element {
               <AuditRow
                 key={entry.id}
                 entry={entry}
+                isOpen={openId === entry.id}
+                onToggle={() => setOpenId((current) => (current === entry.id
+                  ? null
+                  : entry.id))}
               />
             ))}
           </tbody>
@@ -539,79 +551,212 @@ function Kpi({
 }
 
 /** Linha da tabela de auditoria (acessos a PII destacados). */
-function AuditRow({ entry }: { entry: AuditLogEntryInterface }): JSX.Element {
+function AuditRow({
+  entry,
+  isOpen,
+  onToggle,
+}: {
+  entry: AuditLogEntryInterface;
+  isOpen: boolean;
+  onToggle: () => void
+}): JSX.Element {
   const isPii = entry.severity === 'pii';
   const color = SEVERITY_COLOR[entry.severity];
   const ActionIcon = ACTION_ICON[entry.action];
 
+  const piiBackground = isPii
+    ? '#C127220d'
+    : 'transparent';
+
+  const rowBackground = isOpen
+    ? 'var(--at-bg-soft)'
+    : piiBackground;
+
   return (
-    <tr style={{
-      borderBottom: '1px solid var(--at-border)',
-      background: isPii
-        ? '#C127220d'
-        : 'transparent',
-    }}
-    >
-      <td style={{
-        padding: '9px 14px',
-        fontFamily: 'ui-monospace, Menlo, monospace',
-        fontSize: 'var(--at-fs-12)',
-        color: 'var(--at-fg-muted)',
-        whiteSpace: 'nowrap',
-      }}
-      >
-        {formatWhen(entry.occurred_at)}
-      </td>
-      <td
+    <>
+      <tr
+        onClick={onToggle}
         style={{
-          padding: '9px 14px',
-          fontSize: 'var(--at-fs-14)',
-          color: 'var(--at-fg)',
+          borderBottom: '1px solid var(--at-border)',
+          cursor: 'pointer',
+          background: rowBackground,
         }}
-        title={entry.user_id ?? undefined}
       >
-        {entry.user_name ?? entry.user_id ?? '—'}
-      </td>
-      <td style={{ padding: '9px 14px' }}>
-        <span style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 'var(--at-space-4)',
-          fontSize: 'var(--at-fs-14)',
-          fontWeight: isPii
-            ? 600
-            : 400,
-          color: isPii
-            ? color
-            : 'var(--at-fg)',
+        <td style={{
+          padding: '9px 14px',
+          fontFamily: 'ui-monospace, Menlo, monospace',
+          fontSize: 'var(--at-fs-12)',
+          color: 'var(--at-fg-muted)',
+          whiteSpace: 'nowrap',
         }}
         >
-          <ActionIcon
-            size={14}
-            color={color}
-            style={{ flexShrink: 0 }}
+          {formatWhen(entry.occurred_at)}
+        </td>
+        <td
+          style={{
+            padding: '9px 14px',
+            fontSize: 'var(--at-fs-14)',
+            color: 'var(--at-fg)',
+          }}
+          title={entry.user_id ?? undefined}
+        >
+          {entry.user_name ?? entry.user_id ?? '—'}
+        </td>
+        <td style={{ padding: '9px 14px' }}>
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 'var(--at-space-4)',
+            fontSize: 'var(--at-fs-14)',
+            fontWeight: isPii
+              ? 600
+              : 400,
+            color: isPii
+              ? color
+              : 'var(--at-fg)',
+          }}
+          >
+            <ActionIcon
+              size={14}
+              color={color}
+              style={{ flexShrink: 0 }}
+            />
+            {ACTION_LABEL[entry.action]}
+          </span>
+        </td>
+        <td style={{
+          padding: '9px 14px',
+          fontFamily: 'ui-monospace, Menlo, monospace',
+          fontSize: 'var(--at-fs-12)',
+          color: 'var(--at-fg-muted)',
+        }}
+        >
+          {entry.resource}
+        </td>
+        <td style={{
+          padding: '9px 14px',
+          fontSize: 'var(--at-fs-12)',
+          color: 'var(--at-fg-muted)',
+        }}
+        >
+          {entry.detail ?? '—'}
+        </td>
+        <td style={{
+          padding: '9px 8px',
+          textAlign: 'right',
+          color: 'var(--at-fg-subtle)',
+        }}
+        >
+          <CaretDown
+            size={13}
+            style={{
+              transform: isOpen
+                ? 'rotate(180deg)'
+                : 'rotate(0)',
+              transition: 'transform .15s',
+            }}
           />
-          {ACTION_LABEL[entry.action]}
-        </span>
-      </td>
-      <td style={{
-        padding: '9px 14px',
-        fontFamily: 'ui-monospace, Menlo, monospace',
+        </td>
+      </tr>
+      {isOpen
+        ? (
+          <tr style={{
+            borderBottom: '1px solid var(--at-border)',
+            background: 'var(--at-bg-soft)',
+          }}
+          >
+            <td
+              colSpan={6}
+              style={{ padding: '14px 18px' }}
+            >
+              <AuditDetail entry={entry} />
+            </td>
+          </tr>
+        )
+        : null}
+    </>
+  );
+}
+
+/**
+ * Detalhe expansível de um evento de auditoria (campos crus + nota de imutabilidade), como no
+ * protótipo. Aberto ao clicar na linha.
+ *
+ * @param {{ entry: AuditLogEntryInterface }} props - O evento.
+ * @returns {JSX.Element} O painel de detalhe.
+ */
+function AuditDetail({ entry }: { entry: AuditLogEntryInterface }): JSX.Element {
+  const fields: Array<[string, ReactNode]> = [
+    [
+      'ID',
+      <code style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{entry.id}</code>,
+    ],
+    [
+      'Timestamp',
+      <code style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{formatWhen(entry.occurred_at)}</code>,
+    ],
+    [
+      'Usuário',
+      entry.user_name ?? entry.user_id ?? '—',
+    ],
+    [
+      'Ação',
+      ACTION_LABEL[entry.action],
+    ],
+    [
+      'Recurso',
+      <code style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{entry.resource}</code>,
+    ],
+    [
+      'Detalhe',
+      entry.detail ?? '—',
+    ],
+    [
+      'Severidade',
+      entry.severity,
+    ],
+  ];
+
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'auto 1fr',
+      gap: 'var(--at-space-4) var(--at-space-16)',
+      fontSize: 'var(--at-fs-12)',
+      alignItems: 'baseline',
+    }}
+    >
+      {fields.map(([
+        key,
+        node,
+      ]) => (
+        <Fragment key={key}>
+          <div style={{
+            fontWeight: 600,
+            color: 'var(--at-fg-muted)',
+          }}
+          >
+            {key}
+          </div>
+          <div style={{ color: 'var(--at-fg)' }}>{node}</div>
+        </Fragment>
+      ))}
+      <div style={{
+        gridColumn: '1 / -1',
+        marginTop: 'var(--at-space-8)',
+        paddingTop: 'var(--at-space-8)',
+        borderTop: '1px solid var(--at-border)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--at-space-4)',
         fontSize: 'var(--at-fs-12)',
-        color: 'var(--at-fg-muted)',
+        color: 'var(--at-fg-subtle)',
       }}
       >
-        {entry.resource}
-      </td>
-      <td style={{
-        padding: '9px 14px',
-        fontSize: 'var(--at-fs-12)',
-        color: 'var(--at-fg-muted)',
-      }}
-      >
-        {entry.detail ?? '—'}
-      </td>
-    </tr>
+        <ShieldCheck size={12} />
+        Este registro é imutável — não pode ser editado nem deletado.
+      </div>
+    </div>
   );
 }
 
