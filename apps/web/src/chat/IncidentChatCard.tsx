@@ -106,7 +106,7 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
             borderRadius: 999,
             background: `${color}1a`,
             color,
-            fontSize: 'var(--at-fs-11)',
+            fontSize: 'var(--at-fs-12)',
             fontWeight: 600,
           }}
           >
@@ -315,7 +315,7 @@ function IncidentLiveStatus({ incident }: { incident: IncidentInterface }): JSX.
       borderRadius: 999,
       background: `${color}1a`,
       color,
-      fontSize: 'var(--at-fs-11)',
+      fontSize: 'var(--at-fs-12)',
       fontWeight: 600,
     }}
     >

@@ -123,7 +123,7 @@ export function RulesPage(): JSX.Element {
                       style={{
                         textAlign: 'left',
                         padding: '9px 14px',
-                        fontSize: 'var(--at-fs-11)',
+                        fontSize: 'var(--at-fs-12)',
                         fontWeight: 600,
                         color: 'var(--at-fg-muted)',
                         textTransform: 'uppercase',
@@ -206,7 +206,7 @@ function RuleRow({
         </span>
         <code style={{
           fontFamily: 'ui-monospace, Menlo, monospace',
-          fontSize: 'var(--at-fs-11)',
+          fontSize: 'var(--at-fs-12)',
           color: 'var(--at-fg-subtle)',
         }}
         >
@@ -243,7 +243,7 @@ function RuleRow({
           ? (
             <span style={{
               display: 'block',
-              fontSize: 'var(--at-fs-11)',
+              fontSize: 'var(--at-fs-12)',
               color: 'var(--at-fg-subtle)',
             }}
             >
@@ -315,7 +315,7 @@ function SeverityChip({ severity }: { severity: AnomalyRuleInterface['severity']
       borderRadius: 999,
       background: `${color}1a`,
       color,
-      fontSize: 'var(--at-fs-11)',
+      fontSize: 'var(--at-fs-12)',
       fontWeight: 600,
     }}
     >
@@ -345,7 +345,7 @@ function ShadowBadge(): JSX.Element {
         background: 'var(--at-bg-soft)',
         border: '1px solid var(--at-border)',
         color: 'var(--at-fg-muted)',
-        fontSize: 'var(--at-fs-11)',
+        fontSize: 'var(--at-fs-12)',
         fontWeight: 600,
       }}
     >

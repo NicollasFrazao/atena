@@ -418,7 +418,7 @@ function AdminMenuItem({
         </span>
         <span style={{
           display: 'block',
-          fontSize: 'var(--at-fs-11)',
+          fontSize: 'var(--at-fs-12)',
           color: 'var(--at-fg-muted)',
           marginTop: 1,
         }}
@@ -514,7 +514,7 @@ function Avatar({ initials }: { initials: string }): JSX.Element {
       color: 'var(--at-plankton-700)',
       display: 'grid',
       placeItems: 'center',
-      fontSize: 'var(--at-fs-11)',
+      fontSize: 'var(--at-fs-12)',
       fontWeight: 700,
     }}
     >
@@ -562,7 +562,7 @@ function ProfilePopover({ user }: { user: ReturnType<typeof useCurrentUser> }): 
           </span>
           <span style={{
             display: 'block',
-            fontSize: 'var(--at-fs-11)',
+            fontSize: 'var(--at-fs-12)',
             color: 'var(--at-fg-muted)',
           }}
           >

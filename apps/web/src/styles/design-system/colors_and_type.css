@@ -174,15 +174,18 @@
   --at-font-body:     'Manrope', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   --at-font-heading:  'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 
+  /* Escala AFINADA ~1–2px abaixo do nominal (feedback de produto 2026-06-29: o sistema estava grande
+     e mais alto que o protótipo). O NOME é o slot/passo (não o px exato); o valor foi reduzido. Piso
+     em 10px p/ legibilidade dos labels. Mexer só nos valores — não inventar tokens novos (gotcha). */
   --at-fs-10: 10px;
-  --at-fs-12: 12px;
-  --at-fs-14: 14px;
-  --at-fs-16: 16px;
-  --at-fs-18: 18px;
-  --at-fs-20: 20px;
-  --at-fs-24: 24px;
-  --at-fs-28: 28px;
-  --at-fs-32: 32px;
+  --at-fs-12: 11px;
+  --at-fs-14: 13px;
+  --at-fs-16: 15px;
+  --at-fs-18: 16px;
+  --at-fs-20: 18px;
+  --at-fs-24: 22px;
+  --at-fs-28: 26px;
+  --at-fs-32: 30px;
 
   --at-lh-12: 12px;
   --at-lh-14: 14px;

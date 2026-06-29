@@ -1426,7 +1426,7 @@ function ActionBadge({ action }: { action: ActionCategoryType }): JSX.Element {
       borderRadius: 999,
       background: `${color}1a`,
       color,
-      fontSize: 'var(--at-fs-11)',
+      fontSize: 'var(--at-fs-12)',
       fontWeight: 600,
       whiteSpace: 'nowrap',
     }}
@@ -1457,7 +1457,7 @@ function ShadowTag(): JSX.Element {
         background: 'var(--at-bg-soft)',
         border: '1px solid var(--at-border)',
         color: 'var(--at-fg-muted)',
-        fontSize: 'var(--at-fs-11)',
+        fontSize: 'var(--at-fs-12)',
         fontWeight: 600,
       }}
     >
@@ -1651,7 +1651,7 @@ function Kpi({
       {hint !== undefined
         ? (
           <div style={{
-            fontSize: 'var(--at-fs-11)',
+            fontSize: 'var(--at-fs-12)',
             color: 'var(--at-fg-muted)',
             marginTop: 'var(--at-space-4)',
           }}
@@ -1677,7 +1677,7 @@ function SeverityChip({ severity }: { severity: IncidentSeverityType }): JSX.Ele
       borderRadius: 999,
       background: `${color}1a`,
       color,
-      fontSize: 'var(--at-fs-11)',
+      fontSize: 'var(--at-fs-12)',
       fontWeight: 600,
     }}
     >

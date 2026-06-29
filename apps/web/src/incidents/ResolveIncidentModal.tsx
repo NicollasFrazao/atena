@@ -297,7 +297,7 @@ export function ResolveIncidentModal({
               borderRadius: 999,
               background: `${SEVERITY_COLOR[incident.severity]}1a`,
               color: SEVERITY_COLOR[incident.severity],
-              fontSize: 'var(--at-fs-11)',
+              fontSize: 'var(--at-fs-12)',
               fontWeight: 600,
             }}
             >
@@ -339,7 +339,7 @@ export function ResolveIncidentModal({
           >
             <FieldLabel required>Descrição da ação</FieldLabel>
             <span style={{
-              fontSize: 'var(--at-fs-11)',
+              fontSize: 'var(--at-fs-12)',
               color: description.trim().length >= MIN_DESCRIPTION
                 ? 'var(--at-fg-subtle)'
                 : 'var(--at-danger-300)',
@@ -402,7 +402,7 @@ export function ResolveIncidentModal({
             >
               <FieldLabel>Tags</FieldLabel>
               <span style={{
-                fontSize: 'var(--at-fs-11)',
+                fontSize: 'var(--at-fs-12)',
                 color: 'var(--at-fg-subtle)',
               }}
               >
@@ -430,7 +430,7 @@ export function ResolveIncidentModal({
                     background: 'var(--at-primary-lighter)',
                     color: 'var(--at-primary-dark)',
                     border: '1px solid var(--at-primary-light)',
-                    fontSize: 'var(--at-fs-11)',
+                    fontSize: 'var(--at-fs-12)',
                     fontWeight: 600,
                   }}
                 >
@@ -473,7 +473,7 @@ export function ResolveIncidentModal({
                   borderRadius: 999,
                   outline: 'none',
                   fontFamily: 'inherit',
-                  fontSize: 'var(--at-fs-11)',
+                  fontSize: 'var(--at-fs-12)',
                   color: 'var(--at-fg-muted)',
                 }}
               />

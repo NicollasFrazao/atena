@@ -245,7 +245,7 @@ function Header({
           borderRadius: 999,
           background: `${color}1a`,
           color,
-          fontSize: 'var(--at-fs-11)',
+          fontSize: 'var(--at-fs-12)',
           fontWeight: 600,
         }}
         >
@@ -665,7 +665,7 @@ function RelatedMessages({ incident }: { incident: IncidentInterface }): JSX.Ele
                 ? (
                   <span style={{
                     flexShrink: 0,
-                    fontSize: 'var(--at-fs-11)',
+                    fontSize: 'var(--at-fs-12)',
                     color: 'var(--at-fg-subtle)',
                     fontVariantNumeric: 'tabular-nums',
                   }}

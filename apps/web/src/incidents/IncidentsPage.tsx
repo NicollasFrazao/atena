@@ -371,7 +371,7 @@ function StatCard({
     }}
     >
       <div style={{
-        fontSize: 'var(--at-fs-11)',
+        fontSize: 'var(--at-fs-12)',
         fontWeight: 600,
         color: 'var(--at-fg-subtle)',
         textTransform: 'uppercase',
@@ -431,7 +431,7 @@ function SectionHeader({
         {title}
       </h2>
       <span style={{
-        fontSize: 'var(--at-fs-11)',
+        fontSize: 'var(--at-fs-12)',
         fontWeight: 700,
         color: 'var(--at-fg-muted)',
       }}
@@ -776,7 +776,7 @@ function ShadowPill(): JSX.Element {
         background: 'var(--at-bg-soft)',
         border: '1px solid var(--at-border)',
         color: 'var(--at-fg-muted)',
-        fontSize: 'var(--at-fs-11)',
+        fontSize: 'var(--at-fs-12)',
         fontWeight: 600,
       }}
     >
@@ -1018,7 +1018,7 @@ function SeverityBadge({ severity }: { severity: IncidentSeverityType }): JSX.El
       borderRadius: 999,
       background: `${color}1a`,
       color,
-      fontSize: 'var(--at-fs-11)',
+      fontSize: 'var(--at-fs-12)',
       fontWeight: 600,
     }}
     >
@@ -1059,7 +1059,7 @@ function StatusBadge({
         ? '#C127221a'
         : '#0052cc1a',
       color,
-      fontSize: 'var(--at-fs-11)',
+      fontSize: 'var(--at-fs-12)',
       fontWeight: 600,
     }}
     >

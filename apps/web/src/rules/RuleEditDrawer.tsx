@@ -242,7 +242,7 @@ export function RuleEditDrawer({
           >
             <code style={{
               fontFamily: 'ui-monospace, Menlo, monospace',
-              fontSize: 'var(--at-fs-11)',
+              fontSize: 'var(--at-fs-12)',
               color: 'var(--at-fg-muted)',
             }}
             >
@@ -288,7 +288,7 @@ export function RuleEditDrawer({
               {RULE_TYPE_LABEL[rule.rule_type]}
               <span style={{
                 marginLeft: 'auto',
-                fontSize: 'var(--at-fs-11)',
+                fontSize: 'var(--at-fs-12)',
               }}
               >
                 imutável
@@ -686,7 +686,7 @@ function SeverityChip({ severity }: { severity: IncidentSeverityType }): JSX.Ele
       borderRadius: 999,
       background: `${color}1a`,
       color,
-      fontSize: 'var(--at-fs-11)',
+      fontSize: 'var(--at-fs-12)',
       fontWeight: 600,
     }}
     >

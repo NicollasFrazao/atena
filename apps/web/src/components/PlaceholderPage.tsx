@@ -46,7 +46,7 @@ export function PlaceholderPage({
         borderRadius: 999,
         background: 'var(--at-bg-soft)',
         border: '1px solid var(--at-border)',
-        fontSize: 'var(--at-fs-11)',
+        fontSize: 'var(--at-fs-12)',
         color: 'var(--at-fg-subtle)',
       }}
       >

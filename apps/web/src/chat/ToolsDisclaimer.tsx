@@ -65,7 +65,7 @@ export function ToolsDisclaimer(): JSX.Element {
             ? 'var(--at-bg-soft)'
             : 'var(--at-white)',
           color: 'var(--at-fg-muted)',
-          fontSize: 'var(--at-fs-11)',
+          fontSize: 'var(--at-fs-12)',
           fontWeight: 600,
           cursor: 'pointer',
         }}
@@ -137,7 +137,7 @@ export function ToolsDisclaimer(): JSX.Element {
                     </code>
                   </div>
                   <div style={{
-                    fontSize: 'var(--at-fs-11)',
+                    fontSize: 'var(--at-fs-12)',
                     color: 'var(--at-fg-muted)',
                     lineHeight: 'var(--at-lh-22)',
                     marginTop: 2,

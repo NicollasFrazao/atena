@@ -411,7 +411,7 @@ export function AuditPage(): JSX.Element {
                   style={{
                     textAlign: 'left',
                     padding: '9px 14px',
-                    fontSize: 'var(--at-fs-11)',
+                    fontSize: 'var(--at-fs-12)',
                     fontWeight: 600,
                     color: 'var(--at-fg-muted)',
                     textTransform: 'uppercase',
@@ -513,7 +513,7 @@ function Kpi({
     }}
     >
       <div style={{
-        fontSize: 'var(--at-fs-11)',
+        fontSize: 'var(--at-fs-12)',
         fontWeight: 600,
         color: 'var(--at-fg-subtle)',
         textTransform: 'uppercase',

@@ -275,7 +275,7 @@ export function HistoryPage(): JSX.Element {
           style={{ marginBottom: 'var(--at-space-24)' }}
         >
           <div style={{
-            fontSize: 'var(--at-fs-11)',
+            fontSize: 'var(--at-fs-12)',
             fontWeight: 600,
             color: 'var(--at-fg-subtle)',
             textTransform: 'uppercase',
@@ -362,7 +362,7 @@ function SessionCard({
                 borderRadius: 999,
                 background: '#C127221a',
                 color: '#C12722',
-                fontSize: 'var(--at-fs-11)',
+                fontSize: 'var(--at-fs-12)',
                 fontWeight: 600,
               }}
               >
@@ -378,7 +378,7 @@ function SessionCard({
             )
             : null}
           <span style={{
-            fontSize: 'var(--at-fs-11)',
+            fontSize: 'var(--at-fs-12)',
             color: 'var(--at-fg-muted)',
           }}
           >
