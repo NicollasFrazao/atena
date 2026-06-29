@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writ
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
+  BadRequestException,
   Injectable,
   Logger,
   Optional,
@@ -45,6 +46,7 @@ import {
 } from './audit-query.sql';
 import { cleanOrphanCacheVersions, evictCacheDir } from './cache-eviction';
 import { RecordCache } from './record-cache';
+import { ShippingDateIndex, type ShippingDatesInterface } from './shipping-date-index';
 
 /**
  * Resultado da materialização de UMA partição (settled ou recente). `parquet` (cache a usar) OU
@@ -62,6 +64,10 @@ type BindValue = string | number;
 
 /** Milissegundos em um dia (janela default de `search`/`getShipping`/`getTrail`). */
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Janela máxima (dias) aceita p/ a trilha de um id DESCONHECIDO (sem cache/índice): acima disto,
+ *  exige a data (em vez de varrer ~30 dias). ~1-2 dias cobrem o ciclo de vida de um envio. */
+const TRAIL_MAX_WINDOW_DAYS = 3;
 
 /**
  * Mínimo de dígitos do filtro de telefone para casar por SUFIXO (tolera busca sem o DDI). Um número
@@ -284,6 +290,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     RECORD_CACHE_MAX,
   );
 
+  /** Índice persistente `shipping_id → datas` (atalho durável de janela p/ a trilha). Vide constructor. */
+  private readonly shippingIndex: ShippingDateIndex;
+
   /** Acumulado de custo de leitura do S3 (desde a subida): partições frias/cache/recentes + objetos. */
   private readonly scan = {
     queries: 0,
@@ -326,6 +335,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       tmpDir,
       `audit-ev-${EV_CACHE_VERSION}`,
     );
+
+    // Índice de datas no diretório de cache (volume persistido) → sobrevive a restart/deploy.
+    this.shippingIndex = new ShippingDateIndex(this.cacheDir);
 
     // Extensões DuckDB (httpfs/aws) baixadas 1× e persistidas no volume — sem re-download por restart.
     this.extensionDir = join(
@@ -513,8 +525,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
         const records = rows.map((row) => this.toRecord(row));
 
-        // Aquece o cache por id: um reveal/análise logo após a busca lê daqui (sem re-varrer o S3).
-        records.forEach((record) => this.recordCache.set(record));
+        // Aquece o cache por id + índice de datas: reveal/análise logo após a busca lê daqui, e a
+        // trilha de um desses ids estreita a janela pelo índice (sem re-varrer o S3 / 30 dias).
+        records.forEach((record) => this.rememberShipping(record));
 
         const head = aggRows[0] ?? {};
 
@@ -562,6 +575,58 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /**
+   * Memoriza um envio: cache quente por id (reveal/análise logo após sem re-varrer o S3) + índice
+   * PERSISTENTE de datas (atalho durável da janela da trilha — sobrevive a restart, vide {@link ShippingDateIndex}).
+   *
+   * @param {DeliveryRecordInterface} record - Registro do envio.
+   * @returns {void}
+   */
+  private rememberShipping(record: DeliveryRecordInterface): void {
+    this.recordCache.set(record);
+
+    this.shippingIndex.record(
+      record.id,
+      record.requestedAt,
+      record.finalizedAt,
+    );
+  }
+
+  /**
+   * Datas de um envio conhecido — cache quente (`recordCache`, sessão atual) OU índice persistente
+   * (`shippingIndex`, durável). Base p/ estreitar a janela da trilha. `null` se nunca visto.
+   *
+   * @param {string} id - Shipping_id (md5).
+   * @returns {ShippingDatesInterface | null} Datas do envio, ou `null` se desconhecido.
+   */
+  private shippingDatesFor(id: string): ShippingDatesInterface | null {
+    const cached = this.recordCache.get(id);
+
+    if (
+      cached
+      && cached.requestedAt.getTime() > 0
+    ) {
+      return {
+        requestedAt: cached.requestedAt,
+        finalizedAt: cached.finalizedAt ?? null,
+      };
+    }
+
+    return this.shippingIndex.get(id);
+  }
+
+  /** `true` se a janela tem início/fim e abrange ≤ {@link TRAIL_MAX_WINDOW_DAYS} (uma data real, não ~30d). */
+  private isNarrowTrailWindow(window?: AuditWindowInterface): boolean {
+    if (
+      !window?.from
+      || !window.to
+    ) {
+      return false;
+    }
+
+    return window.to.getTime() - window.from.getTime() <= TRAIL_MAX_WINDOW_DAYS * DAY_MS;
+  }
+
   /** @inheritdoc */
   async getShipping(
     shippingId: string,
@@ -599,7 +664,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     );
 
     if (record) {
-      this.recordCache.set(record);
+      this.rememberShipping(record);
     }
 
     return record;
@@ -611,20 +676,32 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     window?: AuditWindowInterface,
     onProgress?: AuditProgressCallback,
   ): Promise<DeliveryTrailInterface | null> {
-    // Otimização determinística: se o envio já está no `recordCache` (hidratado por um search/getShipping
-    // recente — o fluxo típico "buscar → abrir trilha"), deriva a janela EXATA do ciclo de vida dele
-    // (`[requested_at, finalized_at]`) → a trilha materializa o `atena_ev` de só ~1 dia (+ buffer), não
-    // da janela ampla da busca nem do default de 30d (que faz o materialize varrer tudo). NÃO depende do
-    // LLM passar a data. Cache frio → cai na janela informada (ou no default). Send-based: o `queued`
-    // está em `requested_at`, e o buffer só-pra-frente alcança o desfecho.
-    const cached = this.recordCache.get(messageId);
+    // Janela da trilha, em ordem: 1) cache quente (reveal recente) ou 2) índice persistente (id já
+    // visto, sobrevive a restart) → ambos dão a janela ESTREITA do ciclo de vida (dia do `requested_at`
+    // → `finalized_at`), determinístico e sem depender do LLM; 3) senão, exige a DATA — sem ela (ou com
+    // janela ampla) RECUSA, em vez de varrer ~30 dias, e o assistente pergunta quando foi o envio.
+    const dates = this.shippingDatesFor(messageId);
 
-    const trailWindow = cached && cached.requestedAt.getTime() > 0
+    if (
+      !dates
+      && !this.isNarrowTrailWindow(window)
+    ) {
+      throw new BadRequestException({
+        error: {
+          code: 'trail_date_required',
+          message: 'Não tenho a data desse envio (não veio de uma busca recente). Para a trilha não '
+            + 'varrer ~30 dias, preciso da DATA aproximada (pode ser só o dia): pergunte ao usuário '
+            + 'QUANDO o envio ocorreu e repasse em date_from/date_to.',
+        },
+      });
+    }
+
+    // Ancora no DIA do envio (não nos minutos): robusto ao skew partição×tempo-lógico; o buffer
+    // só-pra-frente do materialize alcança o desfecho que caia num dia posterior.
+    const trailWindow = dates
       ? {
-        // Ancora no DIA do envio (não nos minutos): robusto ao skew partição×tempo-lógico. O buffer
-        // só-pra-frente do materialize alcança o desfecho que caia num dia posterior.
-        from: startOfUtcDay(cached.requestedAt),
-        to: cached.finalizedAt ?? cached.requestedAt,
+        from: startOfUtcDay(dates.requestedAt),
+        to: dates.finalizedAt ?? dates.requestedAt,
       }
       : window ?? this.defaultWindow();
 
@@ -650,8 +727,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
         const record = this.toRecord(rows[0]);
 
-        // Aquece o cache por id: reveal logo após abrir a trilha não re-varre o S3.
-        this.recordCache.set(record);
+        // Aquece o cache por id + índice de datas (reveal logo após não re-varre; e fixa a janela
+        // desse envio no índice durável, p/ trilhas futuras dele).
+        this.rememberShipping(record);
 
         return {
           record,

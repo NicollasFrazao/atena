@@ -855,4 +855,32 @@ describe('DuckDbAuditQueryService — send-based estrito + reconciliação de ca
     expect(after.total).toBe(3);
     expect(after.rows.map((row) => row.phoneE164)).toContain('5511900000013');
   });
+
+  it('trilha de id DESCONHECIDO + janela AMPLA → recusa (exige a data, não varre ~30d)', async () => {
+    const unknownId = 'f'.repeat(32); // md5 válido, nunca visto (sem cache/índice)
+
+    const wide = {
+      from: new Date('2026-06-01T00:00:00Z'),
+      to: new Date('2026-06-30T00:00:00Z'), // 29 dias > teto (3d)
+    };
+
+    await expect(service.getTrail(
+      unknownId,
+      wide,
+    )).rejects.toThrow();
+  });
+
+  it('trilha de id desconhecido + janela ESTREITA (uma data) → prossegue (não recusa); id ausente → null', async () => {
+    const unknownId = 'e'.repeat(32);
+
+    const narrow = {
+      from: new Date('2026-06-10T00:00:00Z'),
+      to: new Date('2026-06-11T00:00:00Z'), // 1 dia ≤ teto
+    };
+
+    await expect(service.getTrail(
+      unknownId,
+      narrow,
+    )).resolves.toBeNull();
+  });
 });
