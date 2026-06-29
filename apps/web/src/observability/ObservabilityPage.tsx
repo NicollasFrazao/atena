@@ -881,8 +881,14 @@ function ToolRow({ tool }: { tool: ToolUsageStatInterface }): JSX.Element {
         </span>
       </td>
       <LatencyCell value={tool.p50_ms} />
-      <LatencyCell value={tool.p95_ms} />
-      <LatencyCell value={tool.p99_ms} />
+      <LatencyCell
+        value={tool.p95_ms}
+        heavyThreshold={1000}
+      />
+      <LatencyCell
+        value={tool.p99_ms}
+        muted
+      />
       <td style={{
         padding: '9px 14px',
         width: 92,
@@ -987,14 +993,40 @@ function LatencySparkline({
   );
 }
 
-/** Célula de latência (ms, tabular) — `—` quando sem amostra. */
-function LatencyCell({ value }: { value: number | null }): JSX.Element {
+/**
+ * Célula de latência (ms, tabular) — `—` quando sem amostra. Com `heavyThreshold`, fica ÂMBAR + bold
+ * quando o valor passa do limiar (sinaliza tool lenta, como no protótipo); `muted` deixa o valor mais
+ * apagado (p99, o "teto").
+ *
+ * @param {{ value: number | null; heavyThreshold?: number; muted?: boolean }} props - Valor + realces.
+ * @returns {JSX.Element} A célula.
+ */
+function LatencyCell({
+  value,
+  heavyThreshold,
+  muted,
+}: {
+  value: number | null;
+  heavyThreshold?: number;
+  muted?: boolean
+}): JSX.Element {
+  const heavy = heavyThreshold !== undefined
+    && value !== null
+    && value > heavyThreshold;
+
   return (
     <td style={{
       padding: '9px 14px',
       fontSize: 'var(--at-fs-14)',
       fontVariantNumeric: 'tabular-nums',
-      color: 'var(--at-fg-muted)',
+      fontWeight: heavy
+        ? 600
+        : 500,
+      color: heavy
+        ? 'var(--at-warning-200)'
+        : muted
+          ? 'var(--at-fg-muted)'
+          : 'var(--at-fg)',
     }}
     >
       {value === null
@@ -1009,6 +1041,9 @@ function LatencyCell({ value }: { value: number | null }): JSX.Element {
  * como no protótipo). Motivo sem exemplo mapeado → o card mostra só reason + contagem.
  */
 const REFUSAL_REASON_EXAMPLE: Record<string, string> = {
+  // `fora_do_escopo` é o motivo REAL emitido pelo orquestrador (buildRefusal). Os demais ficam
+  // mapeados de forma prospectiva (caso um classificador de recusa passe a distingui-los).
+  fora_do_escopo: 'Reenviar mensagem',
   fora_de_escopo: 'Reenviar mensagem',
   falta_de_contexto: 'Sem message_id ou telefone',
   prompt_injection: 'Tentativa em conteúdo de SMS',
