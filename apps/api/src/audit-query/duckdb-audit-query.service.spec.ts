@@ -1,6 +1,13 @@
 import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ConfigService } from '@nestjs/config';
@@ -882,5 +889,203 @@ describe('DuckDbAuditQueryService — send-based estrito + reconciliação de ca
       unknownId,
       narrow,
     )).resolves.toBeNull();
+  });
+});
+
+describe('DuckDbAuditQueryService — cache incremental (manifesto + shards + compactação)', () => {
+  let root: string;
+  let cacheRoot: string;
+  let service: DuckDbAuditQueryService;
+
+  const INC_WINDOW: AuditWindowInterface = {
+    from: new Date('2026-06-10T00:00:00Z'),
+    to: new Date('2026-06-11T00:00:00Z'),
+  };
+
+  const partDir = (): string => join(
+    root,
+    'year=2026/month=06/day=10/hour=12',
+  );
+
+  /** Arquivos do cache (sob o tmpDir) terminando em `suffix` — sem depender do EV_CACHE_VERSION. */
+  const cacheFiles = (suffix: string): string[] => readdirSync(
+    cacheRoot,
+    { recursive: true },
+  )
+    .map(String)
+    .filter((name) => name.endsWith(suffix));
+
+  /** Parquets do cache de EVENTOS (`audit-ev-*`) — exclui os Parquets de snapshot de busca. */
+  const evParquets = (): string[] => cacheFiles('.parquet')
+    .filter((name) => name.includes('audit-ev-'));
+
+  /** Lê o (único) manifesto de partição do cache. */
+  const readManifest = (): {
+    baseObjects: string[];
+    baseParquet: string;
+    shardObjects: string[];
+    shardParquet: string | null;
+  } => {
+    const [found] = cacheFiles('.manifest');
+
+    return JSON.parse(readFileSync(
+      join(
+        cacheRoot,
+        found,
+      ),
+      'utf8',
+    )) as ReturnType<typeof readManifest>;
+  };
+
+  const makeService = (
+    overrides: Record<string, unknown> = {},
+  ): DuckDbAuditQueryService => new DuckDbAuditQueryService(configStub({
+    'auditQuery.sourceRoot': root,
+    'auditQuery.defaultWindowDays': 30,
+    'auditQuery.cacheSettleMinutes': 0, // partição já fechada → settled (cacheável).
+    'auditQuery.lateStatusBufferHours': 0, // dado numa só partição.
+    'auditQuery.lagHours': 24 * 365 * 100, // lag "infinito" → settled é SEMPRE reconciliada por LIST.
+    'cache.tmpDir': cacheRoot,
+    's3.logsBucket': '',
+    'aws.region': 'us-east-1',
+    ...overrides,
+  }));
+
+  const send = (
+    campaignId: string,
+    phone: string,
+  ): string[] => [
+    detailedRecord({
+      campaign_id: campaignId,
+      status: 'queued',
+      phone,
+      client_id: '9000',
+      provider_name: 'sinch',
+      processed_at: '2026-06-10T12:00:00Z',
+    }),
+    detailedRecord({
+      campaign_id: campaignId,
+      status: 'delivered',
+      phone,
+      client_id: '9000',
+      provider_name: 'sinch',
+      processed_at: '2026-06-10T12:05:00Z',
+    }),
+  ];
+
+  beforeAll(() => {
+    root = mkdtempSync(join(
+      tmpdir(),
+      'atena-cacheinc-',
+    ));
+
+    cacheRoot = join(
+      root,
+      '.cache',
+    );
+
+    mkdirSync(
+      partDir(),
+      { recursive: true },
+    );
+
+    writeFileSync(
+      join(
+        partDir(),
+        'a.json.gz',
+      ),
+      gzipSync(Buffer.from(`${send(
+        'req-a',
+        '+5511900000010',
+      ).join('\n')}\n`)),
+    );
+
+    service = makeService();
+  });
+
+  afterAll(() => {
+    service.onModuleDestroy();
+
+    rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  });
+
+  it('cold: grava base + manifesto que LISTA os objetos cacheados (visibilidade), sem shard', async () => {
+    const page = await service.search(
+      { window: INC_WINDOW },
+      1,
+      20,
+    );
+
+    expect(page.total).toBe(1);
+
+    const manifest = readManifest();
+
+    expect(manifest.baseObjects).toHaveLength(1);
+    expect(manifest.baseObjects[0]).toContain('a.json.gz');
+    expect(manifest.shardParquet).toBeNull();
+    expect(evParquets()).toHaveLength(1); // só o base
+  });
+
+  it('objeto novo dentro do lag: vira SHARD (base INTACTO = incremental) e o resultado reflete o delta', async () => {
+    const before = readManifest();
+
+    // Chega um objeto atrasado na MESMA partição (novo destinatário com queued).
+    writeFileSync(
+      join(
+        partDir(),
+        'b.json.gz',
+      ),
+      gzipSync(Buffer.from(`${send(
+        'req-b',
+        '+5511900000011',
+      ).join('\n')}\n`)),
+    );
+
+    const page = await service.search(
+      { window: INC_WINDOW },
+      1,
+      20,
+    );
+
+    expect(page.total).toBe(2);
+    expect(page.rows.map((row) => row.phoneE164)).toContain('5511900000011');
+
+    const after = readManifest();
+
+    // O base NÃO foi reescrito (mesmo arquivo) — só o objeto novo foi lido p/ um shard.
+    expect(after.baseParquet).toBe(before.baseParquet);
+    expect(after.shardParquet).not.toBeNull();
+    expect(after.shardObjects.some((object) => object.includes('b.json.gz'))).toBe(true);
+    expect(evParquets()).toHaveLength(2); // base + shard
+  });
+
+  it('settle ALÉM do lag: compacta base+shard num único Parquet (0 S3) preservando o dado', async () => {
+    // Mesmo cache, mas lag finito → a partição de 2026-06-10 fica ALÉM do lag → dispara compactação.
+    const compacting = makeService({ 'auditQuery.lagHours': 48 });
+
+    try {
+      const page = await compacting.search(
+        { window: INC_WINDOW },
+        1,
+        20,
+      );
+
+      expect(page.total).toBe(2); // dado preservado
+
+      const manifest = readManifest();
+
+      expect(manifest.shardParquet).toBeNull(); // shard dobrado no base
+      expect(manifest.baseObjects).toHaveLength(2); // base agora contém os dois objetos
+      expect(evParquets()).toHaveLength(1); // só o base compactado
+    }
+    finally {
+      compacting.onModuleDestroy();
+    }
   });
 });

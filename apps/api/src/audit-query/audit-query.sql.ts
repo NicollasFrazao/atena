@@ -292,6 +292,29 @@ export function evCopyToParquetSql(
 }
 
 /**
+ * `COPY (read_parquet([base, shard…]) ORDER BY …) TO '<parquet>'` — COMPACTA os Parquets de cache de
+ * uma partição (já em formato `ev`) num único arquivo ordenado. Acionado ao "settlar" além do lag:
+ * dobra o(s) shard(s) de objetos atrasados no base e reaplica a ordenação global. Lê só arquivos
+ * LOCAIS (0 requests S3).
+ *
+ * @param {string[]} parquets - Parquets de cache a unir (base + shards).
+ * @param {string} parquetPath - Destino do Parquet compactado.
+ * @returns {string} Comando `COPY`.
+ */
+export function evCompactParquetsSql(
+  parquets: string[],
+  parquetPath: string,
+): string {
+  return `COPY (
+    SELECT ${EV_COLUMNS} FROM read_parquet([${pathListLiteral(parquets)}])
+    ORDER BY customer, app_id, campaign_id, phone, processed_at
+  ) TO '${parquetPath.replaceAll(
+    "'",
+    "''",
+  )}' (FORMAT PARQUET)`;
+}
+
+/**
  * DDL que materializa, numa TEMP TABLE, os eventos `ev` da janela — unindo o cache Parquet (settled)
  * e os objetos JSON live (não-settled). Um registro por transição de status (queued/delivered/...).
  *

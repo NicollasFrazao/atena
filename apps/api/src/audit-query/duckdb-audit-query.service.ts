@@ -33,6 +33,7 @@ import type {
 } from './audit-query.types';
 import {
   EMPTY_EV_DDL,
+  evCompactParquetsSql,
   evCopyToParquetSql,
   evDdlFromSources,
   globSql,
@@ -49,14 +50,30 @@ import { RecordCache } from './record-cache';
 import { ShippingDateIndex, type ShippingDatesInterface } from './shipping-date-index';
 
 /**
- * Resultado da materialização de UMA partição (settled ou recente). `parquet` (cache a usar) OU
- * `json` (objetos live a ler); `s3Objects` lidos; `kind` p/ a contabilidade de custo do scan.
+ * Resultado da materialização de UMA partição (settled ou recente). `parquet` (Parquets de cache a
+ * ler — base + shards; vazio se nada) E/OU `json` (objetos live a ler); `s3Objects` lidos; `kind`
+ * p/ a contabilidade de custo do scan.
  */
 interface PartitionMaterializeResultInterface {
-  parquet: string | null;
+  parquet: string[];
   json: string[];
   s3Objects: number;
   kind: 'cached' | 'cold' | 'live';
+}
+
+/**
+ * Manifesto de uma partição SETTLED — fonte de verdade do "read-set" (substitui o sidecar sha256
+ * opaco). Lista os OBJETOS do S3 já dobrados no cache (visibilidade + diff p/ incrementalidade) e os
+ * PARQUETS exatos a ler. `base` = leitura fria (estável); `shard` = objetos que chegaram DEPOIS
+ * (atrasados, dentro do lag) — relido incrementalmente e compactado no base ao settlar além do lag.
+ * Nomes de Parquet são basenames (resolvidos sob `cacheDir`) e uuid-nomeados (nunca sobrescritos →
+ * troca atômica via swap do manifesto; leitura em voo sobrevive por unlinked-but-open).
+ */
+interface PartitionManifestInterface {
+  baseObjects: string[];
+  baseParquet: string;
+  shardObjects: string[];
+  shardParquet: string | null;
 }
 
 /** Valor aceito no bind posicional (`$1..`) do DuckDB nesta camada. */
@@ -88,8 +105,9 @@ const RECORD_CACHE_TTL_MS = 30 * 60 * 1000;
 /** Teto do cache de registros por id (FIFO ao exceder) — limita o uso de memória. */
 const RECORD_CACHE_MAX = 10_000;
 
-/** Versão do cache de eventos no `/tmp`; bump invalida os Parquets antigos se a normalização mudar. */
-const EV_CACHE_VERSION = 'v9';
+/** Versão do cache de eventos no `/tmp`; bump invalida os Parquets antigos se a normalização — ou o
+ *  LAYOUT do cache — mudar. v10: layout manifesto+shards (antes: 1 Parquet/partição + sidecar sha256). */
+const EV_CACHE_VERSION = 'v10';
 
 /** Período da eviction agendada do cache de eventos (1h) — varre idade + teto de tamanho. */
 const EVICT_INTERVAL_MS = 60 * 60 * 1000;
@@ -180,21 +198,6 @@ function startOfUtcDay(date: Date): Date {
     date.getUTCMonth(),
     date.getUTCDate(),
   ));
-}
-
-/**
- * Impressão estável do CONJUNTO de objetos de uma partição (chaves ordenadas + hash). Detecta
- * objetos novos/removidos numa partição já cacheada SEM reler conteúdo — o detailed report é
- * append-only (lag de horas), então dado novo = chave nova. Gravada num sidecar ao lado do Parquet
- * e comparada na reconciliação (ver `materializePartition`).
- *
- * @param {string[]} files - Objetos (URLs/keys) atuais da partição.
- * @returns {string} Digest hex do conjunto ordenado.
- */
-function objectsFingerprint(files: string[]): string {
-  return createHash('sha256')
-    .update([...files].sort().join('\n'))
-    .digest('hex');
 }
 
 /**
@@ -1714,9 +1717,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
         now,
       );
 
-      if (result.parquet !== null) {
-        parquetFiles.push(result.parquet);
-      }
+      parquetFiles.push(...result.parquet);
 
       jsonFiles.push(...result.json);
       s3Objects += result.s3Objects;
@@ -1992,25 +1993,14 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Resolve uma partição RECENTE (não-settled): reusa o Parquet de cache live se fresco (≤ TTL); senão
-   * lê o S3 (live) e, com TTL > 0, materializa o Parquet (atômico) p/ as próximas queries reusarem.
-   *
-   * @param {DuckDBConnection} connection - Conexão DuckDB.
-   * @param {string} cacheKey - Chave da partição.
-   * @param {string} glob - Glob S3 da partição.
-   * @param {Date} now - Instante de referência p/ a validade do TTL.
-   * @returns {Promise<{ parquet: string | null; json: string[]; s3Objects: number; cached: boolean }>}
-   *   `parquet` (cache live a usar) OU `json` (objetos live a ler); `s3Objects` lidos; `cached` = 0 S3.
-   */
-  /**
-   * Materializa UMA partição: recente (live, com cache TTL) ou settled (cache permanente / fria).
-   * Extraída do laço de `materialize` p/ manter a complexidade no limite. Não muta estado — devolve
-   * o que usar (parquet/json), os objetos S3 lidos e o `kind` p/ a contabilidade.
+   * Materializa UMA partição — dispatcher: recente → {@link materializeLive} (cache TTL); settled →
+   * {@link materializeSettled} (manifesto/shards / fria). Não muta estado externo; devolve o que ler
+   * (parquets/json), os objetos S3 lidos e o `kind` p/ a contabilidade do scan.
    *
    * @param {DuckDBConnection} connection - Conexão DuckDB.
    * @param {PartitionDescriptorInterface} descriptor - Partição candidata (glob/cacheKey/endsAt).
    * @param {number} settledBefore - Limiar (epoch ms): partição fechada antes disto é "settled".
-   * @param {Date} now - Instante de referência (TTL do cache live).
+   * @param {Date} now - Instante de referência (TTL do cache live / horizonte de lag).
    * @returns {Promise<PartitionMaterializeResultInterface>} Resultado da partição.
    */
   private async materializePartition(
@@ -2022,107 +2012,145 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     const settled = descriptor.endsAt !== null
       && descriptor.endsAt.getTime() <= settledBefore;
 
-    // Partição RECENTE (live): reusa o cache TTL se fresco; senão lê o S3 e (com TTL>0) materializa.
-    if (!settled) {
-      const livePath = this.liveCachePathFor(descriptor.cacheKey);
-
-      if (
-        this.liveCacheTtlMs > 0
-        && existsSync(livePath)
-        && now.getTime() - statSync(livePath).mtimeMs < this.liveCacheTtlMs
-      ) {
-        return {
-          parquet: livePath,
-          json: [],
-          s3Objects: 0,
-          kind: 'cached',
-        };
-      }
-
-      const live = await this.expandPartition(
+    return settled
+      ? this.materializeSettled(
         connection,
-        descriptor.glob,
+        descriptor,
+        now,
+      )
+      : this.materializeLive(
+        connection,
+        descriptor,
+        now,
       );
+  }
 
-      if (
-        this.liveCacheTtlMs > 0
-        && live.length > 0
-      ) {
-        await this.cachePartition(
-          connection,
-          live,
-          livePath,
-        );
+  /**
+   * Partição RECENTE (não-settled): reusa o Parquet de cache live se fresco (≤ TTL); senão lê o S3 e,
+   * com TTL > 0, materializa (atômico) p/ as próximas queries. Esquema simples (1 Parquet + mtime-TTL):
+   * a partição aberta muda rápido, então o ganho do manifesto incremental (reservado às settled) não
+   * compensa aqui.
+   *
+   * @param {DuckDBConnection} connection - Conexão DuckDB.
+   * @param {PartitionDescriptorInterface} descriptor - Partição candidata.
+   * @param {Date} now - Instante de referência (validade do TTL).
+   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado da partição.
+   */
+  private async materializeLive(
+    connection: DuckDBConnection,
+    descriptor: PartitionDescriptorInterface,
+    now: Date,
+  ): Promise<PartitionMaterializeResultInterface> {
+    const livePath = this.liveCachePathFor(descriptor.cacheKey);
 
-        return {
-          parquet: livePath,
-          json: [],
-          s3Objects: live.length,
-          kind: 'live',
-        };
-      }
-
-      return {
-        parquet: null,
-        json: live,
-        s3Objects: live.length,
-        kind: 'live',
-      };
-    }
-
-    // Partição SETTLED.
-    const cachePath = this.cachePathFor(descriptor.cacheKey);
-    const cached = existsSync(cachePath);
-
-    const withinLag = descriptor.endsAt !== null
-      && descriptor.endsAt.getTime() > now.getTime() - this.lagMs;
-
-    // Cache válido e ALÉM do lag: o detailed report não ganha mais objetos aqui (append-only) →
-    // imutável, serve do Parquet sem nem listar o S3 (0 requests).
     if (
-      cached
-      && !withinLag
+      this.liveCacheTtlMs > 0
+      && existsSync(livePath)
+      && now.getTime() - statSync(livePath).mtimeMs < this.liveCacheTtlMs
     ) {
       return {
-        parquet: cachePath,
+        parquet: [livePath],
         json: [],
         s3Objects: 0,
         kind: 'cached',
       };
     }
 
-    // Fria (sem cache) OU settled DENTRO do lag: LIST barato p/ saber o conjunto ATUAL de objetos.
+    const live = await this.expandPartition(
+      connection,
+      descriptor.glob,
+    );
+
+    if (
+      this.liveCacheTtlMs > 0
+      && live.length > 0
+    ) {
+      await this.cachePartition(
+        connection,
+        live,
+        livePath,
+      );
+
+      return {
+        parquet: [livePath],
+        json: [],
+        s3Objects: live.length,
+        kind: 'live',
+      };
+    }
+
+    return {
+      parquet: [],
+      json: live,
+      s3Objects: live.length,
+      kind: 'live',
+    };
+  }
+
+  /**
+   * Partição SETTLED. O manifesto é a fonte de verdade do read-set (base + shards) e dos objetos já
+   * dobrados; `cached` exige manifesto E que os Parquets referenciados existam (guarda contra a eviction
+   * tê-los removido → trata como frio e reconstrói). ALÉM do lag: imutável (append-only) — compacta o
+   * shard pendente (se houver) num base único (0 S3) ou serve direto. DENTRO do lag (ou fria): LIST +
+   * reconcilia (ver {@link reconcileSettled}); fria sem cache → write-through completo.
+   *
+   * @param {DuckDBConnection} connection - Conexão DuckDB.
+   * @param {PartitionDescriptorInterface} descriptor - Partição candidata.
+   * @param {Date} now - Instante de referência (horizonte de lag).
+   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado da partição.
+   */
+  private async materializeSettled(
+    connection: DuckDBConnection,
+    descriptor: PartitionDescriptorInterface,
+    now: Date,
+  ): Promise<PartitionMaterializeResultInterface> {
+    const manifest = this.readManifest(descriptor.cacheKey);
+
+    const cached = manifest !== null
+      && this.manifestParquetsExist(manifest);
+
+    const withinLag = descriptor.endsAt !== null
+      && descriptor.endsAt.getTime() > now.getTime() - this.lagMs;
+
+    if (
+      cached
+      && !withinLag
+    ) {
+      if (manifest.shardParquet !== null) {
+        return this.compactPartition(
+          connection,
+          descriptor.cacheKey,
+          manifest,
+        );
+      }
+
+      return {
+        parquet: this.manifestParquets(manifest),
+        json: [],
+        s3Objects: 0,
+        kind: 'cached',
+      };
+    }
+
+    // Fria (sem cache válido) OU settled DENTRO do lag: LIST barato p/ saber o conjunto ATUAL de objetos.
     const files = await this.expandPartition(
       connection,
       descriptor.glob,
     );
 
     if (cached) {
-      // Reconciliação: o detailed report é append-only, então só re-lê se SURGIU objeto novo (a
-      // impressão mudou). LIST vazio = transitório/fonte indisponível → mantém o cache (não dropa).
-      const unchanged = files.length === 0
-        || objectsFingerprint(files) === this.readCacheFingerprint(cachePath);
-
-      if (unchanged) {
-        return {
-          parquet: cachePath,
-          json: [],
-          s3Objects: 0,
-          kind: 'cached',
-        };
-      }
-
-      return this.writeColdCache(
+      return this.reconcileSettled(
         connection,
+        descriptor.cacheKey,
+        manifest,
         files,
-        cachePath,
       );
     }
 
     // Fria sem cache: nada a ler (janela vazia) ou primeira leitura (write-through).
     if (files.length === 0) {
       return {
-        parquet: null,
+        parquet: [],
         json: [],
         s3Objects: 0,
         kind: 'cold',
@@ -2132,64 +2160,330 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     return this.writeColdCache(
       connection,
       files,
-      cachePath,
+      descriptor.cacheKey,
     );
   }
 
   /**
-   * (Re)lê os objetos da partição p/ o Parquet de cache (write-through) e grava a impressão do
-   * conjunto (sidecar) p/ a reconciliação futura. Usado na leitura fria e no refresh por lag.
+   * Reconciliação de uma partição SETTLED já cacheada (dentro do lag): DIFF do conjunto atual contra o
+   * manifesto. A fonte é append-only ⇒ só os objetos NOVOS são lidos (shard acumulado + novos, SEM
+   * reler o base). LIST vazio = transitório → mantém o cache; objeto removido (raro) → rewrite completo.
+   *
+   * @param {DuckDBConnection} connection - Conexão DuckDB.
+   * @param {string} cacheKey - Chave da partição.
+   * @param {PartitionManifestInterface} manifest - Manifesto atual.
+   * @param {string[]} files - Conjunto ATUAL de objetos da partição (do LIST).
+   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado (cache servido / shard / rewrite).
+   */
+  private async reconcileSettled(
+    connection: DuckDBConnection,
+    cacheKey: string,
+    manifest: PartitionManifestInterface,
+    files: string[],
+  ): Promise<PartitionMaterializeResultInterface> {
+    const served: PartitionMaterializeResultInterface = {
+      parquet: this.manifestParquets(manifest),
+      json: [],
+      s3Objects: 0,
+      kind: 'cached',
+    };
+
+    if (files.length === 0) {
+      return served; // LIST vazio = transitório/fonte indisponível → não dropa o cache.
+    }
+
+    const folded = new Set([
+      ...manifest.baseObjects,
+      ...manifest.shardObjects,
+    ]);
+
+    const current = new Set(files);
+    const newFiles = files.filter((file) => !folded.has(file));
+    const removed = [...folded].some((object) => !current.has(object));
+
+    if (removed) {
+      return this.writeColdCache(
+        connection,
+        files,
+        cacheKey,
+      );
+    }
+
+    if (newFiles.length === 0) {
+      return served;
+    }
+
+    return this.appendShard(
+      connection,
+      cacheKey,
+      manifest,
+      newFiles,
+    );
+  }
+
+  /**
+   * Leitura FRIA (ou rewrite por objeto removido): lê TODOS os objetos p/ um Parquet `base` novo
+   * (uuid, ordenado) e grava o manifesto (base = todos os objetos; sem shard). Remove os Parquets do
+   * manifesto anterior (se havia) DEPOIS do swap.
    *
    * @param {DuckDBConnection} connection - Conexão DuckDB.
    * @param {string[]} files - Objetos S3 a ler (não-vazio).
-   * @param {string} cachePath - Destino do Parquet de cache.
-   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado `cold` apontando p/ o cache.
+   * @param {string} cacheKey - Chave da partição.
+   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado `cold` apontando p/ o base.
    */
   private async writeColdCache(
     connection: DuckDBConnection,
     files: string[],
-    cachePath: string,
+    cacheKey: string,
   ): Promise<PartitionMaterializeResultInterface> {
+    const previous = this.readManifest(cacheKey);
+
+    const baseName = this.newParquetName(
+      cacheKey,
+      'base',
+    );
+
     await this.cachePartition(
       connection,
       files,
-      cachePath,
+      this.parquetAbs(baseName),
     );
 
-    this.writeCacheFingerprint(
-      cachePath,
-      objectsFingerprint(files),
+    const manifest: PartitionManifestInterface = {
+      baseObjects: files,
+      baseParquet: baseName,
+      shardObjects: [],
+      shardParquet: null,
+    };
+
+    this.writeManifest(
+      cacheKey,
+      manifest,
     );
+
+    if (previous) {
+      this.deleteManifestParquets(previous);
+    }
 
     return {
-      parquet: cachePath,
+      parquet: this.manifestParquets(manifest),
       json: [],
       s3Objects: files.length,
       kind: 'cold',
     };
   }
 
-  /** Lê a impressão dos objetos que geraram o Parquet de cache (sidecar `.objects`); null se ausente. */
-  private readCacheFingerprint(cachePath: string): string | null {
-    const sidecar = `${cachePath}.objects`;
+  /**
+   * Incremental (settled dentro do lag, objetos novos): relê o shard acumulado + os novos num Parquet
+   * `shard` novo (uuid, ordenado) — SEM tocar o base — e troca o manifesto (swap atômico). Remove o
+   * shard anterior DEPOIS do swap.
+   *
+   * @param {DuckDBConnection} connection - Conexão DuckDB.
+   * @param {string} cacheKey - Chave da partição.
+   * @param {PartitionManifestInterface} manifest - Manifesto atual.
+   * @param {string[]} newFiles - Objetos novos (ausentes do manifesto).
+   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado apontando p/ base + novo shard.
+   */
+  private async appendShard(
+    connection: DuckDBConnection,
+    cacheKey: string,
+    manifest: PartitionManifestInterface,
+    newFiles: string[],
+  ): Promise<PartitionMaterializeResultInterface> {
+    const shardObjects = [
+      ...manifest.shardObjects,
+      ...newFiles,
+    ];
 
-    return existsSync(sidecar)
-      ? readFileSync(
-        sidecar,
-        'utf8',
-      )
-      : null;
+    const shardName = this.newParquetName(
+      cacheKey,
+      'shard',
+    );
+
+    await this.cachePartition(
+      connection,
+      shardObjects,
+      this.parquetAbs(shardName),
+    );
+
+    const next: PartitionManifestInterface = {
+      baseObjects: manifest.baseObjects,
+      baseParquet: manifest.baseParquet,
+      shardObjects,
+      shardParquet: shardName,
+    };
+
+    this.writeManifest(
+      cacheKey,
+      next,
+    );
+
+    if (manifest.shardParquet) {
+      rmSync(
+        this.parquetAbs(manifest.shardParquet),
+        { force: true },
+      );
+    }
+
+    return {
+      parquet: this.manifestParquets(next),
+      json: [],
+      s3Objects: shardObjects.length,
+      kind: 'cold',
+    };
   }
 
-  /** Grava a impressão do conjunto de objetos que gerou o Parquet de cache (sidecar `.objects`). */
-  private writeCacheFingerprint(
-    cachePath: string,
-    fingerprint: string,
-  ): void {
-    writeFileSync(
-      `${cachePath}.objects`,
-      fingerprint,
+  /**
+   * Compactação (settled ALÉM do lag, com shard): dobra base + shard(s) num Parquet `base` único e
+   * ordenado lendo só arquivos LOCAIS (0 S3), troca o manifesto (swap atômico) e remove os Parquets
+   * antigos DEPOIS do swap. A partir daí a partição é imutável e servida direto.
+   *
+   * @param {DuckDBConnection} connection - Conexão DuckDB.
+   * @param {string} cacheKey - Chave da partição.
+   * @param {PartitionManifestInterface} manifest - Manifesto atual (com shard).
+   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado `cached` apontando p/ o base compactado.
+   */
+  private async compactPartition(
+    connection: DuckDBConnection,
+    cacheKey: string,
+    manifest: PartitionManifestInterface,
+  ): Promise<PartitionMaterializeResultInterface> {
+    const baseName = this.newParquetName(
+      cacheKey,
+      'base',
     );
+
+    const baseAbs = this.parquetAbs(baseName);
+    const tmpPath = `${baseAbs}.${randomUUID()}.tmp`;
+
+    await connection.run(evCompactParquetsSql(
+      this.manifestParquets(manifest),
+      tmpPath,
+    ));
+
+    renameSync(
+      tmpPath,
+      baseAbs,
+    );
+
+    const next: PartitionManifestInterface = {
+      baseObjects: [
+        ...manifest.baseObjects,
+        ...manifest.shardObjects,
+      ],
+      baseParquet: baseName,
+      shardObjects: [],
+      shardParquet: null,
+    };
+
+    this.writeManifest(
+      cacheKey,
+      next,
+    );
+
+    this.deleteManifestParquets(manifest);
+
+    return {
+      parquet: [baseAbs],
+      json: [],
+      s3Objects: 0,
+      kind: 'cached',
+    };
+  }
+
+  /** Digest estável de uma partição (`sha256(sourceRoot|chave)`; isola por fonte). */
+  private partitionDigest(cacheKey: string): string {
+    return createHash('sha256')
+      .update(`${this.sourceRoot}|${cacheKey}`)
+      .digest('hex');
+  }
+
+  /** Caminho do manifesto de uma partição settled. */
+  private manifestPathFor(cacheKey: string): string {
+    return join(
+      this.cacheDir,
+      `${this.partitionDigest(cacheKey)}.manifest`,
+    );
+  }
+
+  /** Basename de um Parquet novo (uuid) p/ uma partição — `role` = base | shard. Nunca sobrescreve. */
+  private newParquetName(
+    cacheKey: string,
+    role: 'base' | 'shard',
+  ): string {
+    return `${this.partitionDigest(cacheKey)}.${role}-${randomUUID()}.parquet`;
+  }
+
+  /** Caminho absoluto de um Parquet de partição a partir do basename do manifesto. */
+  private parquetAbs(name: string): string {
+    return join(
+      this.cacheDir,
+      name,
+    );
+  }
+
+  /** Caminhos absolutos dos Parquets do manifesto (base + shard, nessa ordem). */
+  private manifestParquets(manifest: PartitionManifestInterface): string[] {
+    const files = [this.parquetAbs(manifest.baseParquet)];
+
+    if (manifest.shardParquet) {
+      files.push(this.parquetAbs(manifest.shardParquet));
+    }
+
+    return files;
+  }
+
+  /** True se TODOS os Parquets do manifesto existem (guarda contra a eviction tê-los removido). */
+  private manifestParquetsExist(manifest: PartitionManifestInterface): boolean {
+    return this.manifestParquets(manifest).every((file) => existsSync(file));
+  }
+
+  /** Lê o manifesto de uma partição (`null` se ausente ou corrompido → tratado como frio). */
+  private readManifest(cacheKey: string): PartitionManifestInterface | null {
+    const path = this.manifestPathFor(cacheKey);
+
+    if (!existsSync(path)) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(readFileSync(
+        path,
+        'utf8',
+      )) as PartitionManifestInterface;
+    }
+    catch {
+      return null;
+    }
+  }
+
+  /** Grava o manifesto (atômico: tmp + rename) — linearização do read-set da partição. */
+  private writeManifest(
+    cacheKey: string,
+    manifest: PartitionManifestInterface,
+  ): void {
+    const path = this.manifestPathFor(cacheKey);
+    const tmpPath = `${path}.${randomUUID()}.tmp`;
+
+    writeFileSync(
+      tmpPath,
+      JSON.stringify(manifest),
+    );
+
+    renameSync(
+      tmpPath,
+      path,
+    );
+  }
+
+  /** Remove os Parquets de um manifesto (base + shard); chamado SÓ após o swap do manifesto. */
+  private deleteManifestParquets(manifest: PartitionManifestInterface): void {
+    for (const file of this.manifestParquets(manifest)) {
+      rmSync(
+        file,
+        { force: true },
+      );
+    }
   }
 
   /** Expande um glob de partição nos objetos existentes (via `glob()`, que tolera padrão sem match). */
