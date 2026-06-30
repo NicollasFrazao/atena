@@ -9,17 +9,17 @@
 Welcome to the repository knowledge base. Start with the project overview, then dive into specific guides as needed.
 
 ## Core Guides
-- [Project Overview](./project-overview.md)
-- [Architecture Notes](./architecture.md)
-- [Development Workflow](./development-workflow.md)
-- [Testing Strategy](./testing-strategy.md)
-- [Glossary & Domain Concepts](./glossary.md)
-- [Data Flow & Integrations](./data-flow.md)
-- [Security & Compliance Notes](./security.md)
-- [Tooling & Productivity Guide](./tooling.md)
-- [Code Style](./code-style.md)
-- [Tech Debt](./tech-debt.md)
-- [Anomaly Scenarios](./anomaly-scenarios.md)
+- [Project Overview](../.context/docs/project-overview.md)
+- [Architecture Notes](../.context/docs/architecture.md)
+- [Development Workflow](../.context/docs/development-workflow.md)
+- [Testing Strategy](../.context/docs/testing-strategy.md)
+- [Glossary & Domain Concepts](../.context/docs/glossary.md)
+- [Data Flow & Integrations](../.context/docs/data-flow.md)
+- [Security & Compliance Notes](../.context/docs/security.md)
+- [Tooling & Productivity Guide](../.context/docs/tooling.md)
+- [Code Style](../.context/docs/code-style.md)
+- [Tech Debt](../.context/docs/tech-debt.md)
+- [Anomaly Scenarios](../.context/docs/anomaly-scenarios.md)
 
 ## Repository Snapshot
 - `apps/api/` — backend NestJS 11 (Prisma/MySQL, motor DuckDB sobre S3)
