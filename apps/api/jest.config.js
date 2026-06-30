@@ -2,7 +2,11 @@
  * (override do `nodenext` do tsconfig base, que o Jest/CJS não consome direto). */
 module.exports = {
   testEnvironment: 'node',
-  moduleFileExtensions: ['js', 'json', 'ts'],
+  moduleFileExtensions: [
+    'js',
+    'json',
+    'ts',
+  ],
   rootDir: '.',
   testRegex: '\\.spec\\.ts$',
   setupFiles: ['<rootDir>/test-setup.ts'],

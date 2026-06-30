@@ -24,8 +24,20 @@ export default defineConfig({
     ? 2
     : undefined,
   reporter: process.env.CI
-    ? [['github'], ['html', { open: 'never' }]]
-    : [['list'], ['html', { open: 'never' }]],
+    ? [
+      ['github'],
+      [
+        'html',
+        { open: 'never' },
+      ],
+    ]
+    : [
+      ['list'],
+      [
+        'html',
+        { open: 'never' },
+      ],
+    ],
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: 'on-first-retry',

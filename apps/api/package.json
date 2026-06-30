@@ -8,7 +8,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
-    "lint": "eslint \"src/**/*.ts\" \"eslint-rules/**/*.mjs\" eslint.config.mjs --fix --max-warnings=0",
+    "lint": "eslint . --fix --max-warnings=0",
     "test": "jest",
     "test:e2e": "jest --config jest-e2e.config.js",
     "prisma:generate": "prisma generate",

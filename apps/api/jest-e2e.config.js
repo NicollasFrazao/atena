@@ -3,7 +3,11 @@
  * que sobe o banco, migra, semeia e exporta DATABASE_URL. */
 module.exports = {
   testEnvironment: 'node',
-  moduleFileExtensions: ['js', 'json', 'ts'],
+  moduleFileExtensions: [
+    'js',
+    'json',
+    'ts',
+  ],
   rootDir: '.',
   testRegex: '\\.e2e-spec\\.ts$',
   testTimeout: 30000,

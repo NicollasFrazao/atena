@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
-    "lint": "eslint src e2e eslint.config.mjs --fix --max-warnings=0",
+    "lint": "eslint . --fix --max-warnings=0",
     "test": "vitest run",
     "typecheck:e2e": "tsc --noEmit -p tsconfig.e2e.json",
     "e2e": "playwright test",

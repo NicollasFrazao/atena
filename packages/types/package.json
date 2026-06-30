@@ -8,6 +8,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
-    "lint": "eslint src eslint.config.mjs --fix --max-warnings=0"
+    "lint": "eslint . --fix --max-warnings=0"
   }
 }
