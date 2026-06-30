@@ -266,6 +266,14 @@ function evSelect(files: string[]): string {
  * `COPY (<eventos do detailed report>) TO '<parquet>' (FORMAT PARQUET)` — grava o cache de eventos
  * de uma partição. Lê os objetos da partição uma vez.
  *
+ * Ordena pela hierarquia do domínio (cliente → app → campanha → ENVIO → tempo) ANTES de gravar: o
+ * envio é o par `(campaign_id, phone)` (md5 é hash, sem localidade → ordena pelos componentes), e o
+ * `processed_at` deixa os eventos de um mesmo envio cronológicos. Dado ordenado ⇒ as estatísticas
+ * min/max dos row groups do Parquet ficam justas ⇒ o DuckDB PODA por cliente/campanha DENTRO do
+ * arquivo (o ganho da partição física, sem o problema de small-files). Não muda o RESULTADO (a
+ * agregação/dedup independe de ordem) — só o layout físico; caches antigos (não ordenados) seguem
+ * válidos (sem invalidar `EV_CACHE_VERSION`).
+ *
  * @param {string[]} files - Objetos da partição.
  * @param {string} parquetPath - Destino do Parquet de cache.
  * @returns {string} Comando `COPY`.
@@ -276,6 +284,7 @@ export function evCopyToParquetSql(
 ): string {
   return `COPY (
     ${evSelect(files)}
+    ORDER BY customer, app_id, campaign_id, phone, processed_at
   ) TO '${parquetPath.replaceAll(
     "'",
     "''",
