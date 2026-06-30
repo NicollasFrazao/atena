@@ -15,6 +15,7 @@ import { ConfigService } from '@nestjs/config';
 import { Interval } from '@nestjs/schedule';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
 import type { AuditScanStatsInterface, ShippingStatusType } from '@atena/types';
+import { AUDIT_QUERY_DEFAULTS } from '../config/configuration';
 import { MetricsService } from '../observability/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhone } from '../common/pii.util';
@@ -92,28 +93,14 @@ const TRAIL_MAX_WINDOW_DAYS = 3;
  */
 const PHONE_SUFFIX_MIN_DIGITS = 10;
 
-/**
- * TTL do cache de registros por id (30 min): o reveal de PII/análise lê deste cache (chaveado por id)
- * e devolve na hora — SEM re-materializar a janela no S3. A busca aquece os registros da página
- * (`recordCache.set`), então um reveal posterior reusa esse trabalho. 30 min (não 5) cobre uma sessão
- * de investigação inteira — o operador revela vários telefones ao longo do tempo sem cair no scan frio
- * de ~6 dias (`dayWindow ± lateStatusBuffer`). Seguro p/ o reveal: o telefone é imutável; o teto FIFO
- * ({@link RECORD_CACHE_MAX}) limita a memória independentemente do TTL.
- */
-const RECORD_CACHE_TTL_MS = 30 * 60 * 1000;
-
-/** Teto do cache de registros por id (FIFO ao exceder) — limita o uso de memória. */
-const RECORD_CACHE_MAX = 10_000;
-
 /** Versão do cache de eventos no `/tmp`; bump invalida os Parquets antigos se a normalização — ou o
  *  LAYOUT do cache — mudar. v10: layout manifesto+shards (antes: 1 Parquet/partição + sidecar sha256). */
 const EV_CACHE_VERSION = 'v10';
 
-/** Período da eviction agendada do cache de eventos (1h) — varre idade + teto de tamanho. */
+/** Período da eviction agendada do cache de eventos (1h) — varre idade + teto de tamanho. Fixo aqui
+ *  por ser argumento do decorator `@Interval` (exige constante de compilação); os demais TTLs/tetos do
+ *  cache são tunáveis por env (ver AUDIT_QUERY_DEFAULTS / `configuration.ts`). */
 const EVICT_INTERVAL_MS = 60 * 60 * 1000;
-
-/** Retenção dos eventos de scan persistidos (30 dias): além da janela exibida; poda no eviction. */
-const SCAN_EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Milissegundos em uma hora (converte os limites de idade da config). */
 const HOUR_MS = 60 * 60 * 1000;
@@ -215,9 +202,6 @@ const EXPORT_PROJECTION = `id AS shipping_id,
           strftime(requested_at, '%Y-%m-%dT%H:%M:%SZ') AS requested_at,
           error_hint AS error_hint`;
 
-/** TTL dos snapshots de busca (1h): cobre o export logo após a busca; depois são evictados. */
-const SNAPSHOT_TTL_MS = 60 * 60 * 1000;
-
 /** Aceita só um token UUID (evita path traversal ao montar o caminho do snapshot). */
 const SNAPSHOT_TOKEN_RE = /^[0-9a-f-]{36}$/i;
 
@@ -287,11 +271,15 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
   private readonly cacheMaxAgeMs: number;
 
-  /** Cache de registros por id (TTL curto): reveal/análise logo após a busca não re-varrem o S3. */
-  private readonly recordCache = new RecordCache(
-    RECORD_CACHE_TTL_MS,
-    RECORD_CACHE_MAX,
-  );
+  /** TTL (ms) dos snapshots de busca (Parquet do conjunto exato) — eviction por idade no `@Interval`. */
+  private readonly snapshotTtlMs: number;
+
+  /** Retenção (ms) dos eventos de scan persistidos (observabilidade) — poda no eviction. */
+  private readonly scanEventRetentionMs: number;
+
+  /** Cache de registros por id (TTL curto): reveal/análise logo após a busca não re-varrem o S3.
+   *  Inicializado no constructor (TTL/teto vêm da config). */
+  private readonly recordCache: RecordCache;
 
   /** Índice persistente `shipping_id → datas` (atalho durável de janela p/ a trilha). Vide constructor. */
   private readonly shippingIndex: ShippingDateIndex;
@@ -328,7 +316,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
     this.region = config.get<string>('aws.region') ?? 'us-east-1';
 
-    const days = config.get<number>('auditQuery.defaultWindowDays') ?? 30;
+    const days = config.get<number>('auditQuery.defaultWindowDays')
+      ?? AUDIT_QUERY_DEFAULTS.defaultWindowDays;
+
     this.defaultWindowMs = days * DAY_MS;
 
     // eslint-disable-next-line sonarjs/publicly-writable-directories -- /tmp = cache transitório read-through por design (decisão #8); sobrescrevível via ATENA_TMP_CACHE_DIR.
@@ -340,7 +330,11 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     );
 
     // Índice de datas no diretório de cache (volume persistido) → sobrevive a restart/deploy.
-    this.shippingIndex = new ShippingDateIndex(this.cacheDir);
+    this.shippingIndex = new ShippingDateIndex(
+      this.cacheDir,
+      config.get<number>('auditQuery.shippingIndexMax')
+        ?? AUDIT_QUERY_DEFAULTS.shippingIndexMax,
+    );
 
     // Extensões DuckDB (httpfs/aws) baixadas 1× e persistidas no volume — sem re-download por restart.
     this.extensionDir = join(
@@ -354,10 +348,14 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       'duckdb-spill',
     );
 
-    this.duckdbMemoryLimit = config.get<string>('auditQuery.duckdbMemoryLimit') ?? '3GB';
-    this.duckdbThreads = config.get<number>('auditQuery.duckdbThreads') ?? 8;
+    this.duckdbMemoryLimit = config.get<string>('auditQuery.duckdbMemoryLimit')
+      ?? AUDIT_QUERY_DEFAULTS.duckdbMemoryLimit;
 
-    this.prefetchConcurrency = config.get<number>('auditQuery.prefetchConcurrency') ?? 32;
+    this.duckdbThreads = config.get<number>('auditQuery.duckdbThreads')
+      ?? AUDIT_QUERY_DEFAULTS.duckdbThreads;
+
+    this.prefetchConcurrency = config.get<number>('auditQuery.prefetchConcurrency')
+      ?? AUDIT_QUERY_DEFAULTS.prefetchConcurrency;
 
     this.prefetchDir = join(
       tmpDir,
@@ -376,29 +374,54 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       'snapshots',
     );
 
-    const settleMinutes = config.get<number>('auditQuery.cacheSettleMinutes') ?? 60;
+    // Defaults vêm de AUDIT_QUERY_DEFAULTS (fonte única, compartilhada com configuration.ts) — sem
+    // re-declarar números aqui (era a divergência do `?? 0` vs config 4096/168).
+    const settleMinutes = config.get<number>('auditQuery.cacheSettleMinutes')
+      ?? AUDIT_QUERY_DEFAULTS.cacheSettleMinutes;
+
     this.settleMs = settleMinutes * 60 * 1000;
 
-    const liveCacheTtlSeconds = config.get<number>('auditQuery.liveCacheTtlSeconds') ?? 60;
+    const liveCacheTtlSeconds = config.get<number>('auditQuery.liveCacheTtlSeconds')
+      ?? AUDIT_QUERY_DEFAULTS.liveCacheTtlSeconds;
+
     this.liveCacheTtlMs = liveCacheTtlSeconds * 1000;
 
-    const bufferHours = config.get<number>('auditQuery.lateStatusBufferHours') ?? 48;
+    const bufferHours = config.get<number>('auditQuery.lateStatusBufferHours')
+      ?? AUDIT_QUERY_DEFAULTS.lateStatusBufferHours;
+
     this.lateStatusBufferMs = bufferHours * 60 * 60 * 1000;
 
-    const lagHours = config.get<number>('auditQuery.lagHours') ?? 48;
+    const lagHours = config.get<number>('auditQuery.lagHours')
+      ?? AUDIT_QUERY_DEFAULTS.lagHours;
+
     this.lagMs = lagHours * 60 * 60 * 1000;
 
-    const cacheMaxMb = config.get<number>('auditQuery.cacheMaxMb') ?? 0;
+    this.snapshotTtlMs = (config.get<number>('auditQuery.snapshotTtlMinutes')
+      ?? AUDIT_QUERY_DEFAULTS.snapshotTtlMinutes) * 60 * 1000;
+
+    this.scanEventRetentionMs = (config.get<number>('auditQuery.scanEventRetentionDays')
+      ?? AUDIT_QUERY_DEFAULTS.scanEventRetentionDays) * DAY_MS;
+
+    const cacheMaxMb = config.get<number>('auditQuery.cacheMaxMb')
+      ?? AUDIT_QUERY_DEFAULTS.cacheMaxMb;
 
     this.cacheMaxBytes = cacheMaxMb > 0
       ? cacheMaxMb * MB_BYTES
       : 0;
 
-    const cacheMaxAgeHours = config.get<number>('auditQuery.cacheMaxAgeHours') ?? 0;
+    const cacheMaxAgeHours = config.get<number>('auditQuery.cacheMaxAgeHours')
+      ?? AUDIT_QUERY_DEFAULTS.cacheMaxAgeHours;
 
     this.cacheMaxAgeMs = cacheMaxAgeHours > 0
       ? cacheMaxAgeHours * HOUR_MS
       : 0;
+
+    this.recordCache = new RecordCache(
+      (config.get<number>('auditQuery.recordCacheTtlMinutes')
+        ?? AUDIT_QUERY_DEFAULTS.recordCacheTtlMinutes) * 60 * 1000,
+      config.get<number>('auditQuery.recordCacheMax')
+        ?? AUDIT_QUERY_DEFAULTS.recordCacheMax,
+    );
   }
 
   /**
@@ -433,12 +456,12 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     const snapshots = evictCacheDir(
       this.snapshotDir,
       0,
-      SNAPSHOT_TTL_MS,
+      this.snapshotTtlMs,
       Date.now(),
     );
 
     if (snapshots.removed > 0) {
-      this.logger.log(`Snapshots: eviction removeu ${snapshots.removed} (> ${SNAPSHOT_TTL_MS / 60000} min).`);
+      this.logger.log(`Snapshots: eviction removeu ${snapshots.removed} (> ${this.snapshotTtlMs / 60000} min).`);
     }
 
     // Poda os eventos de scan persistidos além da retenção (best-effort, fire-and-forget).
@@ -1871,18 +1894,18 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Poda os eventos de scan persistidos além de {@link SCAN_EVENT_RETENTION_MS} (best-effort,
-   * fire-and-forget) — mantém a tabela limitada; falha nunca afeta o resto do eviction.
+   * Poda os eventos de scan persistidos além de `scanEventRetentionMs` (best-effort, fire-and-forget)
+   * — mantém a tabela limitada; falha nunca afeta o resto do eviction.
    *
    * @returns {void}
    */
   private pruneScanEvents(): void {
     this.prisma?.auditScanEvent.deleteMany({
-      where: { at: { lt: new Date(Date.now() - SCAN_EVENT_RETENTION_MS) } },
+      where: { at: { lt: new Date(Date.now() - this.scanEventRetentionMs) } },
     })
       .then((result) => {
         if (result.count > 0) {
-          this.logger.log(`audit_scan_events: poda removeu ${result.count} (> 30d).`);
+          this.logger.log(`audit_scan_events: poda removeu ${result.count} (> ${this.scanEventRetentionMs / DAY_MS}d).`);
         }
       })
       .catch(() => undefined);

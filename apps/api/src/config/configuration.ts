@@ -55,15 +55,24 @@ export interface AtenaConfig {
    * ao contrato enriquecido (`provider_name`/`provider_code`/`error`); `null` desliga a guarda.
    */
   auditQuery: {
+    // Fonte + janela
     sourceRoot: string;
     defaultWindowDays: number;
+    minQueryDate: string | null;
+    // Vidas de cache / reconciliação
     cacheSettleMinutes: number;
     liveCacheTtlSeconds: number;
     lateStatusBufferHours: number;
     lagHours: number;
-    minQueryDate: string | null;
+    recordCacheTtlMinutes: number;
+    snapshotTtlMinutes: number;
+    // Tetos (memória / disco / retenção)
     cacheMaxMb: number;
     cacheMaxAgeHours: number;
+    recordCacheMax: number;
+    shippingIndexMax: number;
+    scanEventRetentionDays: number;
+    // Engine DuckDB / pré-fetch
     duckdbMemoryLimit: string;
     duckdbThreads: number;
     prefetchConcurrency: number;
@@ -113,6 +122,38 @@ export interface AtenaConfig {
   };
 }
 
+/** Lê um inteiro do ambiente com fallback. Centraliza o parse dos knobs numéricos do motor. */
+const intEnv = (
+  name: string,
+  fallback: number,
+): number => Number.parseInt(
+  process.env[name] ?? String(fallback),
+  10,
+);
+
+/**
+ * Defaults do motor de auditoria — **fonte ÚNICA**: usada tanto na leitura do `.env` (abaixo) quanto
+ * no fallback do serviço (`DuckDbAuditQueryService`), p/ os dois lugares NUNCA divergirem. A unidade
+ * está no nome (Minutes/Seconds/Hours/Days/Mb). Override por env `ATENA_AUDIT_*` (ver `.env.example`).
+ */
+export const AUDIT_QUERY_DEFAULTS = {
+  defaultWindowDays: 30,
+  cacheSettleMinutes: 60,
+  liveCacheTtlSeconds: 60,
+  lateStatusBufferHours: 48,
+  lagHours: 48,
+  recordCacheTtlMinutes: 30,
+  snapshotTtlMinutes: 60,
+  cacheMaxMb: 4096,
+  cacheMaxAgeHours: 168,
+  recordCacheMax: 10000,
+  shippingIndexMax: 20000,
+  scanEventRetentionDays: 30,
+  duckdbThreads: 8,
+  prefetchConcurrency: 32,
+  duckdbMemoryLimit: '3GB',
+} as const;
+
 /**
  * Factory de configuração consumido pelo `ConfigModule.forRoot({ load: [...] })`.
  *
@@ -161,67 +202,93 @@ export default (): AtenaConfig => ({
     // eslint-disable-next-line sonarjs/publicly-writable-directories -- /tmp é o cache transitório read-through por design (decisão #8), não dado durável; sobrescrevível via ATENA_TMP_CACHE_DIR.
     tmpDir: process.env.ATENA_TMP_CACHE_DIR ?? '/tmp/atena-cache',
   },
+  // Motor de auditoria. Defaults em AUDIT_QUERY_DEFAULTS (fonte única); override por env ATENA_AUDIT_*
+  // (+ DUCKDB_*). Unidade no nome do campo. Ver `.env.example` p/ a tabela completa.
   auditQuery: {
+    // — Fonte + janela —
     // Detailed report de SMS (s3://example-sms-delivery-reports em prod; um diretório local nos testes/fixture).
     sourceRoot: process.env.ATENA_AUDIT_SOURCE_ROOT
       ?? (process.env.ATENA_SMS_STATUS_BUCKET
         ? `s3://${process.env.ATENA_SMS_STATUS_BUCKET}`
         : 's3://example-sms-delivery-reports'),
-    defaultWindowDays: Number.parseInt(
-      process.env.ATENA_AUDIT_DEFAULT_WINDOW_DAYS ?? '30',
-      10,
-    ),
-    // Partição "settled" (cacheável) só depois deste tempo fechada; partições recentes vão live.
-    cacheSettleMinutes: Number.parseInt(
-      process.env.ATENA_AUDIT_CACHE_SETTLE_MINUTES ?? '60',
-      10,
-    ),
-    // TTL (s) do cache da partição RECENTE: dentro dele, queries reusam o Parquet em vez de re-varrer
-    // o S3 (ganho de latência); custo = dado recente até este tempo velho. 0 desliga (sempre live).
-    liveCacheTtlSeconds: Number.parseInt(
-      process.env.ATENA_AUDIT_LIVE_CACHE_TTL_SECONDS ?? '60',
-      10,
-    ),
-    // Buffer do scan SÓ PRA FRENTE (horas): estende o fim da janela p/ captar status que o fornecedor
-    // finaliza depois do envio (o desfecho chega até ~este tempo após o queued). NÃO recua pra trás —
-    // o `requested_at` vem do evento `queued` real (não colapsa), então varrer antes da janela seria só
-    // custo. 48h ≈ lag do detailed report. Tunável por env.
-    lateStatusBufferHours: Number.parseInt(
-      process.env.ATENA_AUDIT_LATE_STATUS_BUFFER_HOURS ?? '48',
-      10,
-    ),
-    // Janela de LAG (horas) do detailed report: objetos podem chegar a uma partição até este tempo
-    // após ela "fechar" (lag do Firehose/webhook). Partição settled DENTRO deste horizonte é
-    // reconciliada por LIST a cada consulta (re-lê só se surgiram objetos); além dele, é imutável.
-    lagHours: Number.parseInt(
-      process.env.ATENA_AUDIT_LAG_HOURS ?? '48',
-      10,
+    defaultWindowDays: intEnv(
+      'ATENA_AUDIT_DEFAULT_WINDOW_DAYS',
+      AUDIT_QUERY_DEFAULTS.defaultWindowDays,
     ),
     // Data mínima de consulta (ISO): barra dados pré-contrato enriquecido; vazio/0 desliga.
     minQueryDate: process.env.ATENA_AUDIT_MIN_QUERY_DATE || null,
+
+    // — Vidas de cache / reconciliação —
+    // Partição "settled" (cacheável) só depois deste tempo fechada; partições recentes vão live.
+    cacheSettleMinutes: intEnv(
+      'ATENA_AUDIT_CACHE_SETTLE_MINUTES',
+      AUDIT_QUERY_DEFAULTS.cacheSettleMinutes,
+    ),
+    // TTL (s) do cache da partição RECENTE: dentro dele, queries reusam o Parquet em vez de re-varrer
+    // o S3 (latência); custo = dado recente até este tempo velho. 0 desliga (sempre live).
+    liveCacheTtlSeconds: intEnv(
+      'ATENA_AUDIT_LIVE_CACHE_TTL_SECONDS',
+      AUDIT_QUERY_DEFAULTS.liveCacheTtlSeconds,
+    ),
+    // Buffer do scan SÓ PRA FRENTE (horas): estende o fim da janela p/ captar status que o fornecedor
+    // finaliza depois do envio. NÃO recua pra trás (requested_at vem do queued real). 48h ≈ lag.
+    lateStatusBufferHours: intEnv(
+      'ATENA_AUDIT_LATE_STATUS_BUFFER_HOURS',
+      AUDIT_QUERY_DEFAULTS.lateStatusBufferHours,
+    ),
+    // Janela de LAG (horas): objetos podem chegar a uma partição até este tempo após ela "fechar".
+    // Settled DENTRO do horizonte é reconciliada por LIST a cada consulta; além dele, é imutável.
+    lagHours: intEnv(
+      'ATENA_AUDIT_LAG_HOURS',
+      AUDIT_QUERY_DEFAULTS.lagHours,
+    ),
+    // TTL (min) do cache de registros por id (reveal/análise pós-busca não re-varrem o S3).
+    recordCacheTtlMinutes: intEnv(
+      'ATENA_AUDIT_RECORD_CACHE_TTL_MINUTES',
+      AUDIT_QUERY_DEFAULTS.recordCacheTtlMinutes,
+    ),
+    // TTL (min) dos snapshots de busca (Parquet do conjunto exato; export por token lê daqui).
+    snapshotTtlMinutes: intEnv(
+      'ATENA_AUDIT_SNAPSHOT_TTL_MINUTES',
+      AUDIT_QUERY_DEFAULTS.snapshotTtlMinutes,
+    ),
+
+    // — Tetos (memória / disco / retenção) —
     // Eviction do cache de eventos no /tmp: teto de tamanho (MB) e idade (horas); 0 desliga cada um.
-    cacheMaxMb: Number.parseInt(
-      process.env.ATENA_AUDIT_CACHE_MAX_MB ?? '4096',
-      10,
+    cacheMaxMb: intEnv(
+      'ATENA_AUDIT_CACHE_MAX_MB',
+      AUDIT_QUERY_DEFAULTS.cacheMaxMb,
     ),
-    cacheMaxAgeHours: Number.parseInt(
-      process.env.ATENA_AUDIT_CACHE_MAX_AGE_HOURS ?? '168',
-      10,
+    cacheMaxAgeHours: intEnv(
+      'ATENA_AUDIT_CACHE_MAX_AGE_HOURS',
+      AUDIT_QUERY_DEFAULTS.cacheMaxAgeHours,
     ),
-    // Recursos do DuckDB. `memory_limit` capa a RAM (spill em disco ao exceder). `threads` controla
-    // a CONCORRÊNCIA de leitura dos objetos S3 (read_json paraleliza a lista entre threads) — os GETs
-    // são network-bound, então 8 acelera a leitura fria sem estourar a CPU (capada pelo `cpus` do
-    // container) nem a RAM (capada pelo memory_limit). Suba/baixe conforme o hardware.
-    duckdbMemoryLimit: process.env.DUCKDB_MEMORY_LIMIT ?? '3GB',
-    duckdbThreads: Number.parseInt(
-      process.env.DUCKDB_THREADS ?? '8',
-      10,
+    // Teto do cache de registros por id (FIFO) e do índice persistente de datas (LRU) — memória.
+    recordCacheMax: intEnv(
+      'ATENA_AUDIT_RECORD_CACHE_MAX',
+      AUDIT_QUERY_DEFAULTS.recordCacheMax,
     ),
-    // Concorrência do pré-fetch paralelo dos objetos S3 (Node/SDK), desacoplada dos threads do
-    // DuckDB. Alto (32) corta a latência da leitura fria (GETs network-bound). 0 desliga (lê via httpfs).
-    prefetchConcurrency: Number.parseInt(
-      process.env.ATENA_AUDIT_PREFETCH_CONCURRENCY ?? '32',
-      10,
+    shippingIndexMax: intEnv(
+      'ATENA_AUDIT_SHIPPING_INDEX_MAX',
+      AUDIT_QUERY_DEFAULTS.shippingIndexMax,
+    ),
+    // Retenção (dias) dos eventos de scan persistidos (observabilidade); poda no eviction.
+    scanEventRetentionDays: intEnv(
+      'ATENA_AUDIT_SCAN_EVENT_RETENTION_DAYS',
+      AUDIT_QUERY_DEFAULTS.scanEventRetentionDays,
+    ),
+
+    // — Engine DuckDB / pré-fetch —
+    // `memory_limit` capa a RAM (spill em disco ao exceder); `threads` = concorrência de leitura dos
+    // objetos S3 (network-bound). `prefetchConcurrency` = pré-fetch paralelo (Node/SDK); 0 = via httpfs.
+    duckdbMemoryLimit: process.env.DUCKDB_MEMORY_LIMIT ?? AUDIT_QUERY_DEFAULTS.duckdbMemoryLimit,
+    duckdbThreads: intEnv(
+      'DUCKDB_THREADS',
+      AUDIT_QUERY_DEFAULTS.duckdbThreads,
+    ),
+    prefetchConcurrency: intEnv(
+      'ATENA_AUDIT_PREFETCH_CONCURRENCY',
+      AUDIT_QUERY_DEFAULTS.prefetchConcurrency,
     ),
   },
   detect: {
