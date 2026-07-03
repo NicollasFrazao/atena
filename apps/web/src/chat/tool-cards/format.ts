@@ -195,9 +195,12 @@ export function formatPhone(raw: string): string {
 /**
  * Formata um número inteiro com separadores de milhar em pt-BR.
  *
- * @param {number} value - Valor a formatar.
+ * Defensivo com `null`/`undefined` (ex.: relatório antigo persistido, sem um campo novo do contrato)
+ * → formata como `0` em vez de estourar (`undefined.toLocaleString`).
+ *
+ * @param {number | null | undefined} value - Valor a formatar.
  * @returns {string} Número formatado (ex.: `184.320`).
  */
-export function formatNumber(value: number): string {
-  return value.toLocaleString('pt-BR');
+export function formatNumber(value: number | null | undefined): string {
+  return (value ?? 0).toLocaleString('pt-BR');
 }

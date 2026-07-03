@@ -516,6 +516,9 @@ export interface DeliveryReportInterface {
     name: string;
     sent: number;
     delivered: number;
+    failed: number;
+    blocked: number;
+    pending: number;
     rate: number
   }>;
   hourly: Array<{

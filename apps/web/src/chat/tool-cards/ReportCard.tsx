@@ -35,25 +35,24 @@ const KPI_DEFS: Array<{
   },
 ];
 
+/** Chave de um desfecho (fatia de uma barra empilhada); existe em `totals` e em cada `by_provider`. */
+type OutcomeKeyType = 'delivered' | 'failed' | 'blocked' | 'pending';
+
 /**
- * Segmentos da barra de COMPOSIÇÃO dos envios (soma = `totals.sent`, pois todo registro tem exatamente
- * um `final_status`). Ordem do funil: entregue → falha → bloqueado (controle de entrega, tom neutro) →
- * pendente. `blocked` aparece aqui como fatia distinta — separado dos desfechos e fora da taxa.
+ * Segmentos de desfecho — base das barras EMPILHADAS (composição dos envios E por fornecedor). Ordem:
+ * **Entregues (verde) + Bloqueados (cinza) adjacentes** (o bounce é pseudo-sucesso do controle de
+ * entrega, então fica do lado do verde), depois Pendentes, e **Falha por ÚLTIMO** (o pior desfecho no
+ * fim). Compartilhado pelas duas barras; as chaves existem em `totals` e em cada `by_provider`.
  */
-const COMPOSITION_DEFS: Array<{
+const OUTCOME_SEGMENTS: Array<{
   label: string;
-  key: keyof DeliveryReportInterface['totals'];
+  key: OutcomeKeyType;
   color: string
 }> = [
   {
     label: 'Entregues',
     key: 'delivered',
     color: 'var(--at-success-300)',
-  },
-  {
-    label: 'Falhas',
-    key: 'failed',
-    color: 'var(--at-danger-300)',
   },
   {
     label: 'Bloqueados',
@@ -65,7 +64,64 @@ const COMPOSITION_DEFS: Array<{
     key: 'pending',
     color: 'var(--at-warning-300)',
   },
+  {
+    label: 'Falhas',
+    key: 'failed',
+    color: 'var(--at-danger-300)',
+  },
 ];
+
+/** Contagens por desfecho — base de uma barra empilhada (`totals` e `by_provider[i]` satisfazem). */
+type OutcomeCountsInterface = Record<OutcomeKeyType, number>;
+
+/**
+ * Barra horizontal EMPILHADA dos desfechos: uma fatia por segmento, proporcional ao `total`, na ordem
+ * de {@link OUTCOME_SEGMENTS}. Defensiva a campos ausentes (dado antigo persistido) via `?? 0`.
+ *
+ * @param {{ counts: OutcomeCountsInterface; total: number; height: number }} props - Contagens, base e altura.
+ * @returns {JSX.Element} A barra empilhada.
+ */
+function StackedOutcomeBar({
+  counts,
+  total,
+  height,
+}: {
+  counts: OutcomeCountsInterface;
+  total: number;
+  height: number
+}): JSX.Element {
+  return (
+    <div style={{
+      display: 'flex',
+      height,
+      borderRadius: 'var(--at-radius-full)',
+      overflow: 'hidden',
+      background: 'var(--at-bg-soft)',
+    }}
+    >
+      {OUTCOME_SEGMENTS.map((segment) => {
+        const value = counts[segment.key] ?? 0;
+
+        const pct = total === 0
+          ? 0
+          : (value / total) * 100;
+
+        return pct > 0
+          ? (
+            <div
+              key={segment.key}
+              title={`${segment.label}: ${formatNumber(value)} (${pct.toFixed(1)}%)`}
+              style={{
+                width: `${pct}%`,
+                background: segment.color,
+              }}
+            />
+          )
+          : null;
+      })}
+    </div>
+  );
+}
 
 /**
  * Card da tool `generate_delivery_report`: KPIs (total/entregues/falhas/pendentes),
@@ -220,63 +276,43 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
               gap: 'var(--at-space-8)',
             }}
             >
-              {result.by_provider.map((provider) => {
-                const isLow = provider.rate < 95;
-
-                const barColor = isLow
-                  ? 'var(--at-danger-300)'
-                  : 'var(--at-primary)';
-
-                return (
-                  <div
-                    key={provider.name}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '70px 1fr 60px',
-                      alignItems: 'center',
-                      gap: 'var(--at-space-8)',
-                    }}
+              {result.by_provider.map((provider) => (
+                <div
+                  key={provider.name}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '70px 1fr 60px',
+                    alignItems: 'center',
+                    gap: 'var(--at-space-8)',
+                  }}
+                >
+                  <div style={{
+                    fontSize: 'var(--at-fs-14)',
+                    fontWeight: 600,
+                    color: 'var(--at-fg)',
+                  }}
                   >
-                    <div style={{
-                      fontSize: 'var(--at-fs-14)',
-                      fontWeight: 600,
-                      color: 'var(--at-fg)',
-                    }}
-                    >
-                      {provider.name}
-                    </div>
-                    <div style={{
-                      height: 8,
-                      background: 'var(--at-bg-soft)',
-                      borderRadius: 'var(--at-radius-full)',
-                      overflow: 'hidden',
-                    }}
-                    >
-                      <div style={{
-                        width: `${Math.min(
-                          100,
-                          provider.rate,
-                        )}%`,
-                        height: '100%',
-                        background: barColor,
-                      }}
-                      />
-                    </div>
-                    <div style={{
-                      fontFamily: 'ui-monospace, Menlo, monospace',
-                      fontSize: 'var(--at-fs-12)',
-                      fontWeight: 600,
-                      textAlign: 'right',
-                      color: isLow
-                        ? 'var(--at-danger-300)'
-                        : 'var(--at-fg)',
-                    }}
-                    >
-                      {provider.rate.toFixed(1)}%
-                    </div>
+                    {provider.name}
                   </div>
-                );
-              })}
+                  <StackedOutcomeBar
+                    counts={provider}
+                    total={provider.sent}
+                    height={8}
+                  />
+                  {/* Taxa em tom neutro: a COR do desfecho já é comunicada pela composição da barra
+                      (verde/cinza/âmbar/vermelho), então o número não precisa repetir o sinal. */}
+                  <div style={{
+                    fontFamily: 'ui-monospace, Menlo, monospace',
+                    fontSize: 'var(--at-fs-12)',
+                    fontWeight: 600,
+                    textAlign: 'right',
+                    color: 'var(--at-fg)',
+                  }}
+                  >
+                    {provider.rate.toFixed(1)}%
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
           <div>
@@ -450,38 +486,22 @@ function ReportScope({ filters }: { filters?: DeliveryReportInterface['filters']
 function CompositionBar({ totals }: { totals: DeliveryReportInterface['totals'] }): JSX.Element {
   const total = totals.sent;
 
-  const share = (value: number): number => (total === 0
+  // Defensivo: relatórios ANTIGOS (persistidos no histórico ANTES do campo `blocked`) não têm a
+  // chave → conta como 0 (o type exige, mas o dado em runtime pode ser mais velho que o contrato).
+  const count = (key: OutcomeKeyType): number => totals[key] ?? 0;
+
+  const share = (key: OutcomeKeyType): number => (total === 0
     ? 0
-    : (value / total) * 100);
+    : (count(key) / total) * 100);
 
   return (
     <div style={{ marginBottom: 'var(--at-space-16)' }}>
       <SectionLabel>Composição dos envios</SectionLabel>
-      <div style={{
-        display: 'flex',
-        height: 10,
-        borderRadius: 'var(--at-radius-full)',
-        overflow: 'hidden',
-        background: 'var(--at-bg-soft)',
-      }}
-      >
-        {COMPOSITION_DEFS.map((segment) => {
-          const pct = share(totals[segment.key]);
-
-          return pct > 0
-            ? (
-              <div
-                key={segment.label}
-                title={`${segment.label}: ${formatNumber(totals[segment.key])} (${pct.toFixed(1)}%)`}
-                style={{
-                  width: `${pct}%`,
-                  background: segment.color,
-                }}
-              />
-            )
-            : null;
-        })}
-      </div>
+      <StackedOutcomeBar
+        counts={totals}
+        total={total}
+        height={10}
+      />
       <div style={{
         display: 'flex',
         flexWrap: 'wrap',
@@ -489,7 +509,7 @@ function CompositionBar({ totals }: { totals: DeliveryReportInterface['totals'] 
         marginTop: 'var(--at-space-8)',
       }}
       >
-        {COMPOSITION_DEFS.map((segment) => (
+        {OUTCOME_SEGMENTS.map((segment) => (
           <span
             key={segment.label}
             style={{
@@ -509,7 +529,7 @@ function CompositionBar({ totals }: { totals: DeliveryReportInterface['totals'] 
               background: segment.color,
             }}
             />
-            {`${segment.label} ${formatNumber(totals[segment.key])} · ${share(totals[segment.key]).toFixed(1)}%`}
+            {`${segment.label} ${formatNumber(count(segment.key))} · ${share(segment.key).toFixed(1)}%`}
           </span>
         ))}
       </div>
