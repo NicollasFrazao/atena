@@ -8,9 +8,6 @@ import type {
 } from '@prisma/client';
 import type {
   AnomalyRuleInterface,
-  DimensionType,
-  IncidentSeverityType,
-  RuleType,
   ThresholdUnitType,
 } from '@atena/types';
 import { AuditService } from '../audit/audit.service';
@@ -85,7 +82,7 @@ export class RulesService {
     }
 
     if (dto.dimension !== undefined) {
-      data.dimension = dto.dimension as never;
+      data.dimension = dto.dimension;
     }
 
     if (dto.window_minutes !== undefined) {
@@ -93,7 +90,7 @@ export class RulesService {
     }
 
     if (dto.severity !== undefined) {
-      data.severity = dto.severity as never;
+      data.severity = dto.severity;
     }
 
     if (dto.enabled !== undefined) {
@@ -134,10 +131,10 @@ export class RulesService {
     return {
       id: rule.id,
       name: rule.name,
-      rule_type: rule.ruleType as RuleType,
-      dimension: rule.dimension as DimensionType,
+      rule_type: rule.ruleType,
+      dimension: rule.dimension,
       enabled: rule.enabled,
-      severity: rule.severity as IncidentSeverityType,
+      severity: rule.severity,
       threshold: Number(rule.threshold),
       threshold_unit: rule.thresholdUnit as ThresholdUnitType,
       window_minutes: rule.windowMinutes,

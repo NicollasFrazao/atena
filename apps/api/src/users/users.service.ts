@@ -102,8 +102,8 @@ export class UsersService {
     });
 
     const access: ResolvedAccessInterface = {
-      roles: (user?.roles ?? []).map((entry) => entry.role as RoleType),
-      status: (user?.status ?? 'active') as UserStatusType,
+      roles: (user?.roles ?? []).map((entry) => entry.role),
+      status: (user?.status ?? 'active'),
     };
 
     this.rolesCache.set(
@@ -243,7 +243,7 @@ export class UsersService {
     return {
       sub: user.id,
       email: user.email,
-      roles: user.roles.map((entry) => entry.role as RoleType),
+      roles: user.roles.map((entry) => entry.role),
     };
   }
 

@@ -614,6 +614,7 @@ describe('DuckDbAuditQueryService — send-based através da meia-noite (buffer 
 
   // Grão do destinatário LATE: md5(campaign_id || '|' || phone só-dígitos) — espelha o `id` que a SQL
   // de produção computa (não é hash de segurança; é a chave estável do destinatário).
+
   // eslint-disable-next-line sonarjs/hashing -- md5 reproduz o grão (id) do registro, não PII/segredo
   const LATE_ID = createHash('md5')
     .update(`${LATE}|5511900000010`)

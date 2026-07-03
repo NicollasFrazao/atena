@@ -27,15 +27,11 @@ import {
   type LlmToolSpecInterface,
   type LlmToolUseInterface,
 } from '../llm/llm-provider.interface';
-import { ListIncidentsDto } from '../incidents/dto/list-incidents.dto';
 import { IncidentsService } from '../incidents/incidents.service';
 import { AnalysisService } from '../shippings/analysis.service';
-import { AnalyzeContentDto } from '../shippings/dto/analyze-content.dto';
-import { SearchShippingsDto } from '../shippings/dto/search-shippings.dto';
 import { ShippingsService } from '../shippings/shippings.service';
 import { ReportsService } from '../reports/reports.service';
 import { DeliveryReportDto } from '../reports/dto/delivery-report.dto';
-import { IncidentReportDto } from '../reports/dto/incident-report.dto';
 import { ChatService, STUB_USER_ID } from './chat.service';
 import { ThinkingSplitter, type ThinkingSplitResultInterface } from './thinking-splitter';
 import { MetricsService } from '../observability/metrics.service';
@@ -1708,7 +1704,7 @@ export class OrchestratorService {
         args,
       )
       : this.shippings.search(
-        args as SearchShippingsDto,
+        args,
         onProgress,
       );
   }
@@ -1837,7 +1833,7 @@ export class OrchestratorService {
       }
 
       case 'analyze_shipping_content':
-        return this.analysis.analyze(args as AnalyzeContentDto);
+        return this.analysis.analyze(args);
       case 'generate_delivery_report':
         return this.reports.generateDelivery(
           args as DeliveryReportDto,
@@ -1861,7 +1857,7 @@ export class OrchestratorService {
         }));
 
       case 'list_incidents':
-        return this.incidents.list(args as ListIncidentsDto);
+        return this.incidents.list(args);
 
       case 'get_incident': {
         const incidentId = typeof args.incident_id === 'string'
@@ -1876,7 +1872,7 @@ export class OrchestratorService {
       }
 
       case 'generate_incident_report':
-        return this.reports.generateIncident(args as IncidentReportDto);
+        return this.reports.generateIncident(args);
       default:
         throw new Error(`Tool desconhecida: ${name}`);
     }

@@ -2694,7 +2694,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       params,
     );
 
-    return reader.getRowObjectsJS() as unknown as Array<Record<string, unknown>>;
+    return reader.getRowObjectsJS();
   }
 
   /** Cria (lazy) a instância DuckDB e, para fontes `s3://`, instala httpfs + secret. */

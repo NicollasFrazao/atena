@@ -145,7 +145,7 @@ export class IncidentLifecycleService {
   ): Promise<IncidentWithActivitiesType> {
     const incident = await this.findOrThrow(id);
 
-    if (!RESOLVABLE_FROM.has(incident.status as IncidentStatusType)) {
+    if (!RESOLVABLE_FROM.has(incident.status)) {
       throw new AppException(
         'invalid_state_transition',
         `Não é possível resolver um incidente com status "${incident.status}"`,
@@ -155,7 +155,7 @@ export class IncidentLifecycleService {
 
     this.validateResolvePayload(
       dto,
-      incident.status as IncidentStatusType,
+      incident.status,
     );
 
     const now = new Date();
@@ -164,7 +164,7 @@ export class IncidentLifecycleService {
       status: 'resolved',
       resolvedAt: now,
       resolvedBy: userId ?? null,
-      actionCategory: dto.action_category as never,
+      actionCategory: dto.action_category,
       actionDescription: dto.action_description,
       escalatedTo: dto.escalated_to ?? null,
     };
@@ -240,7 +240,7 @@ export class IncidentLifecycleService {
         userId: userId ?? null,
         activityType: 'comment',
         occurredAt: now,
-        payload: { text } as Prisma.InputJsonValue,
+        payload: { text },
       },
     });
 

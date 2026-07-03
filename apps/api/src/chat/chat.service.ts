@@ -223,7 +223,7 @@ export class ChatService {
 
     return messages.map((message) => ({
       id: message.id,
-      role: message.role as 'user' | 'assistant',
+      role: message.role,
       content: (message.content as unknown as ChatMessageContentInterface) ?? { text: '' },
       created_at: message.createdAt.toISOString(),
     }));

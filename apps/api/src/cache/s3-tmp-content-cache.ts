@@ -25,6 +25,7 @@ export class S3TmpContentCache implements ContentCacheInterface {
    */
   constructor(config: ConfigService) {
     this.s3 = new S3Client({ region: config.get<string>('aws.region') });
+
     // eslint-disable-next-line sonarjs/publicly-writable-directories -- /tmp = cache transitório read-through por design (decisão #8); sobrescrevível via ATENA_TMP_CACHE_DIR.
     this.tmpDir = config.get<string>('cache.tmpDir') ?? '/tmp/atena-cache';
     this.contentBucket = config.get<string>('s3.contentBucket') ?? '';

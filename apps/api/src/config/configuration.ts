@@ -199,6 +199,7 @@ export default (): AtenaConfig => ({
     contentBucket: process.env.ATENA_CONTENT_BUCKET ?? '',
   },
   cache: {
+
     // eslint-disable-next-line sonarjs/publicly-writable-directories -- /tmp é o cache transitório read-through por design (decisão #8), não dado durável; sobrescrevível via ATENA_TMP_CACHE_DIR.
     tmpDir: process.env.ATENA_TMP_CACHE_DIR ?? '/tmp/atena-cache',
   },

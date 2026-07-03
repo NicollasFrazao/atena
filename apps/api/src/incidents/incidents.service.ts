@@ -1,12 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Incident, Prisma } from '@prisma/client';
 import type {
-  DimensionType,
   IncidentActivityInterface,
   IncidentInterface,
   IncidentShippingsInterface,
-  IncidentSeverityType,
-  IncidentStatusType,
   PaginatedEnvelopeInterface,
   SearchResultRowInterface,
 } from '@atena/types';
@@ -344,9 +341,9 @@ export class IncidentsService {
     return {
       id: record.id,
       rule: payload.rule ?? '',
-      severity: record.severity as IncidentSeverityType,
-      status: record.status as IncidentStatusType,
-      dimension_type: record.dimensionType as DimensionType,
+      severity: record.severity,
+      status: record.status,
+      dimension_type: record.dimensionType,
       dimension_value: record.dimensionValue ?? '',
       detected_at: record.detectedAt.toISOString(),
       window: payload.window ?? '',
