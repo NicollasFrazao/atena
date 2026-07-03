@@ -1760,7 +1760,10 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
     onProgress?.({
       phase: 'querying',
-      label: 'Consultando',
+      // Dados já materializados localmente (fim da varredura): esta fase roda a query analítica em
+      // cima deles. "Calculando os resultados" descreve o que ACONTECE aqui — não repete a etapa
+      // anterior ("Varrendo partições"), que é o acesso aos dados, não o cálculo.
+      label: 'Calculando os resultados',
     });
 
     this.recordScan(

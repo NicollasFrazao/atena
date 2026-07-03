@@ -345,7 +345,7 @@ describe('OrchestratorService', () => {
 
       onProgress?.({
         phase: 'querying',
-        label: 'Consultando',
+        label: 'Calculando os resultados',
       });
 
       return {
