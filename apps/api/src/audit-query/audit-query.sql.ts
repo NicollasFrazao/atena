@@ -442,11 +442,14 @@ SELECT
   END AS finalized_at,
   CASE
     WHEN has_delivered THEN 'delivered'
+    -- bounce = bloqueio do controle de entrega (blacklist/throttling), NAO falha de entrega -> 'blocked'.
+    WHEN terminal_status = 'bounce' THEN 'blocked'
     WHEN terminal_status IS NOT NULL THEN 'failed'
     ELSE 'pending'
   END AS final_status,
   CASE
     WHEN has_delivered THEN NULL
+    WHEN terminal_status = 'bounce' THEN NULL -- bloqueado não é erro → fora do top de erros
     WHEN terminal_status IS NOT NULL THEN terminal_status
   END AS error_hint
 FROM grouped`;

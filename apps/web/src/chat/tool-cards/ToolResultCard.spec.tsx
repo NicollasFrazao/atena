@@ -108,6 +108,7 @@ const reportResult: DeliveryReportInterface = {
     sent: 184320,
     delivered: 180000,
     failed: 3200,
+    blocked: 0,
     pending: 1120,
   },
   by_provider: [

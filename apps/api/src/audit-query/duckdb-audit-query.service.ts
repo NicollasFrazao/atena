@@ -1235,6 +1235,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
           count(*)::INTEGER AS sent,
           count(*) FILTER (WHERE final_status = 'delivered')::INTEGER AS delivered,
           count(*) FILTER (WHERE final_status = 'failed')::INTEGER AS failed,
+          count(*) FILTER (WHERE final_status = 'blocked')::INTEGER AS blocked,
           count(*) FILTER (WHERE final_status = 'pending')::INTEGER AS pending
         FROM ${RECORDS_TABLE} WHERE ${conditions}`,
       params,
@@ -1246,6 +1247,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       sent: toNumber(row.sent),
       delivered: toNumber(row.delivered),
       failed: toNumber(row.failed),
+      blocked: toNumber(row.blocked),
       pending: toNumber(row.pending),
     };
   }
@@ -1268,7 +1270,8 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
           coalesce(provider, 'desconhecido') AS name,
           count(*)::INTEGER AS sent,
           count(*) FILTER (WHERE final_status = 'delivered')::INTEGER AS delivered,
-          round(100.0 * count(*) FILTER (WHERE final_status = 'delivered') / count(*), 1) AS rate
+          round(100.0 * count(*) FILTER (WHERE final_status = 'delivered')
+            / NULLIF(count(*) FILTER (WHERE final_status IN ('delivered', 'failed')), 0), 1) AS rate
         FROM ${RECORDS_TABLE} WHERE ${conditions}
         GROUP BY 1 ORDER BY sent DESC`,
       params,
@@ -1303,7 +1306,8 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       connection,
       `SELECT
           strftime(date_trunc('hour', requested_at), '%Y-%m-%dT%H:00:00Z') AS at,
-          round(100.0 * count(*) FILTER (WHERE final_status = 'delivered') / count(*), 1) AS rate
+          round(100.0 * count(*) FILTER (WHERE final_status = 'delivered')
+            / NULLIF(count(*) FILTER (WHERE final_status IN ('delivered', 'failed')), 0), 1) AS rate
         FROM ${RECORDS_TABLE} WHERE ${conditions}
         GROUP BY 1
         ORDER BY 1`,

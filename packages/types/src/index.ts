@@ -117,11 +117,13 @@ export interface RoleCatalogItemInterface {
  *
  * @remarks
  * - `delivered` — confirmada como entregue pelo provedor/webhook.
- * - `failed` — falha definitiva de entrega.
+ * - `failed` — falha definitiva de entrega (desfecho negativo do fornecedor).
+ * - `blocked` — bloqueado pelo controle de entrega ANTES/NO envio (número na bounce list ou throttling
+ *   comercial), reportado como `bounce`. NÃO é falha de entrega e fica FORA do denominador da taxa.
  * - `pending` — em trânsito / aguardando confirmação.
  * - `unknown` — sem sinal conclusivo (ex.: silêncio de webhook).
  */
-export type ShippingStatusType = 'delivered' | 'failed' | 'pending' | 'unknown';
+export type ShippingStatusType = 'delivered' | 'failed' | 'blocked' | 'pending' | 'unknown';
 
 /**
  * Tipo de evento na trilha (lifecycle) de um envio, em ordem de fluxo.
@@ -489,8 +491,8 @@ export interface RiskAnalysisInterface {
  * Relatório de entregabilidade (resultado de `generate_delivery_report`, §C).
  *
  * @property {string} window - Janela temporal do relatório (ex.: "24h", intervalo).
- * @property {{ sent: number; delivered: number; failed: number; pending: number }} totals - Totais agregados por status.
- * @property {Array<{ name: string; sent: number; delivered: number; rate: number }>} by_provider - Quebra por provedor; `rate` é a taxa de entrega.
+ * @property {{ sent: number; delivered: number; failed: number; blocked: number; pending: number }} totals - Totais por status. `blocked` = bloqueado pelo controle de entrega (bounce); NÃO conta como falha.
+ * @property {Array<{ name: string; sent: number; delivered: number; rate: number }>} by_provider - Quebra por provedor; `rate` = taxa de entrega = entregues/(entregues+falhas) (bloqueados/pendentes fora do denominador).
  * @property {Array<{ at: string; rate: number }>} hourly - Taxa de entrega por hora, em buckets CRONOLÓGICOS; `at` é o início do bucket (ISO 8601 UTC, ex.: "2026-06-18T21:00:00Z"). Cobre os dias da janela (não colapsa por hora-do-dia).
  * @property {Array<{ code: string; count: number; provider: string }>} top_errors - Principais erros: código, contagem e provedor.
  * @property {string} csv_url - URL para download do relatório em CSV.
@@ -507,6 +509,7 @@ export interface DeliveryReportInterface {
     sent: number;
     delivered: number;
     failed: number;
+    blocked: number;
     pending: number
   };
   by_provider: Array<{

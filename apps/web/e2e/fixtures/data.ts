@@ -41,7 +41,8 @@ export const DELIVERY_REPORT = {
   totals: {
     sent: 1_250_000,
     delivered: 812_500,
-    failed: 412_500,
+    failed: 400_000,
+    blocked: 12_500,
     pending: 25_000,
   },
   by_provider: [

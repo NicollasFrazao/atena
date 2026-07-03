@@ -34,14 +34,16 @@ export const TONE_COLORS: Record<StatusToneType, ToneColorsInterface> = {
 const STATUS_LABELS: Record<ShippingStatusType, string> = {
   delivered: 'Entregue',
   failed: 'Falha',
+  blocked: 'Bloqueado',
   pending: 'Pendente',
   unknown: 'Desconhecido',
 };
 
-/** Tom semântico de cada status de entrega. */
+/** Tom semântico de cada status de entrega. `blocked` (controle de entrega) = neutro (não é falha). */
 const STATUS_TONES: Record<ShippingStatusType, StatusToneType> = {
   delivered: 'success',
   failed: 'danger',
+  blocked: 'neutral',
   pending: 'warning',
   unknown: 'neutral',
 };

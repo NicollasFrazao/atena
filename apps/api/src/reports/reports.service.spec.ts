@@ -10,6 +10,7 @@ describe('ReportsService', () => {
         sent: 3,
         delivered: 2,
         failed: 1,
+        blocked: 0,
         pending: 0,
       },
       byProvider: [
@@ -63,6 +64,7 @@ describe('ReportsService', () => {
       sent: 3,
       delivered: 2,
       failed: 1,
+      blocked: 0,
       pending: 0,
     });
 
@@ -96,6 +98,7 @@ describe('ReportsService', () => {
           sent: 0,
           delivered: 0,
           failed: 0,
+          blocked: 0,
           pending: 0,
         },
         byProvider: [],
@@ -130,6 +133,7 @@ describe('ReportsService', () => {
         sent: 0,
         delivered: 0,
         failed: 0,
+        blocked: 0,
         pending: 0,
       },
       byProvider: [],
@@ -182,6 +186,7 @@ describe('ReportsService', () => {
         sent: 0,
         delivered: 0,
         failed: 0,
+        blocked: 0,
         pending: 0,
       },
       byProvider: [],

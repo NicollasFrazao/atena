@@ -103,13 +103,15 @@ export interface AuditSearchFilterInterface {
  *
  * @property {number} sent - Total de envios na janela.
  * @property {number} delivered - Entregues.
- * @property {number} failed - Falhas.
+ * @property {number} failed - Falhas (desfecho negativo do fornecedor).
+ * @property {number} blocked - Bloqueados pelo controle de entrega (bounce: blacklist/throttling); NÃO é falha.
  * @property {number} pending - Em trânsito/sem desfecho.
  */
 export interface DeliveryTotalsInterface {
   sent: number;
   delivered: number;
   failed: number;
+  blocked: number;
   pending: number;
 }
 

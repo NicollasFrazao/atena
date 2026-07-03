@@ -238,8 +238,8 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
     // phone é normalizado p/ só dígitos na ingestão (EV_PROJECTION) — chaves sem o '+'.
     expect(byPhone['5511900000001'].finalStatus).toBe('delivered');
     expect(byPhone['5511900000001'].channel).toBe('sms');
-    expect(byPhone['5511900000002'].finalStatus).toBe('failed');
-    expect(byPhone['5511900000002'].errorHint).toBe('bounce');
+    expect(byPhone['5511900000002'].finalStatus).toBe('blocked'); // bounce = bloqueio do controle de entrega
+    expect(byPhone['5511900000002'].errorHint).toBeNull(); // bloqueado não é erro
     expect(byPhone['5511900000003'].finalStatus).toBe('pending');
     expect(byPhone['5511900000004'].finalStatus).toBe('failed');
     expect(byPhone['5511900000004'].errorHint).toBe('request_error');
@@ -331,8 +331,9 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
     expect(report.totals).toEqual({
       sent: 5, // C1..C4 (sms) + C5 (sms_flash, delivered)
       delivered: 2, // C1 (sms) + C5 (sms_flash)
-      failed: 2,
-      pending: 1,
+      failed: 1, // C4 (request_error)
+      blocked: 1, // C2 (bounce = bloqueio do controle de entrega, não falha)
+      pending: 1, // C3
     });
 
     const sinch = report.byProvider.find((row) => row.name === 'sinch');
@@ -344,8 +345,7 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
     expect(zapsms?.delivered).toBe(1);
 
     expect(report.topErrors.map((row) => row.code).sort()).toEqual([
-      'bounce',
-      'request_error',
+      'request_error', // bounce virou 'blocked' → sai do top de erros
     ]);
   });
 
@@ -390,12 +390,11 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
   it('terminalSamples: delivered/failed (exclui pending)', async () => {
     const samples = await service.terminalSamples(WINDOW);
 
-    expect(samples).toHaveLength(4); // C1 + C5 delivered; C2 + C4 failed (C3 pending excluído)
+    expect(samples).toHaveLength(3); // C1 + C5 delivered; C4 failed (C2 bounce→blocked e C3 pending excluídos)
 
     expect(samples.map((sample) => sample.finalStatus).sort()).toEqual([
       'delivered',
       'delivered',
-      'failed',
       'failed',
     ]);
   });
@@ -653,7 +652,8 @@ describe('DuckDbAuditQueryService — send-based através da meia-noite (buffer 
 
       expect(record?.phoneE164).toBeTruthy();
       // Mesmo id, mesma janela do 16/06: com a expansão, o desfecho do dia seguinte é capturado.
-      expect(record?.finalStatus).toBe('failed');
+      // O desfecho é um `bounce` → classificado como 'blocked' (bloqueio do controle de entrega).
+      expect(record?.finalStatus).toBe('blocked');
     }
     finally {
       svc.onModuleDestroy();

@@ -29,6 +29,12 @@ const KPI_DEFS: Array<{
     color: 'var(--at-danger-300)',
   },
   {
+    // Bloqueado pelo controle de entrega (bounce: blacklist/throttling) — NÃO é falha; tom neutro.
+    label: 'Bloqueados',
+    key: 'blocked',
+    color: 'var(--at-fg-muted)',
+  },
+  {
     label: 'Pendentes',
     key: 'pending',
     color: 'var(--at-warning-300)',
@@ -100,7 +106,7 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateColumns: 'repeat(5, 1fr)',
           gap: 'var(--at-space-8)',
           marginBottom: 'var(--at-space-16)',
         }}
@@ -318,6 +324,7 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
 const STATUS_LABEL: Record<ShippingStatusType, string> = {
   delivered: 'entregues',
   failed: 'falhas',
+  blocked: 'bloqueados',
   pending: 'pendentes',
   unknown: 'sem status',
 };
