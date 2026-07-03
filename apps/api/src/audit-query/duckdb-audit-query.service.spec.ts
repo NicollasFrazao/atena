@@ -1090,3 +1090,98 @@ describe('DuckDbAuditQueryService — cache incremental (manifesto + shards + co
     }
   });
 });
+
+describe('DuckDbAuditQueryService — DDI inconsistente entre queued e desfecho (grão canônico)', () => {
+  let root: string;
+  let service: DuckDbAuditQueryService;
+
+  const WIN: AuditWindowInterface = {
+    from: new Date('2026-06-20T00:00:00Z'),
+    to: new Date('2026-06-21T00:00:00Z'),
+  };
+
+  beforeAll(() => {
+    root = mkdtempSync(join(
+      tmpdir(),
+      'atena-ddi-',
+    ));
+
+    const dir = join(
+      root,
+      'year=2026/month=06/day=20/hour=15',
+    );
+
+    mkdirSync(
+      dir,
+      { recursive: true },
+    );
+
+    // MESMO envio: a fonte manda o `queued` COM DDI (13 díg.) e o `delivered` SEM (11 díg.) — o bug
+    // real do localsms. Sem canonizar, viram 2 destinatários (1 pending + 1 delivered órfão) e a
+    // taxa de entrega dá 0%. Com o phone canônico, colapsam no mesmo destinatário → ENTREGUE.
+    const lines = [
+      detailedRecord({
+        campaign_id: 'req-ddi',
+        status: 'queued',
+        phone: '+5511900000055',
+        client_id: '1001',
+        provider_name: 'localsms',
+        processed_at: '2026-06-20T15:00:00Z',
+      }),
+      detailedRecord({
+        campaign_id: 'req-ddi',
+        status: 'delivered',
+        phone: '11900000055',
+        client_id: '1001',
+        provider_name: 'localsms',
+        processed_at: '2026-06-20T15:05:00Z',
+      }),
+    ];
+
+    writeFileSync(
+      join(
+        dir,
+        'part.json.gz',
+      ),
+      gzipSync(Buffer.from(`${lines.join('\n')}\n`)),
+    );
+
+    service = new DuckDbAuditQueryService(configStub({
+      'auditQuery.sourceRoot': root,
+      'auditQuery.defaultWindowDays': 30,
+      'auditQuery.cacheSettleMinutes': 0,
+      'auditQuery.lateStatusBufferHours': 0,
+      'cache.tmpDir': join(
+        root,
+        '.cache',
+      ),
+      's3.logsBucket': '',
+      'aws.region': 'us-east-1',
+    }));
+  });
+
+  afterAll(() => {
+    service.onModuleDestroy();
+
+    rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  });
+
+  it('queued(+55) e delivered(sem 55) do mesmo envio → 1 destinatário ENTREGUE (não pending órfão)', async () => {
+    const page = await service.search(
+      { window: WIN },
+      1,
+      20,
+    );
+
+    // Canonizado (prepend DDI no nacional de 11 díg.): os dois status colapsam no MESMO destinatário.
+    expect(page.total).toBe(1);
+    expect(page.rows[0].finalStatus).toBe('delivered');
+    expect(page.rows[0].phoneE164).toBe('5511900000055');
+  });
+});

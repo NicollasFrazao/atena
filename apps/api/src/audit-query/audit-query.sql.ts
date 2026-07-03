@@ -45,17 +45,33 @@ const SOURCE_COLUMNS = `{
   error: 'JSON'
 }`;
 
+/** Código de país (DDI) default p/ canonizar números nacionais sem DDI. BR = 55. Fica ASSADO no cache
+ *  de eventos, então trocá-lo exige bump do `EV_CACHE_VERSION` (não é hot-swap por env). */
+const DEFAULT_DDI = '55';
+
+/** Só-dígitos do phone (remove `+`, espaços, pontuação). */
+const PHONE_DIGITS = "regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g')";
+
+/**
+ * Phone CANÔNICO do destinatário (E.164 sem `+`): só-dígitos + DDI prependado quando é número BR
+ * nacional (10–11 dígitos, sem DDI). A fonte é INCONSISTENTE entre status — `queued`/`bounce` chegam
+ * COM DDI 55 (13 díg.), `sent`/`delivered` SEM (11 díg.). Sem canonizar, o MESMO envio quebra em dois
+ * na chave `md5(campaign_id||phone)`: o `queued` (com 55) fica eterno "pending" e o `delivered` (sem
+ * 55) vira destinatário órfão → taxa de entrega falsa (0%). Canoniza PRA CIMA (adiciona o DDI, não
+ * remove) p/ preservar números internacionais (12–13 díg. já têm DDI → mantém; nacional BR tem ≤11).
+ */
+const PHONE_CANONICAL = `(CASE WHEN length(${PHONE_DIGITS}) IN (10, 11) THEN '${DEFAULT_DDI}' ELSE '' END)
+    || ${PHONE_DIGITS}`;
+
 /**
  * Projeção de um registro do detailed report → evento `ev`. Colunas na ordem de {@link EV_COLUMNS}.
  * `error_text` extrai a mensagem do objeto `error` (cai pro `provider_code` quando ausente).
- * `phone` é normalizado para SÓ DÍGITOS na ingestão (mesmo número em formatos diferentes — ex.:
- * `+5513991884678` vs `5513991884678` — vira a MESMA chave), pois o grão por destinatário agrupa por
- * (campaign_id, phone); sem isso o mesmo número se divide em destinatários falsos. DEVE casar com
- * `normalizePhone` (filtro de busca). Bump de `EV_CACHE_VERSION` ao mudar esta normalização.
+ * `phone` é canonizado (ver {@link PHONE_CANONICAL}), pois o grão por destinatário agrupa por
+ * (campaign_id, phone). A busca tolera formato por sufixo. Bump de `EV_CACHE_VERSION` ao mudar isto.
  */
 const EV_PROJECTION = `
   campaign_id AS campaign_id,
-  regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g') AS phone,
+  ${PHONE_CANONICAL} AS phone,
   client_id AS customer,
   provider_name AS provider,
   campaign_type AS campaign_type,

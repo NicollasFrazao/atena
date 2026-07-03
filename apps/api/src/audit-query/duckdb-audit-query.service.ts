@@ -94,8 +94,9 @@ const TRAIL_MAX_WINDOW_DAYS = 3;
 const PHONE_SUFFIX_MIN_DIGITS = 10;
 
 /** Versão do cache de eventos no `/tmp`; bump invalida os Parquets antigos se a normalização — ou o
- *  LAYOUT do cache — mudar. v10: layout manifesto+shards (antes: 1 Parquet/partição + sidecar sha256). */
-const EV_CACHE_VERSION = 'v10';
+ *  LAYOUT do cache — mudar. v11: phone canônico com DDI (grão do destinatário mudou; ver PHONE_CANONICAL).
+ *  v10: layout manifesto+shards (antes: 1 Parquet/partição + sidecar sha256). */
+const EV_CACHE_VERSION = 'v11';
 
 /** Período da eviction agendada do cache de eventos (1h) — varre idade + teto de tamanho. Fixo aqui
  *  por ser argumento do decorator `@Interval` (exige constante de compilação); os demais TTLs/tetos do
