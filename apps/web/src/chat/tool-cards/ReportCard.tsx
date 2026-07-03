@@ -29,7 +29,33 @@ const KPI_DEFS: Array<{
     color: 'var(--at-danger-300)',
   },
   {
-    // Bloqueado pelo controle de entrega (bounce: blacklist/throttling) — NÃO é falha; tom neutro.
+    label: 'Pendentes',
+    key: 'pending',
+    color: 'var(--at-warning-300)',
+  },
+];
+
+/**
+ * Segmentos da barra de COMPOSIÇÃO dos envios (soma = `totals.sent`, pois todo registro tem exatamente
+ * um `final_status`). Ordem do funil: entregue → falha → bloqueado (controle de entrega, tom neutro) →
+ * pendente. `blocked` aparece aqui como fatia distinta — separado dos desfechos e fora da taxa.
+ */
+const COMPOSITION_DEFS: Array<{
+  label: string;
+  key: keyof DeliveryReportInterface['totals'];
+  color: string
+}> = [
+  {
+    label: 'Entregues',
+    key: 'delivered',
+    color: 'var(--at-success-300)',
+  },
+  {
+    label: 'Falhas',
+    key: 'failed',
+    color: 'var(--at-danger-300)',
+  },
+  {
     label: 'Bloqueados',
     key: 'blocked',
     color: 'var(--at-fg-muted)',
@@ -106,7 +132,7 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(5, 1fr)',
+          gridTemplateColumns: 'repeat(4, 1fr)',
           gap: 'var(--at-space-8)',
           marginBottom: 'var(--at-space-16)',
         }}
@@ -165,6 +191,8 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
             );
           })}
         </div>
+
+        <CompositionBar totals={result.totals} />
 
         <div style={{ marginBottom: 'var(--at-space-16)' }}>
           <HourlyChart
@@ -407,6 +435,84 @@ function ReportScope({ filters }: { filters?: DeliveryReportInterface['filters']
           </ScopeChip>
         )
         : null}
+    </div>
+  );
+}
+
+/**
+ * Barra de COMPOSIÇÃO dos envios: uma barra horizontal empilhada com as fatias
+ * entregue/falha/bloqueado/pendente (soma = total) + legenda. Comunica "para onde foram os envios" e
+ * dá ao `blocked` (controle de entrega) uma fatia distinta — separada dos desfechos e fora da taxa.
+ *
+ * @param {{ totals: DeliveryReportInterface['totals'] }} props - Totais por status (soma = `sent`).
+ * @returns {JSX.Element} A barra de composição.
+ */
+function CompositionBar({ totals }: { totals: DeliveryReportInterface['totals'] }): JSX.Element {
+  const total = totals.sent;
+
+  const share = (value: number): number => (total === 0
+    ? 0
+    : (value / total) * 100);
+
+  return (
+    <div style={{ marginBottom: 'var(--at-space-16)' }}>
+      <SectionLabel>Composição dos envios</SectionLabel>
+      <div style={{
+        display: 'flex',
+        height: 10,
+        borderRadius: 'var(--at-radius-full)',
+        overflow: 'hidden',
+        background: 'var(--at-bg-soft)',
+      }}
+      >
+        {COMPOSITION_DEFS.map((segment) => {
+          const pct = share(totals[segment.key]);
+
+          return pct > 0
+            ? (
+              <div
+                key={segment.label}
+                title={`${segment.label}: ${formatNumber(totals[segment.key])} (${pct.toFixed(1)}%)`}
+                style={{
+                  width: `${pct}%`,
+                  background: segment.color,
+                }}
+              />
+            )
+            : null;
+        })}
+      </div>
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 'var(--at-space-12)',
+        marginTop: 'var(--at-space-8)',
+      }}
+      >
+        {COMPOSITION_DEFS.map((segment) => (
+          <span
+            key={segment.label}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 'var(--at-space-4)',
+              fontSize: 11,
+              color: 'var(--at-fg-muted)',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            <span style={{
+              display: 'inline-block',
+              width: 8,
+              height: 8,
+              borderRadius: 2,
+              background: segment.color,
+            }}
+            />
+            {`${segment.label} ${formatNumber(totals[segment.key])} · ${share(totals[segment.key]).toFixed(1)}%`}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
