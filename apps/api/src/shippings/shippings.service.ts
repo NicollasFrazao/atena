@@ -134,6 +134,7 @@ export class ShippingsService {
         phone: query.phone,
         status: query.status as ShippingStatusType | undefined,
         provider: query.provider,
+        channel: query.channel,
         customerId: query.customer_id,
         correlationId: query.campaign_id,
       },
@@ -298,6 +299,7 @@ export class ShippingsService {
       phone: query.phone,
       status: query.status as ShippingStatusType | undefined,
       provider: query.provider,
+      channel: query.channel,
       customerId: query.customer_id,
       correlationId: query.campaign_id,
     });

@@ -86,6 +86,7 @@ export interface DeliveryTrailInterface {
  * @property {string} [phone] - Telefone E.164 (match exato).
  * @property {ShippingStatusType} [status] - Status final para filtrar.
  * @property {string} [provider] - Provedor de envio.
+ * @property {string} [channel] - Canal do envio (`campaign_type`): `sms` (SMS Short) ou `sms_flash` (SMS Flash).
  * @property {string} [customerId] - Cliente (match exato).
  * @property {string} [correlationId] - Id da requisição/campanha (`correlation_id`) — devolve os destinatários daquela requisição.
  */
@@ -94,6 +95,7 @@ export interface AuditSearchFilterInterface {
   phone?: string;
   status?: ShippingStatusType;
   provider?: string;
+  channel?: string;
   customerId?: string;
   correlationId?: string;
 }

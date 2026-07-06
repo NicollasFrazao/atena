@@ -9,6 +9,7 @@ const FILTER_KEYS = [
   'phone',
   'status',
   'provider',
+  'channel',
   'customer_id',
   'campaign_id',
   'date_from',

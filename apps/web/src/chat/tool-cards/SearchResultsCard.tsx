@@ -262,6 +262,15 @@ function buildFilterChips(
     });
   }
 
+  const channel = value('channel');
+
+  if (channel) {
+    chips.push({
+      label: 'Canal',
+      value: CHANNEL_LABELS[channel] ?? channel,
+    });
+  }
+
   const campaign = value('campaign_id');
 
   if (campaign) {

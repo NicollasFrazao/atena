@@ -20,8 +20,9 @@ export const SEARCH_DATE_RANGES = [
  * janela também deixa a consulta mais barata (varre menos partições no S3).
  *
  * @property {string} [phone] - Telefone em formato E.164 para filtrar (match exato).
- * @property {string} [status] - Status final do envio (ex.: delivered, failed).
+ * @property {string} [status] - Status final do envio (`delivered`/`failed`/`blocked`/`pending`).
  * @property {string} [provider] - Provedor de envio (filtra por nome do provider).
+ * @property {string} [channel] - Canal do envio: `sms` (SMS Short) ou `sms_flash` (SMS Flash).
  * @property {string} [customer_id] - Identificador do cliente (match exato).
  * @property {string} [campaign_id] - Id da campanha (match exato); devolve os destinatários daquela campanha. Interno: `correlation_id`.
  * @property {string} [incident_id] - Id de um incidente. **Aplicado pelo fluxo do assistente** (o orquestrador detecta `incident_id` e roteia para os ids EXATOS de envios impactados que o detector persistiu — mesma contagem do card do incidente, ignorando janela/dimensão). A busca REST genérica (`ShippingsService.search`) NÃO filtra por ele.
@@ -43,6 +44,10 @@ export class SearchShippingsDto {
   @IsOptional()
   @IsString()
   provider?: string;
+
+  @IsOptional()
+  @IsString()
+  channel?: string;
 
   @IsOptional()
   @IsString()

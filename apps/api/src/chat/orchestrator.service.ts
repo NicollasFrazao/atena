@@ -489,8 +489,8 @@ export function historyToConvo(history: ChatMessageInterface[]): LlmMessageInter
 const TOOL_SPECS: LlmToolSpecInterface[] = [
   {
     name: 'search_shippings',
-    description: 'Busca envios por telefone (com ou SEM DDI), status, provedor, cliente ou '
-      + 'campaign_id (id da campanha — devolve os destinatários daquela campanha). '
+    description: 'Busca envios por telefone (com ou SEM DDI), status, provedor, canal (sms/sms_flash), '
+      + 'cliente ou campaign_id (id da campanha — devolve os destinatários daquela campanha). '
       + 'Janela temporal: date_from/date_to (ISO 8601) ou date_range (24h/7d/30d/all). A janela filtra '
       + 'por requested_at (quando o envio foi ENVIADO), NUNCA pela finalização — "envios do dia X" = '
       + 'enviados no dia X. Cada linha traz requested_at (envio) e finalized_at (quando finalizou, pode '
@@ -511,8 +511,16 @@ const TOOL_SPECS: LlmToolSpecInterface[] = [
           description: 'Telefone do destinatário, só dígitos ou formatado; o DDI (55) é OPCIONAL — '
             + '"11991884678" acha o mesmo que "+55 11 99188-4678" (casa por sufixo).',
         },
-        status: { type: 'string' },
+        status: {
+          type: 'string',
+          description: 'Status final do envio: delivered | failed | blocked (bounce = retido pelo '
+            + 'controle de entrega, NÃO é falha) | pending.',
+        },
         provider: { type: 'string' },
+        channel: {
+          type: 'string',
+          description: 'Canal do envio: "sms" (SMS Short) ou "sms_flash" (SMS Flash).',
+        },
         customer_id: { type: 'string' },
         campaign_id: { type: 'string' },
         incident_id: {
