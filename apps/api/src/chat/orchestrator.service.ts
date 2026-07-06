@@ -96,10 +96,13 @@ const SYSTEM_PROMPT =
   'listar — a janela JÁ está no histórico (date_from/date_to daquela busca); REUSE a MESMA janela e ' +
   'busque direto, sem perguntar a data de novo. NUNCA chame a busca por campaign_id sem ' +
   'janela "para tentar": a tool recusa e a chamada é desperdiçada. IMPORTANTE: um erro de tool (code ' +
-  '"window_required"/"trail_window_required"/"looks_like_shipping_id"/"looks_like_campaign_id") NUNCA ' +
+  '"window_required"/"trail_window_required"/"looks_like_shipping_id"/"looks_like_campaign_id"/"min_query_date") NUNCA ' +
   'é "nenhum resultado" — a busca NEM rodou. JAMAIS responda "não foram encontrados envios/resultados" ' +
   'diante de um desses erros. SIGA a mensagem do erro: se falta a data, PERGUNTE-a ao usuário (NÃO ' +
-  'invente nem adivinhe uma data); se o erro diz que o id é de OUTRO tipo (looks_like_shipping_id = o ' +
+  'invente nem adivinhe uma data); se o erro for "min_query_date", a data pedida é ANTERIOR ao período ' +
+  'com dados confiáveis — DIGA isso ao usuário e cite a data mínima da mensagem do erro (ex.: "os dados ' +
+  'de auditoria começam em DD/MM"), oferecendo consultar a partir dela; NÃO diga "não foram encontrados envios"; ' +
+  'se o erro diz que o id é de OUTRO tipo (looks_like_shipping_id = o ' +
   'id é de um ENVIO → abra a TRILHA dele com get_shipping_trail; looks_like_campaign_id = é de uma ' +
   'CAMPANHA → busque os envios dela), faça a ação certa em vez de reclamar de "sem resultados". O shipping_id do get_shipping_trail ' +
   'é o id de um ENVIO específico — um HASH de 32 caracteres hex SEM hífens (ex.: ' +
