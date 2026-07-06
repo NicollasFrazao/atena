@@ -2,6 +2,24 @@ import { BadRequestException } from '@nestjs/common';
 import type { AuditWindowInterface } from './audit-query.types';
 
 /**
+ * Erro acionável (código `min_query_date`) para janelas fora do período confiável. O orquestrador o
+ * repassa ao LLM, que explica ao usuário e pede uma janela a partir de `minQueryDate`.
+ *
+ * @param {string} minQueryDate - Data mínima (ISO) de dados confiáveis, ecoada na mensagem.
+ * @returns {BadRequestException} Exceção com `error.code = 'min_query_date'`.
+ */
+function minQueryDateError(minQueryDate: string): BadRequestException {
+  return new BadRequestException({
+    error: {
+      code: 'min_query_date',
+      message: `Os dados de auditoria são confiáveis a partir de ${minQueryDate}. `
+        + 'Informe uma janela (date_from) igual ou posterior a essa data — consultas anteriores '
+        + 'cairiam em dados pré-contrato (sem provedor/erro e com modelo antigo).',
+    },
+  });
+}
+
+/**
  * Barra consultas cuja janela começa antes da data mínima confiável (`minQueryDate`). Antes dessa
  * data os dados são pré-contrato (sem `provider_name`/`provider_code`/`error` e com modelo antigo),
  * então responder sobre eles enganaria. Lança um erro acionável que o orquestrador repassa ao LLM
@@ -26,25 +44,24 @@ export function assertQueryWithinMinDate(
     !from
     || from.getTime() < min.getTime()
   ) {
-    throw new BadRequestException({
-      error: {
-        code: 'min_query_date',
-        message: `Os dados de auditoria são confiáveis a partir de ${minQueryDate}. `
-          + 'Informe uma janela (date_from) igual ou posterior a essa data — consultas anteriores '
-          + 'cairiam em dados pré-contrato (sem provedor/erro e com modelo antigo).',
-      },
-    });
+    throw minQueryDateError(minQueryDate);
   }
 }
 
 /**
- * Para janelas ROLANTES (presets `24h`/`7d`/`30d` ou default), recorta o início para a data mínima
- * confiável em vez de rejeitar — devolve a porção confiável (≥ `minQueryDate`). Para janelas
- * EXPLÍCITAS (o usuário pediu uma data) use {@link assertQueryWithinMinDate} (rejeita).
+ * Recorta o início da janela para a data mínima confiável (`minQueryDate`) em vez de rejeitar quando
+ * há SOBREPOSIÇÃO — devolve a porção confiável (≥ `minQueryDate`). Cobre presets rolantes
+ * (`24h`/`7d`/`30d`, `to` aberto) e datas explícitas que começam antes mas terminam depois do piso.
  *
- * @param {AuditWindowInterface | undefined} window - Janela rolante resolvida.
+ * PORÉM: se a janela termina em/antes do piso (`to ≤ min` — ex.: "dia 03/05" com piso em 18/06), NÃO
+ * há porção confiável alguma. Recortar só o início produziria uma janela INVERTIDA (`from > to`) que
+ * retorna 0 silenciosamente e confunde ("18/06 → 04/05"). Nesse caso REJEITA com o erro acionável
+ * `min_query_date` — o usuário entende que a data pedida é anterior ao período confiável.
+ *
+ * @param {AuditWindowInterface | undefined} window - Janela resolvida (rolante ou explícita).
  * @param {string | null} minQueryDate - Data mínima (ISO); `null` = sem guarda (não recorta).
  * @returns {{ window: AuditWindowInterface | undefined; clamped: boolean }} Janela (recortada se preciso) + flag.
+ * @throws {BadRequestException} Se a janela inteira for anterior ao piso (`to ≤ minQueryDate`).
  */
 export function clampWindowToMinDate(
   window: AuditWindowInterface | undefined,
@@ -73,10 +90,21 @@ export function clampWindowToMinDate(
     };
   }
 
+  // Janela inteira antes do piso (fim exclusivo ≤ piso): sem porção confiável — recortar inverteria a
+  // janela. Rejeita com mensagem acionável em vez de devolver [min, to) invertida (0 resultados mudos).
+  const to = window?.to ?? null;
+
+  if (
+    to
+    && to.getTime() <= min.getTime()
+  ) {
+    throw minQueryDateError(minQueryDate);
+  }
+
   return {
     window: {
       from: min,
-      to: window?.to ?? null,
+      to,
     },
     clamped: true,
   };

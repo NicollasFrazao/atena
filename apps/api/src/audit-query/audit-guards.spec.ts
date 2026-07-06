@@ -132,4 +132,42 @@ describe('clampWindowToMinDate', () => {
     expect(result.clamped).toBe(false);
     expect(result.window).toBe(window);
   });
+
+  it('REJEITA (não inverte) quando a janela inteira é anterior ao piso (to <= min)', () => {
+    // Regressão: "dia 03/05" com piso em 18/06 recortava só o início → [18/06, 04/05) invertida,
+    // devolvendo 0 mudo. Agora rejeita com o erro acionável.
+    expect(() => clampWindowToMinDate(
+      {
+        from: new Date('2026-05-03T03:00:00Z'),
+        to: new Date('2026-05-04T03:00:00Z'),
+      },
+      MIN,
+    )).toThrow(BadRequestException);
+
+    // Fim EXATAMENTE no piso também não tem porção confiável (fim exclusivo).
+    expect(() => clampWindowToMinDate(
+      {
+        from: new Date('2026-06-01T00:00:00Z'),
+        to: new Date(MIN),
+      },
+      MIN,
+    )).toThrow(BadRequestException);
+  });
+
+  it('o erro do fully-below-floor carrega o código acionável min_query_date', () => {
+    try {
+      clampWindowToMinDate(
+        {
+          from: new Date('2026-05-03T03:00:00Z'),
+          to: new Date('2026-05-04T03:00:00Z'),
+        },
+        MIN,
+      );
+
+      throw new Error('deveria ter lançado');
+    } catch (err) {
+      const response = (err as BadRequestException).getResponse() as { error?: { code?: string } };
+      expect(response.error?.code).toBe('min_query_date');
+    }
+  });
 });

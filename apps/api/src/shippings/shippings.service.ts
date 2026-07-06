@@ -118,9 +118,10 @@ export class ShippingsService {
       window,
     );
 
-    // Recorta a janela (inclusive datas explícitas) à data mínima confiável, em vez de rejeitar: o
-    // usuário recebe a porção confiável (>= minQueryDate) e a busca segue. Suporta o fluxo "pergunto
-    // a data → respondo um dia sem horário → clampa se cair antes do contrato e prossegue".
+    // Recorta a janela (inclusive datas explícitas) à data mínima confiável quando há SOBREPOSIÇÃO: o
+    // usuário recebe a porção confiável (>= minQueryDate) e a busca segue. Se a janela inteira for
+    // anterior ao piso (ex.: "dia 03/05" com piso em 18/06), REJEITA com min_query_date — antes
+    // recortava só o início e devolvia uma janela invertida (0 resultados mudos, "18/06 → 04/05").
     const effectiveWindow = clampWindowToMinDate(
       window,
       this.minQueryDate(),
@@ -192,8 +193,8 @@ export class ShippingsService {
     window?: AuditWindowInterface,
     onProgress?: AuditProgressCallback,
   ): Promise<ShippingTrailInterface | null> {
-    // Mesma política do search: recorta a janela (inclusive datas explícitas) à data mínima
-    // confiável, em vez de rejeitar — assim "abrir a trilha" após um search não quebra na guarda.
+    // Mesma política do search: recorta a janela à data mínima confiável quando há sobreposição
+    // (abrir a trilha após um search não quebra); só rejeita se a janela inteira for anterior ao piso.
     const effectiveWindow = clampWindowToMinDate(
       window,
       this.minQueryDate(),
