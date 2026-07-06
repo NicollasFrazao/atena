@@ -1410,6 +1410,10 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       clauses.push(`channel = $${params.push(filter.channel)}`);
     }
 
+    if (filter.errorHint) {
+      clauses.push(`error_hint = $${params.push(filter.errorHint)}`);
+    }
+
     if (filter.customerId) {
       clauses.push(`customer = $${params.push(filter.customerId)}`);
     }

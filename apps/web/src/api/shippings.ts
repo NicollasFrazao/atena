@@ -10,6 +10,7 @@ const FILTER_KEYS = [
   'status',
   'provider',
   'channel',
+  'error_hint',
   'customer_id',
   'campaign_id',
   'date_from',

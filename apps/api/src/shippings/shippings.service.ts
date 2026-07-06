@@ -135,6 +135,7 @@ export class ShippingsService {
         status: query.status as ShippingStatusType | undefined,
         provider: query.provider,
         channel: query.channel,
+        errorHint: query.error_hint,
         customerId: query.customer_id,
         correlationId: query.campaign_id,
       },
@@ -300,6 +301,7 @@ export class ShippingsService {
       status: query.status as ShippingStatusType | undefined,
       provider: query.provider,
       channel: query.channel,
+      errorHint: query.error_hint,
       customerId: query.customer_id,
       correlationId: query.campaign_id,
     });

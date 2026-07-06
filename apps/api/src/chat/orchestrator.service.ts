@@ -497,6 +497,7 @@ const TOOL_SPECS: LlmToolSpecInterface[] = [
   {
     name: 'search_shippings',
     description: 'Busca envios por telefone (com ou SEM DDI), status, provedor, canal (sms/sms_flash), '
+      + 'categoria da falha (error_hint, ex.: "falhas de número inválido" → error_hint=invalid_number), '
       + 'cliente ou campaign_id (id da campanha — devolve os destinatários daquela campanha). '
       + 'Janela temporal: date_from/date_to (ISO 8601) ou date_range (24h/7d/30d/all). A janela filtra '
       + 'por requested_at (quando o envio foi ENVIADO), NUNCA pela finalização — "envios do dia X" = '
@@ -527,6 +528,12 @@ const TOOL_SPECS: LlmToolSpecInterface[] = [
         channel: {
           type: 'string',
           description: 'Canal do envio: "sms" (SMS Short) ou "sms_flash" (SMS Flash).',
+        },
+        error_hint: {
+          type: 'string',
+          description: 'Categoria da falha para filtrar SÓ as falhas daquele motivo: "invalid_number" '
+            + '(número inválido), "unreachable" (inalcançável), "generic_error", "request_error", '
+            + '"opt_out", "insufficient_credits". Implica status=failed. NÃO use para bounce/bloqueado.',
         },
         customer_id: { type: 'string' },
         campaign_id: { type: 'string' },

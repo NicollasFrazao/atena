@@ -271,6 +271,15 @@ function buildFilterChips(
     });
   }
 
+  const errorHint = value('error_hint');
+
+  if (errorHint) {
+    chips.push({
+      label: 'Erro',
+      value: categoryLabel(errorHint),
+    });
+  }
+
   const campaign = value('campaign_id');
 
   if (campaign) {

@@ -87,6 +87,8 @@ export interface DeliveryTrailInterface {
  * @property {ShippingStatusType} [status] - Status final para filtrar.
  * @property {string} [provider] - Provedor de envio.
  * @property {string} [channel] - Canal do envio (`campaign_type`): `sms` (SMS Short) ou `sms_flash` (SMS Flash).
+ * @property {string} [errorHint] - Categoria da falha terminal (`error_hint`): `invalid_number`, `unreachable`,
+ *   `generic_error`, `request_error`, etc. Só casa envios `failed` (o `error_hint` é `null` para delivered/blocked/pending).
  * @property {string} [customerId] - Cliente (match exato).
  * @property {string} [correlationId] - Id da requisição/campanha (`correlation_id`) — devolve os destinatários daquela requisição.
  */
@@ -96,6 +98,7 @@ export interface AuditSearchFilterInterface {
   status?: ShippingStatusType;
   provider?: string;
   channel?: string;
+  errorHint?: string;
   customerId?: string;
   correlationId?: string;
 }
