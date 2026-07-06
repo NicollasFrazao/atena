@@ -183,6 +183,7 @@ export interface DeliveryPageInterface {
   breakdown?: {
     delivered: number;
     failed: number;
+    blocked: number;
     pending: number
   };
   /** Token do snapshot (Parquet) do conjunto exato — o export por token o lê (byte-exato). */

@@ -527,6 +527,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
           `SELECT count(*)::INTEGER AS total,
               count(*) FILTER (WHERE final_status = 'delivered')::INTEGER AS delivered_total,
               count(*) FILTER (WHERE final_status = 'failed')::INTEGER AS failed_total,
+              count(*) FILTER (WHERE final_status = 'blocked')::INTEGER AS blocked_total,
               count(*) FILTER (WHERE final_status = 'pending')::INTEGER AS pending_total
             FROM ${RECORDS_TABLE}
             WHERE ${conditions}`,
@@ -590,6 +591,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
           breakdown: {
             delivered: toNumber(head.delivered_total),
             failed: toNumber(head.failed_total),
+            blocked: toNumber(head.blocked_total),
             pending: toNumber(head.pending_total),
           },
           total,

@@ -25,13 +25,18 @@ export interface SearchResultsResultInterface {
   breakdown?: {
     delivered: number;
     failed: number;
+    blocked: number;
     pending: number
   };
 }
 
-/** Quebra por status no rodapé (rótulo + cor), na ordem entregue → falha → pendente. */
+/**
+ * Quebra por status no rodapé (rótulo + cor). Mesma ordem/semântica da composição do relatório:
+ * entregue → bloqueado (cinza, controle de entrega/bounce) → pendente → falha (por último). Somadas,
+ * as quatro fatias fecham com o total (antes `blocked` ficava de fora e o rodapé não batia).
+ */
 const BREAKDOWN_PARTS: Array<{
-  key: 'delivered' | 'failed' | 'pending';
+  key: 'delivered' | 'failed' | 'blocked' | 'pending';
   label: string;
   color: string
 }> = [
@@ -41,14 +46,19 @@ const BREAKDOWN_PARTS: Array<{
     color: 'var(--at-success-300)',
   },
   {
-    key: 'failed',
-    label: 'falha',
-    color: 'var(--at-danger-300)',
+    key: 'blocked',
+    label: 'bloqueado',
+    color: 'var(--at-fg-muted)',
   },
   {
     key: 'pending',
     label: 'pendente',
     color: 'var(--at-warning-300)',
+  },
+  {
+    key: 'failed',
+    label: 'falha',
+    color: 'var(--at-danger-300)',
   },
 ];
 

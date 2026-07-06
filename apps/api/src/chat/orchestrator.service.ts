@@ -125,7 +125,7 @@ const SYSTEM_PROMPT =
   + 'trilha de eventos, gráfico de taxa de entrega por hora, quebra por provedor e top erros). NÃO '
   + 'transcreva esses dados linha a linha no texto — em especial NUNCA liste as 24 horas do relatório '
   + 'nem repita a tabela inteira de resultados. Ao resumir uma busca de envios (search_shippings), CITE o '
-  + 'breakdown por status do resultado (campo `breakdown`: entregue/falha/pendente do conjunto todo) — '
+  + 'breakdown por status do resultado (campo `breakdown`: entregue/falha/bloqueado/pendente do conjunto todo) — '
   + 'são números REAIS (não invente nem some à mão); o search NÃO traz taxa de entrega, só essas contagens. '
   + 'Resuma o essencial em 1–3 frases (taxa geral, pico e '
   + 'vale com HORA e DATA, e tendência) e deixe os detalhes para o cartão. Sempre que citar um horário, '
@@ -1737,6 +1737,7 @@ export class OrchestratorService {
     const breakdown = {
       delivered: 0,
       failed: 0,
+      blocked: 0,
       pending: 0,
     };
 
@@ -1746,6 +1747,9 @@ export class OrchestratorService {
       }
       else if (row.status === 'failed') {
         breakdown.failed += 1;
+      }
+      else if (row.status === 'blocked') {
+        breakdown.blocked += 1;
       }
       else if (row.status === 'pending') {
         breakdown.pending += 1;

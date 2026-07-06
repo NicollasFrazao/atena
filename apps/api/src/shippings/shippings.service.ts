@@ -105,6 +105,7 @@ export class ShippingsService {
     breakdown: {
       delivered: number;
       failed: number;
+      blocked: number;
       pending: number
     }
   }> {
@@ -170,6 +171,7 @@ export class ShippingsService {
       breakdown: result.breakdown ?? {
         delivered: 0,
         failed: 0,
+        blocked: 0,
         pending: 0,
       },
     };

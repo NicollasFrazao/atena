@@ -262,6 +262,7 @@ describe('OrchestratorService', () => {
         breakdown: {
           delivered: number;
           failed: number;
+          blocked: number;
           pending: number
         }
       }>
@@ -279,6 +280,7 @@ describe('OrchestratorService', () => {
     expect(result.breakdown).toEqual({
       delivered: 1,
       failed: 1,
+      blocked: 0,
       pending: 0,
     });
 
@@ -505,7 +507,8 @@ describe('toolResultForLlm', () => {
       export_token: 'tok',
       breakdown: {
         delivered: 333,
-        failed: 342,
+        failed: 300,
+        blocked: 42,
         pending: 2,
       },
       date_from: '2026-06-22',
