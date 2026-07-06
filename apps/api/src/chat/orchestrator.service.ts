@@ -210,6 +210,10 @@ export function toolResultForLlm(
     name !== 'search_shippings'
     || result === null
     || typeof result !== 'object'
+    // Resultado de ERRO (`{ error: { code, message } }`, ex.: min_query_date/window_required): passa
+    // INTACTO. Sem isto, a projeção abaixo descartava o `error` e devolvia rows/total undefined —
+    // o modelo lia como "0 resultados" e respondia "não foram encontrados envios" em vez do motivo real.
+    || 'error' in (result as Record<string, unknown>)
   ) {
     return result;
   }

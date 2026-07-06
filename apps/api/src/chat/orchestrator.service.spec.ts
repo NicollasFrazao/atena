@@ -552,6 +552,22 @@ describe('toolResultForLlm', () => {
     )).toBe(result);
   });
 
+  it('search_shippings com ERRO passa intacto (não vira "0 resultados")', () => {
+    // Regressão: um resultado de erro (min_query_date/window_required) tinha o `error` descartado pela
+    // projeção → o modelo via rows/total undefined e respondia "não foram encontrados envios".
+    const errored = {
+      error: {
+        code: 'min_query_date',
+        message: 'Os dados de auditoria são confiáveis a partir de 2026-06-18T20:40:00Z.',
+      },
+    };
+
+    expect(toolResultForLlm(
+      'search_shippings',
+      errored,
+    )).toBe(errored);
+  });
+
   it('resultado não-objeto passa direto', () => {
     expect(toolResultForLlm(
       'search_shippings',
