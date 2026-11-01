@@ -6,7 +6,7 @@
 - **Auth OIDC Microsoft Entra** ligada e validada (state/nonce/PKCE + sessão por cookie JWT). Ver item 1.
 - **RBAC gerenciado no app** (papéis no banco, `@Requires`), supera o antigo débito de App Roles do Entra. Ver item 1.
 - **LLM real:** Amazon Nova Pro (`us.amazon.nova-pro-v1:0`) via Bedrock Converse; provider fake sem credencial.
-- **Fonte de entrega = detailed report no S3** (`s3://example-sms-delivery-reports`), via DuckDB + cache `/tmp`; `messages`/`message_events` dropados. O contrato de logs gerais do `messaging-api` foi **abandonado** (docs `handoff-at-api-log-contract.md`/`ticket-messaging-api-logs.md` marcados como obsoletos).
+- **Fonte de entrega = detailed report no S3** (`s3://example-sms-delivery-reports`), via DuckDB + cache `/tmp`; `messages`/`message_events` dropados. O contrato de logs gerais do `messaging-api` foi **abandonado**.
 - **Rename message→shipping concluído** (tools `search_shippings`/`get_shipping_trail`, `shipping_id`, rotas `/shippings/*`, incidentes com `related_shipping_ids`). "campaign" permanece.
 - **Top-3 cenários de anomalia** definidos (item 3) e detectores implementados (4 regras + shadow mode).
 
@@ -50,7 +50,7 @@ O modelo em [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md)
 ## 6. Auditoria: saídas de fluxo pré-`queued` não rastreadas (médio prazo)
 - **Contexto:** a Atena conta a partir do **detailed report** (`example-sms-delivery-reports`), cujo primeiro registro de uma campanha é o `queued`. Falhas no produtor **antes** do `dispatchStatus('queued')` (parse / `calculateCreditByMessage` / `validatePayload` / `resolveSmsHashId`) **não geram registro** no detailed report → a Atena não as enxerga (só viram log de erro nos logs gerais).
 - **Decisão (MVP):** aceitar a lacuna — essas falhas são raras (a mensagem já passou pelo main-api). Canal: cobrimos **SMS Short + SMS Flash** (`campaign_type IN ('sms','sms_flash')`, decisão revista 2026-06-25; antes era só SMS Short). Voz/RCS seguem fora.
-- **Médio prazo:** **medir o volume** (erros pré-`queued` no dia vs nº de campanhas no detailed report) e decidir se vale mexer no produtor. Se relevante: o produtor emite um status de falha cedo (o detailed report não usa `hashId`, então dá pra emitir antes do `resolveSmsHashId`); o parse-falho (sem `campaign_id`) fica só no log. Alternativa barata no consumidor: reconciliar o intake (`[Action] enqueued`, agregado) vs as campanhas do detailed report. Detalhes em [`docs/reconciliacao-enviado-detailed-report.md`](../../docs/reconciliacao-enviado-detailed-report.md) §7.
+- **Médio prazo:** **medir o volume** (erros pré-`queued` no dia vs nº de campanhas no detailed report) e decidir se vale mexer no produtor. Se relevante: o produtor emite um status de falha cedo (o detailed report não usa `hashId`, então dá pra emitir antes do `resolveSmsHashId`); o parse-falho (sem `campaign_id`) fica só no log. Alternativa barata no consumidor: reconciliar o intake (`[Action] enqueued`, agregado) vs as campanhas do detailed report.
 
 ## 7. Catálogo (`list_customers`/`list_providers`): scan e tamanho de resultado
 - **Contexto:** as tools de catálogo varrem o S3 para `DISTINCT` de clientes/provedores. Numa validação live o `list_customers` levou >2min (cold scan sobre a janela default, larga).

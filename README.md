@@ -1,6 +1,6 @@
 # Atena
 
-Assistente conversacional de IA da plataforma de comunicação. Dá a times de suporte autorizados **acesso self-service aos dados de envio de SMS** (busca, trilha de entrega, análise de risco, relatórios) e **detecta anomalias proativamente** (incidentes com push em tempo real e resolução estruturada).
+Assistente conversacional de IA para plataformas de comunicação. Dá a times de suporte autorizados **acesso self-service aos dados de envio de SMS** (busca, trilha de entrega, análise de risco, relatórios) e **detecta anomalias proativamente** (incidentes com push em tempo real e resolução estruturada).
 
 > **Princípio central:** a IA é **intérprete, não executora** — o LLM traduz linguagem natural em chamadas de _tools_ determinísticas; é a **aplicação** que executa a query, aplica RBAC e acessa os dados. O LLM nunca toca a fonte de dados e nunca fabrica dados.
 
