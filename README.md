@@ -1,148 +1,148 @@
 # Atena
 
-Assistente conversacional de IA para plataformas de comunicação. Dá a times de suporte autorizados **acesso self-service aos dados de envio de SMS** (busca, trilha de entrega, análise de risco, relatórios) e **detecta anomalias proativamente** (incidentes com push em tempo real e resolução estruturada).
+AI conversational assistant for messaging platforms. It gives authorized support teams **self-service access to SMS delivery data** (search, delivery trail, risk analysis, reports) and **detects anomalies proactively** (incidents pushed in real time, with a structured resolution flow).
 
-> **Princípio central:** a IA é **intérprete, não executora** — o LLM traduz linguagem natural em chamadas de _tools_ determinísticas; é a **aplicação** que executa a query, aplica RBAC e acessa os dados. O LLM nunca toca a fonte de dados e nunca fabrica dados.
-
----
-
-## Estado atual
-
-MVP **implementado** — backend NestJS + frontend React, ponta a ponta. Chat com orquestrador LLM e tools determinísticas, detector de anomalias com push em tempo real, ciclo de vida de incidentes, relatórios, regras, auditoria, observabilidade, login OIDC (Microsoft Entra) e administração de papéis (RBAC).
-
-- **Backend:** [`apps/api`](apps/api/) — NestJS 11.
-- **Frontend:** [`apps/web`](apps/web/) — React 18 + Vite.
-- **Contrato compartilhado:** [`packages/types`](packages/types/) — `@atena/types`.
-
-O contrato HTTP vigente está em [`docs/openapi.yaml`](docs/openapi.yaml). O design original (handoff de entrada) está em [`docs/design_handoff_atena/`](docs/design_handoff_atena/) — é **histórico** e diverge do estado atual em vários pontos (ver o aviso no topo daquele README).
+> **Core principle:** the AI is an **interpreter, not an executor**. The LLM turns natural language into calls to deterministic _tools_; the **application** runs the query, enforces RBAC and reads the data. The LLM never touches the data source and never makes data up.
 
 ---
 
-## Princípios não-negociáveis
+## Current state
 
-1. **A IA é intérprete, não executora** — a aplicação roda a query, aplica RBAC e acessa os dados; o LLM só recebe o resultado estruturado.
-2. **O LLM não fabrica dados** — todo dado estruturado vem do retorno de uma tool; sem tool aplicável → recusa explícita.
-3. **Mudança de estado de incidente não é tool** — `acknowledge`/`resolve` só via UI + validação server-side.
-4. **Tudo é auditado** — mensagens, tool calls, reveals de PII, exports e mudanças de incidente → audit log imutável (append-only), via interceptor global.
-5. **PII mascarada por padrão** — telefone e conteúdo de SMS chegam mascarados; revelar (ou exportar em claro) exige `pii:reveal` e gera entry no audit log.
+The MVP is **implemented** end to end, with a NestJS backend and a React frontend: chat with an LLM orchestrator and deterministic tools, an anomaly detector with real-time push, the incident lifecycle, reports, rules, auditing, observability, OIDC login (Microsoft Entra) and role administration (RBAC).
+
+- **Backend:** [`apps/api`](apps/api/), NestJS 11.
+- **Frontend:** [`apps/web`](apps/web/), React 18 + Vite.
+- **Shared contract:** [`packages/types`](packages/types/), `@atena/types`.
+
+The current HTTP contract is in [`docs/openapi.yaml`](docs/openapi.yaml). The original design handoff is in [`docs/design_handoff_atena/`](docs/design_handoff_atena/). It is **historical** and differs from the current state in several places (see the note at the top of its README).
+
+---
+
+## Non-negotiable principles
+
+1. **The AI is an interpreter, not an executor.** The application runs the query, enforces RBAC and reads the data; the LLM only receives the structured result.
+2. **The LLM does not make up data.** Every piece of structured data comes from a tool result; with no applicable tool, the answer is an explicit refusal.
+3. **Changing an incident's state is not a tool.** `acknowledge`/`resolve` only happen through the UI, with server-side validation.
+4. **Everything is audited.** Messages, tool calls, PII reveals, exports and incident changes go to an immutable, append-only audit log through a global interceptor.
+5. **PII is masked by default.** Phone numbers and SMS content arrive masked; revealing them (or exporting them in clear) requires `pii:reveal` and writes an audit log entry.
 
 ---
 
 ## Stack
 
-- **Backend:** TypeScript + **NestJS 11** (módulos/DI, guards, interceptors, WebSocket gateway via Socket.IO).
-- **Banco (app):** **MySQL** via **Prisma** — guarda só o estado da **aplicação** (incidentes, regras, sessões/mensagens de chat, usuários/papéis, `audit_log`). **Não** guarda os dados de envio.
-- **Fonte dos dados de envio:** o **detailed report** no **S3** é a fonte da verdade, consultada via **DuckDB** com cache transitório read-through em `/tmp` (reduz idas ao S3). MySQL não tem tabela de mensagens.
-- **LLM:** **Amazon Bedrock** (**Amazon Nova Pro**, Converse API: streaming + tool use) — atrás de uma abstração trocável (`LLM_PROVIDER`). Sem credencial (`AWS_BEARER_TOKEN_BEDROCK`), cai num provider _fake_ determinístico (dev/local/testes).
-- **Auth:** login social institucional **OIDC** (Microsoft 365 / Entra ID), restrito ao domínio — sessão por cookie JWT (`SameSite=None; Secure`). Provider plugável.
-- **RBAC gerenciado no app:** papéis no banco (atribuídos por admin), **não** vêm do IdP. 4 papéis (`admin` / `support_lead` / `support_analyst` / `viewer`) → permissões (mapa em código, `@Requires`). O JWT carrega só identidade.
-- **Frontend:** **React 18** + **Vite**, React Router, TanStack Query, Socket.IO client, Phosphor Icons.
-- **Deploy:** imagem **Docker** numa **EC2**; volume do host → `/tmp` (cache do DuckDB).
-- **Observabilidade:** APM via **Datadog** (dd-trace, opt-in) + métricas básicas do assistente a partir do audit log.
+- **Backend:** TypeScript + **NestJS 11** (modules/DI, guards, interceptors, a WebSocket gateway over Socket.IO).
+- **Application database:** **MySQL** through **Prisma**. It stores only the **application's** state (incidents, rules, chat sessions and messages, users and roles, `audit_log`), **not** the delivery data.
+- **Delivery data source:** the **detailed report** in **S3** is the source of truth, queried with **DuckDB** through a transient read-through cache in `/tmp` (fewer round trips to S3). MySQL has no messages table.
+- **LLM:** **Amazon Bedrock** (**Amazon Nova Pro**, Converse API with streaming and tool use), behind a swappable abstraction (`LLM_PROVIDER`). Without credentials (`AWS_BEARER_TOKEN_BEDROCK`) it falls back to a deterministic _fake_ provider (dev, local and tests).
+- **Auth:** corporate social login over **OIDC** (Microsoft 365 / Entra ID), restricted to the organization's domain, with a JWT session cookie (`SameSite=None; Secure`). The provider is pluggable.
+- **RBAC managed in the app:** roles live in the database (assigned by an admin) and **do not** come from the IdP. Four roles (`admin` / `support_lead` / `support_analyst` / `viewer`) map to permissions (a map in code, `@Requires`). The JWT carries identity only.
+- **Frontend:** **React 18** + **Vite**, React Router, TanStack Query, the Socket.IO client and Phosphor Icons.
+- **Deployment:** a **Docker** image on **EC2**, with a host volume mounted at `/tmp` (the DuckDB cache).
+- **Observability:** APM through **Datadog** (dd-trace, opt-in) plus basic assistant metrics derived from the audit log.
 
 ---
 
-## Estrutura do repositório
+## Repository layout
 
 ```
-apps/api/              # Backend NestJS (orquestrador LLM + tools + REST/WS)
-  prisma/schema.prisma # Schema MySQL (estado do app) + migrations/
+apps/api/              # NestJS backend (LLM orchestrator + tools + REST/WS)
+  prisma/schema.prisma # MySQL schema (application state) + migrations/
   src/                 # config, prisma, auth (OIDC+RBAC), audit, llm (Bedrock/Nova),
                        #   audit-query (S3↔DuckDB), shippings, incidents, reports,
                        #   rules, catalog, chat, detector, observability, admin, retention
-  Dockerfile           # imagem multi-stage
-apps/web/              # Frontend React + Vite (chat, incidentes, relatórios, regras,
-                       #   histórico, auditoria, admin/usuários, observabilidade)
-packages/types/        # @atena/types — contrato de shapes compartilhado API↔web
-docs/openapi.yaml      # contrato HTTP VIGENTE
-docs/design_handoff_atena/  # handoff de design ORIGINAL (entrada do projeto; histórico)
-.context/              # base de conhecimento (dotcontext): docs, agents, skills, planos
-docker-compose.yml     # profiles local | production
-Makefile               # entrypoint de tarefas
+  Dockerfile           # multi-stage image
+apps/web/              # React + Vite frontend (chat, incidents, reports, rules,
+                       #   history, audit, admin/users, observability)
+packages/types/        # @atena/types: shapes shared between API and web
+docs/openapi.yaml      # CURRENT HTTP contract
+docs/design_handoff_atena/  # ORIGINAL design handoff (project input; historical)
+.context/              # knowledge base (dotcontext): docs, agents, skills, plans
+docker-compose.yml     # local | production profiles
+Makefile               # task entry point
 ```
 
 ---
 
-## Como rodar (local)
+## Running locally
 
-**Pré-requisitos:** Node ≥ 20, Docker + Docker Compose.
+**Prerequisites:** Node ≥ 20, Docker + Docker Compose.
 
 ```bash
-# 1. variáveis de ambiente — gera o apps/api/.env (NUNCA versionado) a partir do template
-make env            # cria .env a partir de .env.example; preencha os valores
+# 1. environment variables: generates apps/api/.env (NEVER committed) from the template
+make env            # creates .env from .env.example; fill in the values
 
-# 2. dependências
+# 2. dependencies
 make install
 
-# 3. sobe o stack local (API + MySQL via Docker)
+# 3. start the local stack (API + MySQL in Docker)
 make up ENV=local
-#   ou: make dev   → sobe com AUTH_DEV_BYPASS=true (login dispensado; APENAS dev)
+#   or: make dev   → starts with AUTH_DEV_BYPASS=true (no login; dev ONLY)
 
-# 4. migrações do banco
+# 4. database migrations
 make migrate
 
-# 5. healthcheck
+# 5. health check
 curl localhost:3000/health   # -> {"status":"ok","service":"atena-api"}
 ```
 
-- API só (host, watch, iteração rápida): `make api`.
-- Frontend (Vite, host): `make web`.
-- Smoke test dos endpoints principais: `make smoke`.
+- API only (on the host, watch mode, fast iteration): `make api`.
+- Frontend (Vite, on the host): `make web`.
+- Smoke test of the main endpoints: `make smoke`.
 
-Veja todos os alvos com `make help`.
+`make help` lists every target.
 
-### Variáveis de ambiente
+### Environment variables
 
-O app lê **sempre um único `.env`** (`apps/api/.env`), **gerado em runtime** e **nunca versionado** (em produção a partir de **SSM / Secrets Manager**; em local via `make env`). O único arquivo de env no git é o template [`.env.example`](.env.example). Chaves relevantes: `DATABASE_URL`, `LLM_PROVIDER`/`BEDROCK_MODEL_ID`/`AWS_BEARER_TOKEN_BEDROCK`, S3 (fonte do detailed report), OIDC (`AUTH_*`), `AUTH_ADMIN_EMAILS` (bootstrap de admin), `APP_TIMEZONE` (default BRT), `AUTH_DEV_BYPASS` (off em produção).
-
----
-
-## API e contrato
-
-- Todos os endpoints ficam sob o prefixo **`/api`**, exceto `GET /health` (sonda de infra, na raiz).
-- Respostas em `snake_case`; erros no shape `{ "error": { "code": "...", "message": "..." } }`; listas paginadas no envelope `{ rows, page, total_pages, total, latency_ms }`.
-- Entidade de entrega = **shipping** (rotas `/shippings/*`; antes era `message`).
-- Chat e relatórios respondem em **stream SSE**; incidentes têm push via **WebSocket** (Socket.IO).
-- Contrato completo em [`docs/openapi.yaml`](docs/openapi.yaml).
-
-### Janela de entrega (send-based)
-
-Envios e taxas são sempre medidos **sobre o instante de envio** (`requested_at`) dentro da janela — não sobre a finalização. A trilha de um envio alarga para trás para mostrar os eventos terminais. O motor opera em UTC e converte só nas bordas para o fuso de exibição (`APP_TIMEZONE`, default UTC-3/BRT).
+The app always reads **a single `.env`** (`apps/api/.env`), **generated at runtime** and **never committed** (in production from **SSM / Secrets Manager**; locally through `make env`). The only env file in git is the template, [`.env.example`](.env.example). Relevant keys: `DATABASE_URL`, `LLM_PROVIDER`/`BEDROCK_MODEL_ID`/`AWS_BEARER_TOKEN_BEDROCK`, S3 (detailed report source), OIDC (`AUTH_*`), `AUTH_ADMIN_EMAILS` (admin bootstrap), `APP_TIMEZONE` (defaults to BRT) and `AUTH_DEV_BYPASS` (off in production).
 
 ---
 
-## Banco de dados
+## API and contract
 
-- Schema em [`apps/api/prisma/schema.prisma`](apps/api/prisma/schema.prisma) (MySQL — **só estado do app**). Migrations versionadas em `apps/api/prisma/migrations/`.
-- `make migrate` (dev) / `prisma migrate deploy` (produção, no entrypoint do container).
-- O `audit_log` é **append-only** — o role de app deve ter só INSERT + SELECT.
-- Os **dados de envio não ficam no banco**: vêm do detailed report no S3, consultados via DuckDB.
+- Every endpoint lives under the **`/api`** prefix, except `GET /health` (an infrastructure probe at the root).
+- Responses use `snake_case`; errors have the shape `{ "error": { "code": "...", "message": "..." } }`; paginated lists use the envelope `{ rows, page, total_pages, total, latency_ms }`.
+- The delivery entity is the **shipping** (routes under `/shippings/*`; it used to be `message`).
+- Chat and reports respond as an **SSE stream**; incidents are pushed over **WebSocket** (Socket.IO).
+- The full contract is in [`docs/openapi.yaml`](docs/openapi.yaml).
+
+### Delivery window (send-based)
+
+Volumes and rates are always measured **on the send time** (`requested_at`) within the window, not on when the delivery was finalized. A shipping's trail extends backwards to show its terminal events. The engine works in UTC and converts only at the edges to the display time zone (`APP_TIMEZONE`, default UTC-3/BRT).
+
+---
+
+## Database
+
+- The schema is in [`apps/api/prisma/schema.prisma`](apps/api/prisma/schema.prisma) (MySQL, **application state only**), with versioned migrations in `apps/api/prisma/migrations/`.
+- `make migrate` (dev) / `prisma migrate deploy` (production, in the container entrypoint).
+- `audit_log` is **append-only**: the application's database role should only have INSERT + SELECT.
+- **Delivery data is not stored in the database**: it comes from the detailed report in S3, queried with DuckDB.
 
 ---
 
 ## RBAC
 
-| Papel | Resumo |
+| Role | Summary |
 |---|---|
-| `viewer` | Somente leitura (busca, trilha, relatórios, incidentes, regras, auditoria, observabilidade). |
-| `support_analyst` | Viewer + operação de incidentes (comentar/reconhecer/resolver). |
-| `support_lead` | Analyst + ações sensíveis: revelar PII (`pii:reveal`), editar regras, disparar rotinas de ops. |
-| `admin` | Tudo + gestão de usuários e papéis (`/admin`). |
+| `viewer` | Read-only (search, trail, reports, incidents, rules, audit, observability). |
+| `support_analyst` | Viewer + incident operations (comment, acknowledge, resolve). |
+| `support_lead` | Analyst + sensitive actions: reveal PII (`pii:reveal`), edit rules, trigger ops routines. |
+| `admin` | Everything + user and role management (`/admin`). |
 
-Papéis são atribuídos por admin na tela `/admin/usuarios` e persistidos no banco. `pii:reveal` é exigido tanto para os reveals (`reveal-phone`/`reveal-content`) quanto para os exports CSV com telefone em claro.
-
----
-
-## Documentação
-
-- **Contrato HTTP vigente:** [`docs/openapi.yaml`](docs/openapi.yaml).
-- **Base de contexto (`.context/docs/`):** [arquitetura](.context/docs/architecture.md) · [fluxo de dados](.context/docs/data-flow.md) · [segurança](.context/docs/security.md) · [tooling](.context/docs/tooling.md) · [cenários de anomalia](.context/docs/anomaly-scenarios.md) · [débito técnico](.context/docs/tech-debt.md)
-- **Handoff de design (original / histórico):** [README](docs/design_handoff_atena/README.md).
+Roles are assigned by an admin on the `/admin/usuarios` screen and stored in the database. `pii:reveal` is required both for reveals (`reveal-phone`/`reveal-content`) and for CSV exports with phone numbers in clear.
 
 ---
 
-## Convenções
+## Documentation
 
-- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/) (ex.: `feat(api): ...`, `chore(db): ...`).
-- **Segredos:** nunca no git — `.env` é gerado em runtime e está no `.gitignore`.
-- **PII:** nunca logar em claro; usar telefone mascarado/IDs e `severity: pii` no audit.
+- **Current HTTP contract:** [`docs/openapi.yaml`](docs/openapi.yaml).
+- **Context base (`.context/docs/`, in Portuguese):** [architecture](.context/docs/architecture.md) · [data flow](.context/docs/data-flow.md) · [security](.context/docs/security.md) · [tooling](.context/docs/tooling.md) · [anomaly scenarios](.context/docs/anomaly-scenarios.md) · [technical debt](.context/docs/tech-debt.md)
+- **Design handoff (original / historical):** [README](docs/design_handoff_atena/README.md).
+
+---
+
+## Conventions
+
+- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat(api): ...`, `chore(db): ...`).
+- **Secrets:** never in git. `.env` is generated at runtime and is in `.gitignore`.
+- **PII:** never log it in clear; use masked phone numbers or IDs and `severity: pii` in the audit log.
