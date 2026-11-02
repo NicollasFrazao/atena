@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import type { WsServerEvent } from '@atena/types';
 import { WS_URL } from '../api/config';
@@ -21,7 +21,13 @@ const SERVER_EVENTS: WsServerEvent['type'][] = [
  */
 export function useSupportEvents(onEvent: (event: WsServerEvent) => void): { connected: boolean } {
   const handlerRef = useRef(onEvent);
-  handlerRef.current = onEvent;
+
+  // The ref follows the latest handler after each commit, never during render.
+  useLayoutEffect(
+    () => {
+      handlerRef.current = onEvent;
+    },
+  );
 
   const [
     connected,

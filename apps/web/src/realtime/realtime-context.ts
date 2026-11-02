@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef } from 'react';
 import type { WsServerEvent } from '@atena/types';
 
 /**
@@ -25,7 +25,12 @@ export function useRealtimeEvent(handler: (event: WsServerEvent) => void): void 
   const ctx = useContext(RealtimeContext);
   const ref = useRef(handler);
 
-  ref.current = handler;
+  // The ref follows the latest handler after each commit, never during render.
+  useLayoutEffect(
+    () => {
+      ref.current = handler;
+    },
+  );
 
   useEffect(
     () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX } from 'react';
+import { useCallback, useState, type JSX } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -28,6 +28,31 @@ function investigateHref(incident: IncidentInterface): string {
   return `/?q=${encodeURIComponent(
     `Investigue o incidente ${incident.id} (${incident.rule}). ${incident.summary}`,
   )}`;
+}
+
+/**
+ * Opens the incident named by a new `?detalhe` param (e.g. "Ver detalhes" on a chat incident card).
+ * The state is adjusted while rendering when the param changes, instead of inside an effect.
+ *
+ * @param param - Current `?detalhe` value.
+ * @param open - Opens the detail drawer for an incident id.
+ */
+function useOpenFromParam(
+  param: string | null,
+  open: (id: string) => void,
+): void {
+  const [
+    synced,
+    setSynced,
+  ] = useState<string | null>(null);
+
+  if (param !== synced) {
+    setSynced(param);
+
+    if (param) {
+      open(param);
+    }
+  }
 }
 
 /**
@@ -67,13 +92,9 @@ export function IncidentsPage(): JSX.Element {
 
   const detalheParam = searchParams.get('detalhe');
 
-  useEffect(
-    () => {
-      if (detalheParam) {
-        setDetailTarget(detalheParam);
-      }
-    },
-    [detalheParam],
+  useOpenFromParam(
+    detalheParam,
+    setDetailTarget,
   );
 
   // Fecha o drawer e limpa o `?detalhe` — sem isso, reabrir o MESMO incidente (param inalterado)

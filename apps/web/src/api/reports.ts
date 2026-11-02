@@ -197,29 +197,36 @@ export function useDeliveryReportStream(
     isError: false,
   });
 
-  // A janela é um objeto novo a cada render; a chave (conteúdo) é a dependência estável do efeito.
-  const key = JSON.stringify(window);
+  // The window is a new object on every render; its content is the stable key. Off is a null key.
+  const requestKey = enabled
+    ? JSON.stringify(window)
+    : null;
+
+  // A new request (or switching it off) resets the state while rendering; the effect only streams.
+  const [
+    stateKey,
+    setStateKey,
+  ] = useState<string | null>(null);
+
+  if (requestKey !== stateKey) {
+    setStateKey(requestKey);
+
+    setState({
+      isLoading: requestKey !== null,
+      isError: false,
+    });
+  }
 
   useEffect(
     () => {
-      if (!enabled) {
-        setState({
-          isLoading: false,
-          isError: false,
-        });
-
+      if (requestKey === null) {
         return undefined;
       }
 
       const controller = new AbortController();
 
-      setState({
-        isLoading: true,
-        isError: false,
-      });
-
       streamDeliveryReport(
-        JSON.parse(key) as ReportWindowInterface,
+        JSON.parse(requestKey) as ReportWindowInterface,
         (progress) => {
           setState((current) => ({
             ...current,
@@ -248,10 +255,7 @@ export function useDeliveryReportStream(
         controller.abort();
       };
     },
-    [
-      enabled,
-      key,
-    ],
+    [requestKey],
   );
 
   return state;

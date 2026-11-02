@@ -349,7 +349,12 @@ export function IncidentBanner(): JSX.Element | null {
   ] = useState<StackedNoticeInterface[]>([]);
 
   const seqRef = useRef(0);
-  const everConnectedRef = useRef(false);
+
+  const [
+    everConnected,
+    setEverConnected,
+  ] = useState(false);
+
   // Timers de auto-dispensa pendentes — limpos no unmount p/ não chamar setNotices após desmontar.
   const timeoutsRef = useRef<number[]>([]);
 
@@ -423,12 +428,17 @@ export function IncidentBanner(): JSX.Element | null {
 
   const connected = useRealtimeConnected();
 
-  if (connected) {
-    everConnectedRef.current = true;
+  // Remembered once the first connection succeeds; adjusted while rendering, as React allows for
+  // state derived from other values, so no effect or ref is read during render.
+  if (
+    connected
+    && !everConnected
+  ) {
+    setEverConnected(true);
   }
 
   // Faixa só aparece se a conexão CAIU depois de já ter conectado — evita o flicker do connect inicial.
-  const showDisconnected = !connected && everConnectedRef.current;
+  const showDisconnected = !connected && everConnected;
 
   if (
     notices.length === 0
