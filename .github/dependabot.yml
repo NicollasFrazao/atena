@@ -18,6 +18,8 @@ updates:
         update-types: ['version-update:semver-major']
       - dependency-name: '@vitest/*' # #26
         update-types: ['version-update:semver-major']
+      - dependency-name: '@vitejs/plugin-react' # #26
+        update-types: ['version-update:semver-major']
       - dependency-name: 'react' # #32
         update-types: ['version-update:semver-major']
       - dependency-name: 'react-dom' # #32
