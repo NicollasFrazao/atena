@@ -1300,14 +1300,14 @@ describe('OrchestratorService (scripted LLM)', () => {
 
       await collect(svc.run(
         's-1',
-        '  which   shippings failed on Provider D for customer Acme since yesterday morning ',
+        '  which   shippings failed on provider-d for customer Acme since yesterday morning ',
         'user-7',
       ));
 
       expect(chat.updateSession).toHaveBeenCalledWith(
         's-1',
         'user-7',
-        { title: 'Which shippings failed on Provider D for customer Acme' },
+        { title: 'Which shippings failed on provider-d for customer Acme' },
       );
     });
 
