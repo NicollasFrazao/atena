@@ -15,7 +15,7 @@ test.describe(
 
       // by_provider do relatório: nomes literais (sem depender de formatação numérica de locale).
       await expect(page.getByText(
-        'sinch',
+        'provider-c',
         { exact: false },
       ).first()).toBeVisible();
 

@@ -15,23 +15,23 @@ describe('CatalogService', () => {
   it('lista providers distintos (sem nulos)', async () => {
     const audit = {
       distinctProviders: jest.fn().mockResolvedValue([
-        'Sinch',
-        'Twilio',
+        'Provider C',
+        'Provider D',
       ]),
     } as unknown as AuditQueryServiceInterface;
 
     const service = new CatalogService(audit);
 
     await expect(service.listProviders()).resolves.toEqual([
-      'Sinch',
-      'Twilio',
+      'Provider C',
+      'Provider D',
     ]);
   });
 
   it('lista customers como {id,name} + total (top-N por volume)', async () => {
     const audit = {
       distinctCustomers: jest.fn().mockResolvedValue({
-        items: ['CreditBank'],
+        items: ['AcmeBank'],
         total: 42,
       }),
     } as unknown as AuditQueryServiceInterface;
@@ -40,8 +40,8 @@ describe('CatalogService', () => {
 
     await expect(service.listCustomers()).resolves.toEqual({
       items: [{
-        id: 'CreditBank',
-        name: 'CreditBank',
+        id: 'AcmeBank',
+        name: 'AcmeBank',
       }],
       total: 42,
     });

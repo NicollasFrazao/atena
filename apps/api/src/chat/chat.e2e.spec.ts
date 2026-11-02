@@ -14,9 +14,9 @@ function buildAuditMock() {
       rows: [
         {
           id: 'm1',
-          customerId: 'CreditBank',
+          customerId: 'AcmeBank',
           phoneE164: '+5521988887777', // diferente da query: prova o masking no resultado
-          provider: 'Twilio',
+          provider: 'Provider D',
           finalStatus: 'failed',
           requestedAt: new Date('2026-05-28T14:02:00Z'),
           finalizedAt: null,
@@ -43,8 +43,8 @@ function buildAuditMock() {
       ),
       topErrors: [],
     }),
-    distinctProviders: jest.fn().mockResolvedValue(['Twilio']),
-    distinctCustomers: jest.fn().mockResolvedValue(['CreditBank']),
+    distinctProviders: jest.fn().mockResolvedValue(['Provider D']),
+    distinctCustomers: jest.fn().mockResolvedValue(['AcmeBank']),
     terminalSamples: jest.fn().mockResolvedValue([]),
     sendSamples: jest.fn().mockResolvedValue([]),
   };
@@ -77,8 +77,8 @@ function buildPrismaMock() {
           id: 'm1',
           phoneE164: '+5521988887777', // diferente da query: prova o masking no resultado
           finalStatus: 'failed',
-          provider: 'Twilio',
-          customerId: 'CreditBank',
+          provider: 'Provider D',
+          customerId: 'AcmeBank',
           requestedAt: new Date('2026-05-28T14:02:00Z'),
           metadata: { errorHint: 'INSUFFICIENT_BALANCE' },
         },

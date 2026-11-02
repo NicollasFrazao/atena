@@ -168,7 +168,7 @@
         },
         {
           "name": "provider",
-          "value": "twilio",
+          "value": "provider-d",
           "disabled": true,
           "description": "Nome do provider."
         },

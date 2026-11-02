@@ -169,7 +169,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
           status: 'queued',
           phone: '+5511900000001',
           client_id: '1001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: '2026-06-17T15:00:00Z',
         }),
         sourceRecord({
@@ -177,7 +177,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
           status: 'delivered',
           phone: '+5511900000001',
           client_id: '1001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: '2026-06-17T15:02:00Z',
         }),
         // req-2: queued -> bounce with a provider status code => blocked.
@@ -186,7 +186,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
           status: 'queued',
           phone: '+5511900000002',
           client_id: '1001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: '2026-06-17T15:00:00Z',
         }),
         sourceRecord({
@@ -194,7 +194,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
           status: 'bounce',
           phone: '+5511900000002',
           client_id: '1001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           provider_code: '21211',
           processed_at: '2026-06-17T15:05:00Z',
         }),
@@ -204,7 +204,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
           status: 'queued',
           phone: '+5511900000003',
           client_id: '9001',
-          provider_name: 'twilio',
+          provider_name: 'provider-d',
           processed_at: '2026-06-17T15:03:00Z',
         }),
         // req-4: queued -> request_error => failed.
@@ -213,7 +213,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
           status: 'queued',
           phone: '+5511900000004',
           client_id: '9001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: '2026-06-17T15:00:00Z',
         }),
         sourceRecord({
@@ -221,7 +221,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
           status: 'request_error',
           phone: '+5511900000004',
           client_id: '9001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           provider_code: '403',
           error: { message: 'Failed to send SMS message' },
           processed_at: '2026-06-17T15:01:00Z',
@@ -240,7 +240,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
           status: 'sent',
           phone: '+5511900000005',
           client_id: '1001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: null,
           sent_at: '2026-06-17T14:59:00',
         }),
@@ -249,7 +249,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
           status: 'delivered',
           phone: '+5511900000005',
           client_id: '1001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: '2026-06-17T15:03:00Z',
         }),
         // req-noq: no queued and no customer => pending, requested_at NULL (outside any bounded window).
@@ -258,7 +258,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
           status: 'sent',
           phone: '+5511900000006',
           client_id: null,
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: '2026-06-17T15:04:00Z',
         }),
       ],
@@ -286,7 +286,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
       {
         window: DAY_WINDOW,
         status: 'failed',
-        provider: 'sinch',
+        provider: 'provider-c',
         channel: 'sms',
         errorHint: 'request_error',
         customerId: '9001',
@@ -378,7 +378,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
     const samples = await service.sendSamples(OPEN_WINDOW);
 
     const orphan = samples.find((sample) => sample.customerId === '');
-    const pending = samples.find((sample) => sample.provider === 'twilio');
+    const pending = samples.find((sample) => sample.provider === 'provider-d');
 
     expect(samples).toHaveLength(6);
     expect(orphan?.occurredAt.getTime()).toBe(0);
@@ -443,7 +443,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
   it('exportSearchCsv writes the filtered set with the phone in clear and a `;` header', async () => {
     const path = await service.exportSearchCsv({
       window: DAY_WINDOW,
-      provider: 'twilio',
+      provider: 'provider-d',
     });
 
     const lines = csvLines(path);
@@ -556,7 +556,7 @@ describe('DuckDbAuditQueryService — query paths over a settled local fixture',
     expect(queued?.detail).toBe('');
     // No processed_at → the event is placed at its sent_at (BRT → UTC).
     expect(sent?.at.toISOString()).toBe('2026-06-17T17:59:00.000Z');
-    expect(blocked?.detail).toBe('fornecedor sinch · código de status do provedor 21211');
+    expect(blocked?.detail).toBe('fornecedor provider-c · código de status do provedor 21211');
   });
 
   it('getTrail of a pending send anchors the window on its request (no finalized_at)', async () => {
@@ -688,7 +688,7 @@ describe('DuckDbAuditQueryService — scan persistence and metrics', () => {
           status: 'queued',
           phone: '+5511900000001',
           client_id: '1001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: '2026-06-17T15:00:00Z',
         }),
       ],
@@ -1051,7 +1051,7 @@ describe('DuckDbAuditQueryService — recent partitions with the default configu
           status: 'queued',
           phone: '+5511900000020',
           client_id: '1001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: brtMinutesAgo(2),
         }),
         sourceRecord({
@@ -1059,7 +1059,7 @@ describe('DuckDbAuditQueryService — recent partitions with the default configu
           status: 'delivered',
           phone: '+5511900000020',
           client_id: '1001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: brtMinutesAgo(1),
         }),
       ],
@@ -1179,7 +1179,7 @@ describe('DuckDbAuditQueryService — settled partition reconciliation within th
           status: 'queued',
           phone,
           client_id: '9000',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: '2026-06-10T12:00:00Z',
         }),
       ],
@@ -1361,7 +1361,7 @@ describe('DuckDbAuditQueryService — parallel prefetch of S3 objects (mocked S3
     status: 'queued',
     phone: '+5511900000040',
     client_id: '1001',
-    provider_name: 'sinch',
+    provider_name: 'provider-c',
     processed_at: '2026-06-17T12:00:00Z',
   })}\n`));
 

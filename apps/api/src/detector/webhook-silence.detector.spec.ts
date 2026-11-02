@@ -69,7 +69,7 @@ describe('detectWebhookSilence', () => {
     const out = detectWebhookSilence(
       RULE,
       pendingSends(
-        'sinch',
+        'provider-c',
         20,
         5,
       ),
@@ -78,7 +78,7 @@ describe('detectWebhookSilence', () => {
     );
 
     expect(out).toHaveLength(1);
-    expect(out[0].dimensionValue).toBe('sinch');
+    expect(out[0].dimensionValue).toBe('provider-c');
     expect(out[0].severity).toBe('critical');
     expect(out[0].metrics.current).toBe('nenhum status recebido');
   });
@@ -88,12 +88,12 @@ describe('detectWebhookSilence', () => {
       RULE,
       [
         ...pendingSends(
-          'sinch',
+          'provider-c',
           20,
           5,
         ),
         statusArrived(
-          'sinch',
+          'provider-c',
           30,
         ), // último status há 30 min > limiar de 15 min
       ],
@@ -110,12 +110,12 @@ describe('detectWebhookSilence', () => {
       RULE,
       [
         ...pendingSends(
-          'sinch',
+          'provider-c',
           20,
           5,
         ),
         statusArrived(
-          'sinch',
+          'provider-c',
           5,
         ), // status há 5 min < limiar de 15 min
       ],
@@ -130,7 +130,7 @@ describe('detectWebhookSilence', () => {
     const out = detectWebhookSilence(
       RULE,
       pendingSends(
-        'sinch',
+        'provider-c',
         5,
         5,
       ),
@@ -145,7 +145,7 @@ describe('detectWebhookSilence', () => {
     const out = detectWebhookSilence(
       RULE,
       pendingSends(
-        'sinch',
+        'provider-c',
         20,
         60,
       ), // envios há 60 min, fora da janela de 15 min
@@ -163,7 +163,7 @@ describe('detectWebhookSilence', () => {
 
     for (let index = 0; index < 200_000; index++) {
       statuses.push(statusArrived(
-        'sinch',
+        'provider-c',
         30,
       )); // último status há 30 min > limiar de 15 min
     }
@@ -172,7 +172,7 @@ describe('detectWebhookSilence', () => {
       RULE,
       [
         ...pendingSends(
-          'sinch',
+          'provider-c',
           20,
           5,
         ),
