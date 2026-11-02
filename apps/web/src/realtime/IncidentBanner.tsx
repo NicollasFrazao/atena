@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { CaretRight, CheckCircle, type Icon, Warning, WifiSlash, X } from '@phosphor-icons/react';
+import { CaretRightIcon as CaretRight, CheckCircleIcon as CheckCircle, type Icon, WarningIcon as Warning, WifiSlashIcon as WifiSlash, XIcon } from '@phosphor-icons/react';
 import type { IncidentInterface, WsServerEvent } from '@atena/types';
 import { acknowledgeIncident } from '../api/incidents';
 import { SEVERITY_COLOR, SEVERITY_LABEL } from '../incidents/severity';
 import { formatRelativeTime } from '../util/time';
 import { useRealtimeConnected, useRealtimeEvent } from './realtime-context';
 import { capNotices, eventToNotice, type IncidentNoticeInterface } from './incident-notice';
+import { cssValue, cssVar } from '../styles/tokens';
 
 /** Máximo de banners empilhados (os mais antigos não-persistentes saem). */
 const MAX_NOTICES = 3;
@@ -17,13 +18,13 @@ const AUTO_DISMISS_MS = 8000;
 
 /** Estilo base dos botões de ação do banner (pequenos, com ícone). */
 const ACTION_BUTTON = {
-  display: 'inline-flex',
+  display: cssValue.inlineFlex,
   alignItems: 'center',
-  gap: 'var(--at-space-4)',
+  gap: cssVar.space4,
   height: 30,
-  padding: '0 var(--at-space-12)',
-  borderRadius: 'var(--at-radius-4)',
-  fontSize: 'var(--at-fs-12)',
+  padding: cssVar.paddingInline12,
+  borderRadius: cssVar.radius4,
+  fontSize: cssVar.fs12,
   fontWeight: 600,
   cursor: 'pointer',
   flexShrink: 0,
@@ -40,11 +41,12 @@ interface StackedNoticeInterface extends IncidentNoticeInterface {
  *  - resolvido (`resolved`/`auto_resolved`) → remove a faixa (já foi tratado);
  *  - reconhecido → marca o incidente da faixa com o novo status/responsável (continua visível).
  *
- * @param {StackedNoticeInterface[]} list - Pilha atual.
- * @param {string} incidentId - Id do incidente alterado.
- * @param {IncidentInterface['status']} status - Novo status.
- * @param {string} [assignee] - Responsável (quando reconhecido).
- * @returns {StackedNoticeInterface[]} Pilha reconciliada.
+ * @param list - Pilha atual.
+ * @param incidentId - Id do incidente alterado.
+ * @param status - Novo status.
+ * @param [assignee] - Responsável (quando reconhecido).
+ *
+ * @returns Pilha reconciliada.
  */
 function reconcileNotices(
   list: StackedNoticeInterface[],
@@ -60,10 +62,7 @@ function reconcileNotices(
   }
 
   return list.map((item) => {
-    if (
-      !item.incident
-      || item.incident.id !== incidentId
-    ) {
+    if (item.incident?.id !== incidentId) {
       return item;
     }
 
@@ -84,16 +83,17 @@ function reconcileNotices(
  * Abrir detalhes / dispensar. Auto-contida: Reconhecer chama o lifecycle; Abrir detalhes navega ao
  * painel de detalhes (`?detalhe=<id>`).
  *
- * @param {{ incident: IncidentInterface; onDismiss: () => void }} props - Incidente + dispensar.
- * @returns {JSX.Element} A faixa do incidente.
+ * @param props - Incidente + dispensar.
+ *
+ * @returns A faixa do incidente.
  */
 function IncidentBar({
   incident,
   onDismiss,
-}: {
+}: Readonly<{
   incident: IncidentInterface;
   onDismiss: () => void
-}): JSX.Element {
+}>): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const color = SEVERITY_COLOR[incident.severity];
@@ -128,7 +128,7 @@ function IncidentBar({
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: 'var(--at-space-12)',
+      gap: cssVar.space12,
       padding: '10px 20px',
       background: `linear-gradient(90deg, ${color}26, ${color}0d)`,
       borderBottom: `1px solid ${color}66`,
@@ -139,8 +139,8 @@ function IncidentBar({
         width: 28,
         height: 28,
         flexShrink: 0,
-        borderRadius: 'var(--at-radius-4)',
-        background: 'var(--at-white)',
+        borderRadius: cssVar.radius4,
+        background: cssVar.white,
         display: 'grid',
         placeItems: 'center',
         color,
@@ -161,7 +161,7 @@ function IncidentBar({
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 'var(--at-space-8)',
+          gap: cssVar.space8,
           marginBottom: 2,
           flexWrap: 'wrap',
         }}
@@ -171,15 +171,15 @@ function IncidentBar({
             borderRadius: 999,
             background: `${color}1a`,
             color,
-            fontSize: 'var(--at-fs-12)',
+            fontSize: cssVar.fs12,
             fontWeight: 600,
           }}
           >
             {SEVERITY_LABEL[incident.severity]}
           </span>
           <code style={{
-            fontFamily: 'ui-monospace, Menlo, monospace',
-            fontSize: 'var(--at-fs-12)',
+            fontFamily: cssValue.fontMono,
+            fontSize: cssVar.fs12,
             fontWeight: 600,
             color,
           }}
@@ -187,17 +187,17 @@ function IncidentBar({
             {incident.id}
           </code>
           <span style={{
-            fontSize: 'var(--at-fs-12)',
-            color: 'var(--at-fg-muted)',
+            fontSize: cssVar.fs12,
+            color: cssVar.fgMuted,
           }}
           >
             · detectado {formatRelativeTime(incident.detected_at)}
           </span>
         </div>
         <div style={{
-          fontSize: 'var(--at-fs-13)',
-          color: 'var(--at-fg)',
-          lineHeight: 'var(--at-lh-22)',
+          fontSize: cssVar.fs13,
+          color: cssVar.fg,
+          lineHeight: cssVar.lh22,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
@@ -211,13 +211,13 @@ function IncidentBar({
       {acked
         ? (
           <span style={{
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
-            gap: 'var(--at-space-4)',
+            gap: cssVar.space4,
             flexShrink: 0,
-            fontSize: 'var(--at-fs-12)',
+            fontSize: cssVar.fs12,
             fontWeight: 600,
-            color: 'var(--at-primary-dark)',
+            color: cssVar.primaryDark,
           }}
           >
             <CheckCircle size={13} />
@@ -233,8 +233,8 @@ function IncidentBar({
             style={{
               ...ACTION_BUTTON,
               border: 'none',
-              background: 'var(--at-primary)',
-              color: 'var(--at-white)',
+              background: cssVar.primary,
+              color: cssVar.white,
             }}
           >
             <CheckCircle size={14} />
@@ -243,12 +243,12 @@ function IncidentBar({
         )}
       <button
         type="button"
-        onClick={() => navigate(`/incidentes?detalhe=${incident.id}`)}
+        onClick={() => { navigate(`/incidentes?detalhe=${incident.id}`); }}
         style={{
           ...ACTION_BUTTON,
-          border: '1px solid var(--at-border)',
-          background: 'var(--at-white)',
-          color: 'var(--at-fg)',
+          border: cssVar.borderLine,
+          background: cssVar.white,
+          color: cssVar.fg,
         }}
       >
         Abrir detalhes
@@ -264,12 +264,12 @@ function IncidentBar({
           background: 'none',
           padding: 0,
           cursor: 'pointer',
-          color: 'var(--at-fg-subtle)',
+          color: cssVar.fgSubtle,
           display: 'flex',
           flexShrink: 0,
         }}
       >
-        <X size={14} />
+        <XIcon size={14} />
       </button>
     </div>
   );
@@ -278,28 +278,29 @@ function IncidentBar({
 /**
  * Faixa simples de informação (auto-resolvido / conexão), full-width como o banner mas discreta.
  *
- * @param {object} props - Ícone, texto e dispensar opcional.
- * @returns {JSX.Element} A faixa de informação.
+ * @param props - Ícone, texto e dispensar opcional.
+ *
+ * @returns A faixa de informação.
  */
 function InfoStrip({
   icon: StripIcon,
   text,
   onDismiss,
-}: {
+}: Readonly<{
   icon: Icon;
   text: string;
   onDismiss?: () => void
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: 'var(--at-space-8)',
+      gap: cssVar.space8,
       padding: '8px 20px',
-      background: 'var(--at-bg-soft)',
-      borderBottom: '1px solid var(--at-border)',
-      fontSize: 'var(--at-fs-12)',
-      color: 'var(--at-fg-muted)',
+      background: cssVar.bgSoft,
+      borderBottom: cssVar.borderLine,
+      fontSize: cssVar.fs12,
+      color: cssVar.fgMuted,
       animation: 'at-banner-slide-down .3s ease',
     }}
     >
@@ -320,12 +321,12 @@ function InfoStrip({
               background: 'none',
               padding: 0,
               cursor: 'pointer',
-              color: 'var(--at-fg-subtle)',
+              color: cssVar.fgSubtle,
               display: 'flex',
               flexShrink: 0,
             }}
           >
-            <X size={14} />
+            <XIcon size={14} />
           </button>
         )
         : null}
@@ -339,7 +340,7 @@ function InfoStrip({
  * dispensar; warning/info somem em ~8s); `incident.auto_resolved` vira uma {@link InfoStrip}; e a
  * queda da conexão WS (depois de já ter conectado) vira uma faixa de reconexão.
  *
- * @returns {JSX.Element | null} As faixas empilhadas, ou `null` se não há nada a mostrar.
+ * @returns As faixas empilhadas, ou `null` se não há nada a mostrar.
  */
 export function IncidentBanner(): JSX.Element | null {
   const [
@@ -353,7 +354,7 @@ export function IncidentBanner(): JSX.Element | null {
   const timeoutsRef = useRef<number[]>([]);
 
   const dismiss = useCallback(
-    (key: number) => setNotices((prev) => prev.filter((notice) => notice.key !== key)),
+    (key: number) => { setNotices((prev) => prev.filter((notice) => notice.key !== key)); },
     [],
   );
 
@@ -399,7 +400,7 @@ export function IncidentBanner(): JSX.Element | null {
 
       if (!notice.persist) {
         const timeoutId = window.setTimeout(
-          () => dismiss(key),
+          () => { dismiss(key); },
           AUTO_DISMISS_MS,
         );
 
@@ -411,7 +412,9 @@ export function IncidentBanner(): JSX.Element | null {
 
   useEffect(
     () => () => {
-      timeoutsRef.current.forEach((id) => window.clearTimeout(id));
+      timeoutsRef.current.forEach((id) => {
+        window.clearTimeout(id);
+      });
     },
     [],
   );
@@ -450,7 +453,7 @@ export function IncidentBanner(): JSX.Element | null {
           <IncidentBar
             key={notice.key}
             incident={notice.incident}
-            onDismiss={() => dismiss(notice.key)}
+            onDismiss={() => { dismiss(notice.key); }}
           />
         )
         : (
@@ -458,7 +461,7 @@ export function IncidentBanner(): JSX.Element | null {
             key={notice.key}
             icon={CheckCircle}
             text={notice.text ?? ''}
-            onDismiss={() => dismiss(notice.key)}
+            onDismiss={() => { dismiss(notice.key); }}
           />
         )))}
     </div>

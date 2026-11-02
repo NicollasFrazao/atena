@@ -29,11 +29,12 @@ interface CacheEntryInterface {
  * (mtime mais velho que `maxAgeMs`) e depois por **tamanho** (LRU por mtime, até ficar sob o teto).
  * Cada limite é opcional (`<= 0` = desligado). O cache é rebuildável do S3, então remover é seguro.
  *
- * @param {string} dir - Diretório do cache (`.../audit-ev-vN`).
- * @param {number} maxBytes - Teto de tamanho em bytes (`<= 0` = sem teto).
- * @param {number} maxAgeMs - Idade máxima em ms (`<= 0` = sem idade).
- * @param {number} now - Epoch atual (ms) — injetável para testes.
- * @returns {CacheEvictionResultInterface} Quantos arquivos removidos e bytes liberados.
+ * @param dir - Diretório do cache (`.../audit-ev-vN`).
+ * @param maxBytes - Teto de tamanho em bytes (`<= 0` = sem teto).
+ * @param maxAgeMs - Idade máxima em ms (`<= 0` = sem idade).
+ * @param now - Epoch atual (ms) — injetável para testes.
+ *
+ * @returns Quantos arquivos removidos e bytes liberados.
  */
 export function evictCacheDir(
   dir: string,
@@ -129,8 +130,9 @@ export function evictCacheDir(
  * Remove dirs de versão de cache ÓRFÃOS (irmãos `audit-ev-*` != o atual) — peso morto deixado por
  * bumps de `EV_CACHE_VERSION`. Só remove subdiretórios.
  *
- * @param {string} currentCacheDir - Caminho do dir de cache atual (ex.: `.../audit-ev-v6`).
- * @returns {string[]} Nomes dos dirs órfãos removidos.
+ * @param currentCacheDir - Caminho do dir de cache atual (ex.: `.../audit-ev-v6`).
+ *
+ * @returns Nomes dos dirs órfãos removidos.
  */
 export function cleanOrphanCacheVersions(currentCacheDir: string): string[] {
   const parent = dirname(currentCacheDir);

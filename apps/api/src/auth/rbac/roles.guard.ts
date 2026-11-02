@@ -21,7 +21,7 @@ import { ROLES_KEY } from './roles.decorator';
 @Injectable()
 export class RolesGuard implements CanActivate {
   /**
-   * @param {Reflector} reflector - Utilitário do NestJS para ler os metadados
+   * @param reflector - Utilitário do NestJS para ler os metadados
    *   gravados por `@Roles(...)`.
    */
   constructor(private readonly reflector: Reflector) {}
@@ -29,9 +29,11 @@ export class RolesGuard implements CanActivate {
   /**
    * Autoriza a request conforme os papéis exigidos pelo handler/controller.
    *
-   * @param {ExecutionContext} context - Contexto de execução do NestJS.
-   * @returns {boolean} `true` se não houver papéis exigidos ou se o usuário
+   * @param context - Contexto de execução do NestJS.
+   *
+   * @returns `true` se não houver papéis exigidos ou se o usuário
    *   possuir ao menos um deles.
+   *
    * @throws {ForbiddenException} Se o usuário não possuir nenhum dos papéis
    *   exigidos.
    */

@@ -1,22 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { MS_PER_DAY } from '../common/units';
+import { DEFAULT_CHAT_RETENTION_DAYS } from '../config/configuration';
 import { PrismaService } from '../prisma/prisma.service';
 
-/** Milissegundos em um dia. */
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Janela padrão (dias) de retenção do chat, se a config não vier. */
-const DEFAULT_CHAT_DAYS = 90;
-
-/**
- * Resumo de uma execução de retenção.
- *
- * @property {number} sessions - Sessões removidas.
- * @property {number} messages - Mensagens removidas (das sessões expiradas).
- */
+/** Resumo de uma execução de retenção. */
 export interface RetentionRunSummaryInterface {
+  /** Sessões removidas. */
   sessions: number;
+  /** Mensagens removidas (das sessões expiradas). */
   messages: number;
 }
 
@@ -35,8 +28,8 @@ export class RetentionService {
   private readonly logger = new Logger(RetentionService.name);
 
   /**
-   * @param {PrismaService} prisma - Acesso ao banco da aplicação.
-   * @param {ConfigService} config - Flags/janela de retenção.
+   * @param prisma - Acesso ao banco da aplicação.
+   * @param config - Flags/janela de retenção.
    */
   constructor(
     private readonly prisma: PrismaService,
@@ -46,7 +39,7 @@ export class RetentionService {
   /**
    * Job diário (03:00): roda a retenção do chat se `retention.enabled` estiver ligado.
    *
-   * @returns {Promise<void>} Resolve ao fim (ou imediatamente se desligado).
+   * @returns Resolve ao fim (ou imediatamente se desligado).
    */
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async scheduled(): Promise<void> {
@@ -65,12 +58,13 @@ export class RetentionService {
    * Apaga as sessões inativas (por `last_activity`) além da janela e suas mensagens. As mensagens
    * são removidas primeiro (a FK `chat_messages.session_id` é restritiva).
    *
-   * @param {Date} now - Instante de referência (injetável p/ testes).
-   * @returns {Promise<RetentionRunSummaryInterface>} Contagens removidas.
+   * @param now - Instante de referência (injetável p/ testes).
+   *
+   * @returns Contagens removidas.
    */
   async run(now: Date = new Date()): Promise<RetentionRunSummaryInterface> {
-    const chatDays = this.config.get<number>('retention.chatDays') ?? DEFAULT_CHAT_DAYS;
-    const cutoff = new Date(now.getTime() - chatDays * DAY_MS);
+    const chatDays = this.config.get<number>('retention.chatDays') ?? DEFAULT_CHAT_RETENTION_DAYS;
+    const cutoff = new Date(now.getTime() - chatDays * MS_PER_DAY);
 
     const messages = await this.prisma.chatMessage.deleteMany({
       where: { session: { lastActivity: { lt: cutoff } } },

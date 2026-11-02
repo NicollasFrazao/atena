@@ -2,11 +2,13 @@
  * Corre `iterator.next()` contra um timer de `idleMs`; limpa o timer ao resolver/rejeitar para não
  * vazar timer nem rejeição pendente.
  *
+ * @param iterator - Iterador da fonte.
+ * @param idleMs - Tempo máximo (ms) aguardando o próximo item.
+ * @param label - Rótulo usado na mensagem de timeout.
+ *
+ * @returns O próximo resultado, ou rejeita ao estourar o idle.
+ *
  * @template T
- * @param {AsyncIterator<T>} iterator - Iterador da fonte.
- * @param {number} idleMs - Tempo máximo (ms) aguardando o próximo item.
- * @param {string} label - Rótulo usado na mensagem de timeout.
- * @returns {Promise<IteratorResult<T>>} O próximo resultado, ou rejeita ao estourar o idle.
  */
 async function nextWithTimeout<T>(
   iterator: AsyncIterator<T>,
@@ -20,7 +22,7 @@ async function nextWithTimeout<T>(
     reject,
   ) => {
     handle = setTimeout(
-      () => reject(new Error(`${label}: sem resposta do stream após ${idleMs}ms`)),
+      () => { reject(new Error(`${label}: sem resposta do stream após ${idleMs}ms`)); },
       idleMs,
     );
   });
@@ -40,11 +42,13 @@ async function nextWithTimeout<T>(
  * em vez de pendurar pra sempre (ex.: stream do Bedrock que abre mas não emite eventos). Cada item
  * que chega zera o relógio. Fecha a fonte (`iterator.return`) ao sair (timeout, erro ou fim).
  *
+ * @param source - Stream de origem.
+ * @param idleMs - Tempo máximo (ms) entre itens antes de abortar.
+ * @param label - Rótulo no erro de timeout (diagnóstico).
+ *
+ * @returns Stream que repassa os itens ou lança ao estourar o idle.
+ *
  * @template T
- * @param {AsyncIterable<T>} source - Stream de origem.
- * @param {number} idleMs - Tempo máximo (ms) entre itens antes de abortar.
- * @param {string} label - Rótulo no erro de timeout (diagnóstico).
- * @returns {AsyncIterable<T>} Stream que repassa os itens ou lança ao estourar o idle.
  */
 export async function* withIdleTimeout<T>(
   source: AsyncIterable<T>,

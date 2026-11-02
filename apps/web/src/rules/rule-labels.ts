@@ -21,7 +21,7 @@ export const RULE_TYPE_LABEL: Record<RuleType, string> = {
 };
 
 /** Descrição PT-BR do que cada tipo de regra detecta (mecanismo); o nome da regra dá o alvo específico. */
-export const RULE_TYPE_DESCRIPTION: Record<RuleType, string> = {
+const RULE_TYPE_DESCRIPTION: Record<RuleType, string> = {
   delivery_rate_drop: 'Dispara quando a taxa de entrega da dimensão cai vários desvios-padrão (σ) abaixo do baseline histórico dela.',
   failure_spike: 'Dispara quando a taxa de falha sobe vários desvios-padrão (σ) acima do baseline histórico (pico de falha vs. histórico).',
   consistent_error: 'Dispara quando a fração de um tipo de erro entre as falhas ultrapassa o limiar (%) na janela.',
@@ -33,7 +33,7 @@ export const RULE_TYPE_DESCRIPTION: Record<RuleType, string> = {
  * detailed report). FONTE ÚNICA — usado nas descrições de regra E no `top_errors` do relatório,
  * para os nomes ficarem padronizados em toda a UI. Fallback: o próprio valor cru.
  */
-export const CATEGORY_LABEL: Record<string, string> = {
+const CATEGORY_LABEL: Record<string, string> = {
   delivered: 'entregue',
   invalid_number: 'número inválido',
   policy_block: 'bloqueio por política',
@@ -51,8 +51,9 @@ export const CATEGORY_LABEL: Record<string, string> = {
 /**
  * Rótulo PT-BR padronizado de uma categoria de erro/status; cai no valor cru se não mapeada.
  *
- * @param {string} category - Categoria crua (`error_hint`/`SmsStatusField`, ex.: `insufficient_credits`).
- * @returns {string} Rótulo legível (ex.: `créditos insuficientes`).
+ * @param category - Categoria crua (`error_hint`/`SmsStatusField`, ex.: `insufficient_credits`).
+ *
+ * @returns Rótulo legível (ex.: `créditos insuficientes`).
  */
 export function categoryLabel(category: string): string {
   return CATEGORY_LABEL[category] ?? category;
@@ -62,8 +63,9 @@ export function categoryLabel(category: string): string {
  * Descrição da regra para exibição: para `consistent_error`, inclui a CATEGORIA-alvo usada como
  * parâmetro (ex.: "número inválido"); para os demais tipos, a descrição do tipo.
  *
- * @param {AnomalyRuleInterface} rule - Regra (tipo + categoria).
- * @returns {string} Descrição legível.
+ * @param rule - Regra (tipo + categoria).
+ *
+ * @returns Descrição legível.
  */
 export function ruleDescription(rule: AnomalyRuleInterface): string {
   if (
@@ -87,8 +89,9 @@ export const DIMENSIONS: DimensionType[] = [
 /**
  * Formata o limiar com sua unidade: `95%`, `3σ`, `15 min`.
  *
- * @param {AnomalyRuleInterface} rule - Regra (valor + unidade do limiar).
- * @returns {string} Limiar formatado.
+ * @param rule - Regra (valor + unidade do limiar).
+ *
+ * @returns Limiar formatado.
  */
 export function formatThreshold(rule: AnomalyRuleInterface): string {
   return rule.threshold_unit === 'min'

@@ -1,6 +1,6 @@
 # Agent Handbook
 
-This directory contains ready-to-customize playbooks for AI agents collaborating on the repository.
+Playbooks tailored to this repository for AI agents. Every playbook assumes the reader has read [`development-conventions.md`](../docs/development-conventions.md).
 
 ## Available Agents
 - [Code Reviewer](./code-reviewer.md) — Review code changes for quality, style, and best practices
@@ -16,7 +16,6 @@ This directory contains ready-to-customize playbooks for AI agents collaborating
 - [Architect Specialist](./architect-specialist.md) — Design overall system architecture and patterns
 - [Devops Specialist](./devops-specialist.md) — Design and maintain CI/CD pipelines
 - [Database Specialist](./database-specialist.md) — Design and optimize database schemas
-- [Mobile Specialist](./mobile-specialist.md) — Develop native and cross-platform mobile applications
 
 ## How To Use These Playbooks
 1. Pick the agent that matches your task.
@@ -27,4 +26,3 @@ This directory contains ready-to-customize playbooks for AI agents collaborating
 ## Related Resources
 - [Documentation Index](../docs/README.md)
 - [Agent Knowledge Base](../../AGENTS.md)
-- [Contributor Guidelines](../../CONTRIBUTING.md)

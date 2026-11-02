@@ -1,13 +1,16 @@
+import type { JSX } from 'react';
 import { describeStatus, TONE_COLORS } from './format';
+import { cssValue, cssVar } from '../../styles/tokens';
 
 /**
  * Pill colorida por status de entrega (delivered=success, failed=danger,
  * pending=warning, demais=neutral).
  *
- * @param {{ status: string }} props - Status bruto vindo do `result`.
- * @returns {JSX.Element} A pill de status.
+ * @param props - Status bruto vindo do `result`.
+ *
+ * @returns A pill de status.
  */
-export function StatusPill({ status }: { status: string }): JSX.Element {
+export function StatusPill({ status }: Readonly<{ status: string }>): JSX.Element {
   const {
     label,
     tone,
@@ -17,11 +20,11 @@ export function StatusPill({ status }: { status: string }): JSX.Element {
 
   return (
     <span style={{
-      display: 'inline-flex',
+      display: cssValue.inlineFlex,
       alignItems: 'center',
-      borderRadius: 'var(--at-radius-full)',
+      borderRadius: cssVar.radiusFull,
       padding: '2px 8px',
-      fontSize: 'var(--at-fs-12)',
+      fontSize: cssVar.fs12,
       fontWeight: 600,
       color: colors.color,
       background: colors.background,

@@ -20,14 +20,14 @@ import {
 @Controller('dev')
 export class RetentionController {
   /**
-   * @param {RetentionService} retention - Serviço de retenção do chat.
+   * @param retention - Serviço de retenção do chat.
    */
   constructor(private readonly retention: RetentionService) {}
 
   /**
    * `POST /dev/retention` — roda a retenção imediatamente e devolve as contagens removidas.
    *
-   * @returns {Promise<RetentionRunSummaryInterface>} Resumo (sessions/messages).
+   * @returns Resumo (sessions/messages).
    */
   @Post('retention')
   @HttpCode(HttpStatus.OK)

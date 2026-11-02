@@ -44,8 +44,8 @@ export class UsersService {
   private readonly rolesCache = new Map<string, RolesCacheEntryInterface>();
 
   /**
-   * @param {PrismaService} prisma - Acesso às tabelas de usuários e papéis.
-   * @param {ConfigService} config - Allowlist de super admins (`auth.adminEmails`).
+   * @param prisma - Acesso às tabelas de usuários e papéis.
+   * @param config - Allowlist de super admins (`auth.adminEmails`).
    */
   constructor(
     private readonly prisma: PrismaService,
@@ -57,8 +57,7 @@ export class UsersService {
    * NÃO concede papéis: o **super admin** é derivado do env (`auth.adminEmails`), não um papel no
    * banco; os demais papéis são atribuídos por um (super) admin pela tela.
    *
-   * @param {LoginIdentityInterface} identity - Identidade normalizada do IdP.
-   * @returns {Promise<void>}
+   * @param identity - Identidade normalizada do IdP.
    */
   async upsertOnLogin(identity: LoginIdentityInterface): Promise<void> {
     await this.prisma.user.upsert({
@@ -83,8 +82,9 @@ export class UsersService {
    * Resolve papéis + status de um usuário (com cache curto). Usuário inexistente → sem papéis,
    * `active` (cai no gate de acesso pendente).
    *
-   * @param {string} sub - Id do usuário (claim `sub`).
-   * @returns {Promise<ResolvedAccessInterface>} Papéis e status.
+   * @param sub - Id do usuário (claim `sub`).
+   *
+   * @returns Papéis e status.
    */
   async resolveAccess(sub: string): Promise<ResolvedAccessInterface> {
     const cached = this.rolesCache.get(sub);
@@ -120,8 +120,7 @@ export class UsersService {
   /**
    * Invalida o cache de papéis de um `sub` (chamado após mutações do admin / bootstrap).
    *
-   * @param {string} sub - Id do usuário.
-   * @returns {void}
+   * @param sub - Id do usuário.
    */
   invalidate(sub: string): void {
     this.rolesCache.delete(sub);
@@ -130,7 +129,7 @@ export class UsersService {
   /**
    * Lista todos os usuários (tela de admin), mais recentes por último login.
    *
-   * @returns {Promise<AdminUserInterface[]>} Usuários com papéis/status.
+   * @returns Usuários com papéis/status.
    */
   async listUsers(): Promise<AdminUserInterface[]> {
     const users = await this.prisma.user.findMany({
@@ -144,10 +143,12 @@ export class UsersService {
   /**
    * Substitui o conjunto de papéis de um usuário (sujeito à hierarquia). Invalida o cache.
    *
-   * @param {string} sub - Id do usuário-alvo.
-   * @param {RoleType[]} roles - Novo conjunto de papéis (deduplicado).
-   * @param {AuthenticatedUserInterface} actor - Quem está fazendo a mudança.
-   * @returns {Promise<AdminUserInterface>} Usuário atualizado.
+   * @param sub - Id do usuário-alvo.
+   * @param roles - Novo conjunto de papéis (deduplicado).
+   * @param actor - Quem está fazendo a mudança.
+   *
+   * @returns Usuário atualizado.
+   *
    * @throws {NotFoundException} Se o alvo não existir.
    * @throws {ForbiddenException} Se violar a hierarquia (auto-mod, super admin, escopo de admin).
    */
@@ -184,10 +185,12 @@ export class UsersService {
   /**
    * Habilita/desabilita um usuário (sujeito à hierarquia). Invalida o cache.
    *
-   * @param {string} sub - Id do usuário-alvo.
-   * @param {UserStatusType} status - Novo status.
-   * @param {AuthenticatedUserInterface} actor - Quem está fazendo a mudança.
-   * @returns {Promise<AdminUserInterface>} Usuário atualizado.
+   * @param sub - Id do usuário-alvo.
+   * @param status - Novo status.
+   * @param actor - Quem está fazendo a mudança.
+   *
+   * @returns Usuário atualizado.
+   *
    * @throws {NotFoundException} Se o alvo não existir.
    * @throws {ForbiddenException} Se violar a hierarquia.
    */
@@ -217,8 +220,10 @@ export class UsersService {
   /**
    * Carrega o alvo (id/email/papéis) para as checagens de hierarquia.
    *
-   * @param {string} sub - Id do usuário-alvo.
-   * @returns {Promise<{ sub: string; email: string; roles: RoleType[] }>} Dados do alvo.
+   * @param sub - Id do usuário-alvo.
+   *
+   * @returns Dados do alvo.
+   *
    * @throws {NotFoundException} Se não existir.
    */
   private async loadTarget(sub: string): Promise<{
@@ -253,10 +258,10 @@ export class UsersService {
    *  - super admins (definidos no env) são imutáveis pela tela;
    *  - só super admin concede/revoga `admin` ou altera quem já é admin.
    *
-   * @param {AuthenticatedUserInterface} actor - Quem faz a mudança.
-   * @param {{ sub: string; email: string; roles: RoleType[] }} target - Alvo.
-   * @param {boolean} grantingAdmin - Se a operação concede o papel `admin`.
-   * @returns {void}
+   * @param actor - Quem faz a mudança.
+   * @param target - Alvo.
+   * @param grantingAdmin - Se a operação concede o papel `admin`.
+   *
    * @throws {ForbiddenException} Em qualquer violação.
    */
   private assertCanManage(
@@ -304,8 +309,9 @@ export class UsersService {
   /**
    * Indica se o e-mail é de um super admin (definido só pelo `auth.adminEmails`/env).
    *
-   * @param {string} email - E-mail do usuário.
-   * @returns {boolean} `true` se for super admin.
+   * @param email - E-mail do usuário.
+   *
+   * @returns `true` se for super admin.
    */
   private isSuperAdminEmail(email: string): boolean {
     return emailInAllowlist(
@@ -317,8 +323,10 @@ export class UsersService {
   /**
    * Lê um usuário e o mapeia para o shape da tela de admin.
    *
-   * @param {string} sub - Id do usuário.
-   * @returns {Promise<AdminUserInterface>} Usuário (snake_case).
+   * @param sub - Id do usuário.
+   *
+   * @returns Usuário (snake_case).
+   *
    * @throws {NotFoundException} Se não existir.
    */
   private async getAdminUser(sub: string): Promise<AdminUserInterface> {
@@ -342,15 +350,16 @@ export class UsersService {
   /**
    * Mapeia um registro de usuário (com papéis) para {@link AdminUserInterface}.
    *
-   * @param {object} user - Usuário do Prisma (com `roles`).
-   * @param {string} user.id - Id (sub).
-   * @param {string} user.email - E-mail.
-   * @param {string} user.name - Nome.
-   * @param {string} user.status - Status.
-   * @param {Date | null} user.lastLoginAt - Último login.
-   * @param {Date} user.createdAt - Criação.
-   * @param {{ role: string }[]} user.roles - Papéis.
-   * @returns {AdminUserInterface} Shape da tela de admin.
+   * @param user - Usuário do Prisma (com `roles`).
+   * @param user.id - Id (sub).
+   * @param user.email - E-mail.
+   * @param user.name - Nome.
+   * @param user.status - Status.
+   * @param user.lastLoginAt - Último login.
+   * @param user.createdAt - Criação.
+   * @param user.roles - Papéis.
+   *
+   * @returns Shape da tela de admin.
    */
   private toAdminUser(user: {
     id: string;

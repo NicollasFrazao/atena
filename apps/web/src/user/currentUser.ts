@@ -51,7 +51,7 @@ const FALLBACK: CurrentUserInterface = {
 /**
  * Retorna o usuário atual derivado da sessão autenticada.
  *
- * @returns {CurrentUserInterface} Identidade do analista logado.
+ * @returns Identidade do analista logado.
  */
 export function useCurrentUser(): CurrentUserInterface {
   const { user } = useAuth();
@@ -66,8 +66,9 @@ export function useCurrentUser(): CurrentUserInterface {
 /**
  * Deriva nome/primeiro nome/iniciais/cargo da identidade da sessão. Função pura (testável).
  *
- * @param {SessionUserInterface} user - Usuário autenticado (`name`/`email`/`roles`).
- * @returns {CurrentUserInterface} Identidade pronta para a UI.
+ * @param user - Usuário autenticado (`name`/`email`/`roles`).
+ *
+ * @returns Identidade pronta para a UI.
  */
 export function deriveCurrentUser(user: SessionUserInterface): CurrentUserInterface {
   const name = (user.name || localPart(user.email)).trim();
@@ -95,8 +96,9 @@ export function deriveCurrentUser(user: SessionUserInterface): CurrentUserInterf
 /**
  * Parte local de um e-mail (antes do `@`), usada como nome quando a claim `name` vem vazia.
  *
- * @param {string} email - E-mail institucional.
- * @returns {string} Texto antes do `@` (ou o próprio e-mail se não houver `@`).
+ * @param email - E-mail institucional.
+ *
+ * @returns Texto antes do `@` (ou o próprio e-mail se não houver `@`).
  */
 function localPart(email: string): string {
   const at = email.indexOf('@');

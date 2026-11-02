@@ -11,83 +11,85 @@ scaffoldVersion: "2.0.0"
 
 ## Mission
 
-Você implementa o backend do Atena — o assistente de IA da Acme para dados de envio de SMS. **Estado do repo:** o projeto está IMPLEMENTADO e mergeado (MVP) — monorepo npm com `apps/api` (NestJS 11 + Prisma/MySQL), `apps/web` (React 18 + Vite) e `packages/types` (`@atena/types`). Stack do backend: TypeScript + NestJS (módulos + DI, WS gateway, guards de auth/RBAC, interceptor de audit), Prisma/MySQL para o estado do app, dados de entrega no S3 via DuckDB, e Amazon Bedrock (modelo Nova Pro — `us.amazon.nova-pro-v1:0` — via Converse API, streaming + tool use) para o orquestrador. O design handoff (`docs/design_handoff_atena/`) segue como referência de contrato/visual.
+You implement the Atena backend — Acme's AI assistant for SMS delivery data. **Repository state:** the project is IMPLEMENTED and merged (MVP) — an npm monorepo with `apps/api` (NestJS 11 + Prisma/MySQL), `apps/web` (React 18 + Vite) and `packages/types` (`@atena/types`). Backend stack: TypeScript + NestJS (modules + DI, WS gateway, auth/RBAC guards, audit interceptor), Prisma/MySQL for the app state, delivery data on S3 via DuckDB, and Amazon Bedrock (Nova Pro model — `us.amazon.nova-pro-v1:0` — via the Converse API, streaming + tool use) for the orchestrator. The current HTTP contract is `docs/openapi.yaml`; the design handoff (`docs/design_handoff_atena/`) remains a historical contract/visual reference.
 
-Engaje este agente para: criar/evoluir módulos/serviços NestJS, manter as tools determinísticas, evoluir o orquestrador LLM (sessão, streaming SSE, roteamento de tool, recusa), expor endpoints REST + o WS gateway, modelar com Prisma, manter o mascaramento de PII e a validação server-side do resolve. Referências principais: `01-backend-api-contract.md`, `02-data-model.md`, `03-websocket-events.md`.
+Engage this agent to: create/evolve NestJS modules/services, maintain the deterministic tools, evolve the LLM orchestrator (session, SSE streaming, tool routing, refusal), expose REST endpoints + the WS gateway, model with Prisma, and maintain PII masking and the server-side validation of resolve. Main references: `docs/openapi.yaml`, `@atena/types`, and the handoff's `01-backend-api-contract.md`, `02-data-model.md`, `03-websocket-events.md`.
 
-Os 5 princípios moldam cada linha: (1) a aplicação executa query/RBAC/dados — o **LLM nunca toca o banco**; (2) o LLM **não fabrica dados** — sem resultado de tool, recusa explícita; (3) ack/resolve/comment **não são tools**, só REST + validação server-side; (4) tudo passa pelo interceptor de audit; (5) PII mascarada por padrão, reveal gera audit.
+The 5 principles shape every line: (1) the application runs query/RBAC/data — the **LLM never touches the database**; (2) the LLM **does not fabricate data** — no tool result, explicit refusal; (3) ack/resolve/comment **are not tools**, only REST + server-side validation; (4) everything is audited; (5) PII masked by default, reveal generates an audit entry.
 
 ## Responsibilities
 
-- Implementar as **tools determinísticas** como serviços NestJS, cada uma com seu endpoint REST espelhado:
-  - Fase 1: `search_shippings` (`GET /api/shippings/search`), `get_shipping_trail` (`GET /api/shippings/{id}/trail`), `analyze_shipping_content` (`POST /api/shippings/analyze`), `generate_delivery_report` (`POST /api/reports/delivery`), `list_providers` (`GET /api/providers`), `list_customers` (`GET /api/customers`).
-  - Fase 2: `list_incidents` (`GET /api/incidents`), `get_incident` (`GET /api/incidents/{id}`), `generate_incident_report` (`POST /api/reports/incidents`).
-- Construir o **orquestrador LLM** no módulo de chat: criar/listar sessões (`/api/chat/sessions`), receber mensagem do usuário e responder via stream SSE com a sequência `tool_call → tool_result → text_delta → done`, ou `refusal` quando fora de escopo. O orquestrador só chama as tools registradas; nunca acessa o banco/S3 direto.
-- Implementar a **recusa explícita**: se o pedido é fora de escopo ou se nenhuma tool retorna dados, emitir `event: refusal { reason, explanation, canDo[] }` em vez de inventar resposta (Princípios 2).
-- Expor os endpoints de ciclo de vida de incidente fora das tools: `POST /api/incidents/{id}/acknowledge|resolve|comment`, com **validação server-side** (não confiar na UI).
-- Construir o **WS gateway** (`/ws/support`, Socket.IO): validar a sessão OIDC (cookie JWT) no handshake (401 → re-login), associar conexão a `user_id` + papel, emitir `incident.created/updated/auto_resolved`. Ack/resolve continuam via REST; o servidor então emite `incident.updated`.
-- Implementar o **mascaramento de PII** server-side: telefone e conteúdo do SMS mascarados por padrão; telefone completo / conteúdo só após reveal autorizado (`pii:reveal`), gerando audit (`reveal_phone`/`reveal_content`).
-- Modelar com **Prisma** o estado do app (chat, incidentes, regras, audit, users/roles): snake_case no DB, camelCase na API; mapear os shapes do contrato (`01` §C) para os tipos compartilhados `@atena/types`. Os dados de entrega NÃO ficam no MySQL — vêm do detailed report no S3, consultado via DuckDB (cache `/tmp`).
+- Implement the **deterministic tools** as NestJS services, each with its mirrored REST endpoint:
+  - Phase 1: `search_shippings` (`GET /api/shippings/search`), `get_shipping_trail` (`GET /api/shippings/{id}/trail`), `analyze_shipping_content` (`POST /api/shippings/analyze`), `generate_delivery_report` (`POST /api/reports/delivery`), `list_providers` (`GET /api/providers`), `list_customers` (`GET /api/customers`).
+  - Phase 2: `list_incidents` (`GET /api/incidents`), `get_incident` (`GET /api/incidents/{id}`), `generate_incident_report` (`POST /api/reports/incidents`).
+- Build the **LLM orchestrator** in the chat module: create/list sessions (`/api/chat/sessions`), receive the user's message and reply via an SSE stream with the sequence `tool_call → tool_result → text_delta → done` (the stream also carries `thinking_delta` and `tool_progress`), or `refusal` when out of scope. The orchestrator only calls registered tools; it never accesses the database/S3 directly.
+- Implement the **explicit refusal**: if the request is out of scope or no tool returns data, emit `event: refusal { reason, explanation, can_do[] }` instead of making up an answer (Principle 2).
+- Expose the incident lifecycle endpoints outside the tools: `POST /api/incidents/{id}/acknowledge|resolve|comment`, with **server-side validation** (do not trust the UI).
+- Build the **WS gateway** (`/ws/support`, Socket.IO): validate the OIDC session (JWT cookie) in the handshake (401 → re-login), associate the connection with `user_id` + role, emit `incident.created/updated/auto_resolved`. Ack/resolve stay on REST; the server then emits `incident.updated`.
+- Implement server-side **PII masking**: phone and SMS content masked by default; full phone / content only after an authorized reveal (`pii:reveal`), generating an audit entry (`reveal_phone`/`reveal_content`).
+- Model the app state with **Prisma** (chat, incidents, rules, audit, users/roles): snake_case in the DB and **snake_case at the API edge** (Prisma Client is camelCase internally; map to snake_case in the services/serializers that build the response and in the DTOs that read the input — see `.context/docs/code-style.md`); keep the shapes aligned with the shared types in `@atena/types`. Delivery data does NOT live in MySQL — it comes from the detailed report on S3, queried via DuckDB (`/tmp` cache).
 
 ## Best Practices
 
-- Os response shapes de `01-backend-api-contract.md` §C são o **contrato** — cumpra-os exatamente (campos, nomes camelCase, envelope paginado `{ rows, page, totalPages, total, latencyMs }`).
-- O LLM recebe **apenas o resultado de tool**. Nunca passe credenciais de banco/S3 ao orquestrador nem deixe o LLM construir query. RBAC e mascaramento acontecem dentro do serviço da tool, antes de o dado voltar.
-- A recusa é um caminho de primeira classe, não um erro: implemente `refusal` no stream com `canDo[]` útil.
-- Validação do `resolve` (`01` §D): `actionCategory` ∈ enum; `actionDescription` ≥ 20 chars (≥ 10 no fluxo `auto_resolved`); se category ∈ {`provider_escalated`, `internal_escalated`} → `escalatedTo` obrigatório; só transição `acknowledged|detected|auto_resolved → resolved`. Toda mudança escreve `incident_activity` (status_change) + audit.
-- Erros sempre no shape `{ error: { code, message } }`. Autenticação por sessão OIDC (cookie JWT) em todos os endpoints, com RBAC via `@Requires(perm)`; datas ISO 8601 UTC.
-- O LLM roda via Amazon Bedrock (modelo Nova Pro — `us.amazon.nova-pro-v1:0` — via Converse API, streaming + tool use); cuide da retenção de prompt no nível do serviço, pois afeta contratos de dados e compliance. Instrumente latência por tool (p50/p95/p99), tokens e custo para a página de Observabilidade.
+- The response shapes in `@atena/types` (and `docs/openapi.yaml`) are the **contract** — honor them exactly (fields, snake_case names, paginated envelope `{ rows, page, total_pages, total, latency_ms }`). The handoff's `01-backend-api-contract.md` §C is the historical origin of these shapes and still uses camelCase.
+- The LLM receives **only the tool result**. Never pass database/S3 credentials to the orchestrator nor let the LLM build a query. RBAC and masking happen inside the tool's service, before the data goes back.
+- Refusal is a first-class path, not an error: implement `refusal` in the stream with a useful `can_do[]`.
+- Resolve validation (`01` §D): `action_category` ∈ enum; `action_description` ≥ 20 chars (≥ 10 in the `auto_resolved` flow); if category ∈ {`provider_escalated`, `internal_escalated`} → `escalated_to` required; only the transition `acknowledged|detected|auto_resolved → resolved`. Every change writes `incident_activity` (status_change) + audit.
+- Errors always in the shape `{ error: { code, message } }`. Authentication by OIDC session (JWT cookie) on every endpoint, with RBAC via `@Requires(perm)`; dates in ISO 8601 UTC.
+- The LLM runs on Amazon Bedrock (Nova Pro model — `us.amazon.nova-pro-v1:0` — via the Converse API, streaming + tool use); take care of prompt retention at the service level, since it affects data contracts and compliance. Instrument per-tool latency (p50/p95/p99), tokens and cost for the Observability page.
 
 ## Key Project Resources
 
-- [Índice de documentação](../docs/README.md)
-- [README dos agentes](README.md)
+- [Documentation index](../docs/README.md)
+- [Agents README](README.md)
 - [AGENTS.md](../../AGENTS.md)
-- `design_handoff_atena/spec-assistente-suporte.md` — spec fonte de verdade
+- `design_handoff_atena/spec-assistente-suporte.md` — source-of-truth spec
 
 ## Repository Starting Points
 
-- `apps/api/src/` — backend NestJS (módulos: chat, llm, shippings, reports, incidents, rules, audit, audit-query, auth, observability, detector, realtime).
-- `packages/types/` — `@atena/types`, shapes compartilhados com o frontend.
-- `docs/design_handoff_atena/` — specs e protótipo (referência de contrato/shape).
+- `apps/api/src/` — NestJS backend (modules: chat, llm, shippings, reports, incidents, rules, audit, audit-query, auth, observability, detector, realtime).
+- `packages/types/` — `@atena/types`, shapes shared with the frontend.
+- `docs/openapi.yaml` — current HTTP contract.
+- `docs/design_handoff_atena/` — specs (historical contract/shape reference; the original prototype is not included in the repo).
 
 ## Key Files
 
-- `design_handoff_atena/01-backend-api-contract.md` — endpoints, tools, shapes, `resolve`, observabilidade.
-- `design_handoff_atena/02-data-model.md` — schema (escrito p/ PostgreSQL; decisão batida é MySQL, adaptação em `.context/docs/tech-debt.md`), enums, constraints de negócio do resolve, RBAC.
-- `design_handoff_atena/03-websocket-events.md` — eventos WS, handshake de auth (sessão OIDC via cookie JWT; 401 → re-login), reconexão.
-- `(protótipo original, não incluído)` — fluxo de chat e renderização do stream (referência).
-- `(protótipo original, não incluído)` — como cada resultado de tool aparece + reveal de PII.
-- `(protótipo original, não incluído)` / `rules.jsx` — telas que exercitam incidentes e regras.
+- `docs/openapi.yaml` — current endpoints and shapes (snake_case).
+- `design_handoff_atena/01-backend-api-contract.md` — endpoints, tools, shapes, `resolve`, observability (historical reference).
+- `design_handoff_atena/02-data-model.md` — schema (written for PostgreSQL; the settled decision is MySQL, adaptation in `.context/docs/tech-debt.md`), enums, business constraints of resolve, RBAC. The real schema is `apps/api/prisma/schema.prisma`.
+- `design_handoff_atena/03-websocket-events.md` — WS events, auth handshake (OIDC session via JWT cookie; 401 → re-login), reconnection.
+- `apps/web/src/chat/` (`ChatPage.tsx`, `sse.ts`, `useChat.ts`) — chat flow and stream rendering.
+- `apps/web/src/chat/tool-cards/` — how each tool result is rendered + PII reveal (`RevealField.tsx`).
+- `apps/web/src/incidents/` and `apps/web/src/rules/` — screens that exercise incidents and rules.
 
 ## Architecture Context
 
-- **Módulo chat:** orquestrador LLM (Amazon Bedrock — Nova Pro via Converse, streaming + tool use), sessões, stream SSE, recusa.
-- **Módulos de tools:** shippings, reports, incidents, rules — serviços determinísticos; única fronteira que toca dados (Prisma/MySQL para estado do app; audit-query/DuckDB+S3 para entrega).
-- **WS gateway:** push de incidentes em tempo real (Socket.IO), auth no handshake.
-- **Transversais:** interceptor de audit, guards de auth (OIDC Entra, cookie JWT) + RBAC gerenciado no app (`@Requires`), serviço de mascaramento de PII.
+- **Chat module:** LLM orchestrator (Amazon Bedrock — Nova Pro via Converse, streaming + tool use), sessions, SSE stream, refusal.
+- **Tool modules:** shippings, reports, incidents, rules — deterministic services; the only boundary that touches data (Prisma/MySQL for app state; audit-query/DuckDB+S3 for delivery).
+- **WS gateway:** real-time incident push (Socket.IO), auth in the handshake.
+- **Cross-cutting:** audit interceptor, auth guards (OIDC via Entra, JWT cookie) + app-managed RBAC (`@Requires`), PII masking service.
 
 ## Key Symbols for This Agent
 
-- Protótipo (referência): `ToolResultFrame`, `SearchResults`, `TrailTimeline`, `RiskCard`, `ContentRevealBox`, `handleReveal` (`prototype/tool-results.jsx`) — definem os shapes e o ponto de reveal que o backend precisa servir.
-- `useMaskedPhone` (`prototype/tool-results.jsx:5`) — mostra mascaramento no cliente; o backend mascara antes.
-- Serviços reais (`apps/api/src/`): `OrchestratorService` (chat), `ShippingsService`, `IncidentsService`, `ReportsService`, `RulesService`, `AuditQueryService`/`DuckDbAuditQueryService`, `AuditInterceptor`, `SessionGuard`/`PermissionsGuard`, gateway de realtime.
+- Web components that consume the backend shapes and the reveal points (`apps/web/src/chat/tool-cards/`): `ToolResultFrame`, `SearchResultsCard`, `TrailCard`, `RiskCard`, `RevealField` (the original prototype's `SearchResults`, `TrailTimeline`, `ContentRevealBox`/`handleReveal`).
+- The original prototype's `useMaskedPhone` masked on the client; the backend masks first (`apps/api/src/common/pii.util.ts`), and the reveal goes through `POST /api/shippings/{id}/reveal-phone|reveal-content`.
+- Real services (`apps/api/src/`): `OrchestratorService` (chat), `ShippingsService`, `RevealService`, `IncidentsService`, `IncidentLifecycleService`, `ReportsService`, `RulesService`, `DuckDbAuditQueryService` (behind `AuditQueryServiceInterface`), `AuditInterceptor`, `AuthGuard` (`auth/session.guard.ts`)/`PermissionsGuard`, `SupportGateway` (realtime).
 
 ## Documentation Touchpoints
 
-- [docs/data-flow.md](../docs/data-flow.md) — fluxo chat → tool → dados → stream.
-- [docs/architecture.md](../docs/architecture.md) — fronteiras de módulo.
-- [docs/security.md](../docs/security.md) — PII, audit, RBAC, validação dupla.
+- [docs/data-flow.md](../docs/data-flow.md) — chat → tool → data → stream flow.
+- [docs/architecture.md](../docs/architecture.md) — module boundaries.
+- [docs/security.md](../docs/security.md) — PII, audit, RBAC, double validation.
 
 ## Collaboration Checklist
 
-1. Identifique a fase e a tool/endpoint alvo; confira o shape em `01` §C.
-2. Garanta que RBAC + mascaramento acontecem dentro do serviço da tool, antes do dado voltar.
-3. Para chat, confirme que o caminho de `refusal` está implementado (Princípio 2).
-4. Para resolve, aplique toda a validação server-side de `01` §D e escreva `incident_activity` + audit.
-5. Confirme que o endpoint emite o evento de audit correto (`tool_call`, `reveal_*`, `incident_*`, `export_report`).
-6. Atualize `docs/data-flow.md` se um novo fluxo de tool for adicionado.
+1. Identify the phase and the target tool/endpoint; check the shape in `@atena/types` / `docs/openapi.yaml` (and `01` §C for history).
+2. Make sure RBAC + masking happen inside the tool's service, before the data goes back.
+3. For chat, confirm the `refusal` path is implemented (Principle 2).
+4. For resolve, apply the full server-side validation of `01` §D and write `incident_activity` + audit.
+5. Confirm the endpoint emits the correct audit event (`tool_call`, `reveal_*`, `incident_*`, `export_report`).
+6. Update `docs/data-flow.md` if a new tool flow is added.
 
 ## Hand-off Notes
 
-Resuma quais tools/endpoints foram implementados (ou stub), se o caminho de recusa e o de audit estão cobertos, e se a validação do resolve está completa. Liste qualquer dependência de schema (passar ao database-specialist) e qualquer ponto onde mascaramento/RBAC ainda não cobre um campo sensível (passar ao security-auditor).
+Summarize which tools/endpoints were implemented (or stubbed), whether the refusal path and the audit path are covered, and whether the resolve validation is complete. List any schema dependency (hand to the database-specialist) and any point where masking/RBAC does not yet cover a sensitive field (hand to the security-auditor).

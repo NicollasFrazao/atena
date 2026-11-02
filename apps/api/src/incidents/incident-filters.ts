@@ -26,7 +26,7 @@ const VALID_DIMENSIONS: DimensionType[] = [
  * (`detected` + `acknowledged`). É o termo natural do usuário/LLM ("incidentes abertos"),
  * então o traduzimos aqui em vez de deixar vazar pro Prisma (que estouraria com erro de enum).
  */
-const STATUS_ALIASES: Record<string, IncidentStatusType[]> = {
+const STATUS_ALIASES: Partial<Record<string, IncidentStatusType[]>> = {
   open: [
     'detected',
     'acknowledged',
@@ -54,8 +54,9 @@ function tokens(csv: string): string[] {
  * valores válidos do enum e descarta o resto. NUNCA devolve valor inválido — assim o Prisma recebe
  * só enums reais (um valor inválido estouraria com 500). Lista vazia ⇒ o chamador filtra por "nada".
  *
- * @param {string} csv - Valor cru do filtro (1+ valores separados por vírgula).
- * @returns {IncidentStatusType[]} Status válidos, deduplicados.
+ * @param csv - Valor cru do filtro (1+ valores separados por vírgula).
+ *
+ * @returns Status válidos, deduplicados.
  */
 export function normalizeStatuses(csv: string): IncidentStatusType[] {
   const out = new Set<IncidentStatusType>();
@@ -80,8 +81,9 @@ export function normalizeStatuses(csv: string): IncidentStatusType[] {
 /**
  * Normaliza o filtro de severidade (CSV) mantendo só valores válidos do enum.
  *
- * @param {string} csv - Valor cru do filtro.
- * @returns {IncidentSeverityType[]} Severidades válidas, deduplicadas.
+ * @param csv - Valor cru do filtro.
+ *
+ * @returns Severidades válidas, deduplicadas.
  */
 export function normalizeSeverities(csv: string): IncidentSeverityType[] {
   const out = new Set<IncidentSeverityType>();
@@ -98,8 +100,9 @@ export function normalizeSeverities(csv: string): IncidentSeverityType[] {
 /**
  * Normaliza o filtro de dimensão (CSV) mantendo só valores válidos do enum.
  *
- * @param {string} csv - Valor cru do filtro.
- * @returns {DimensionType[]} Dimensões válidas, deduplicadas.
+ * @param csv - Valor cru do filtro.
+ *
+ * @returns Dimensões válidas, deduplicadas.
  */
 export function normalizeDimensions(csv: string): DimensionType[] {
   const out = new Set<DimensionType>();

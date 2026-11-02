@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { DownloadSimple, MagnifyingGlass } from '@phosphor-icons/react';
+import { useState, type JSX } from 'react';
+import { DownloadSimpleIcon as DownloadSimple, MagnifyingGlassIcon as MagnifyingGlass } from '@phosphor-icons/react';
 import { type SearchResultRowInterface } from '@atena/types';
 import { type RevealWindowInterface } from '../reveal';
 import { downloadSearchExport, type SearchShippingsQuery } from '../../api/shippings';
@@ -8,6 +8,7 @@ import { StatusPill } from './StatusPill';
 import { RevealField } from './RevealField';
 import { describeStatus, formatDateTime, formatNumber } from './format';
 import { categoryLabel } from '../../rules/rule-labels';
+import { cssValue, cssVar, FONT_WEIGHT } from '../../styles/tokens';
 
 /** Resultado da tool `search_shippings` (envelope paginado). */
 export interface SearchResultsResultInterface {
@@ -21,7 +22,7 @@ export interface SearchResultsResultInterface {
   date_to?: string;
   /** Token do snapshot da busca — o export baixa o conjunto EXATO (byte-exato com o total). */
   export_token?: string;
-  /** Quebra por status de TODO o conjunto (não só a página) — exibida no rodapé, casa com o CSV. */
+  /** Quebra por status de todo o conjunto (não só a página) — exibida no rodapé, casa com o CSV. */
   breakdown?: {
     delivered: number;
     failed: number;
@@ -35,30 +36,30 @@ export interface SearchResultsResultInterface {
  * entregue → bloqueado (cinza, controle de entrega/bounce) → pendente → falha (por último). Somadas,
  * as quatro fatias fecham com o total (antes `blocked` ficava de fora e o rodapé não batia).
  */
-const BREAKDOWN_PARTS: Array<{
+const BREAKDOWN_PARTS: {
   key: 'delivered' | 'failed' | 'blocked' | 'pending';
   label: string;
   color: string
-}> = [
+}[] = [
   {
     key: 'delivered',
     label: 'entregues',
-    color: 'var(--at-success-300)',
+    color: cssVar.success300,
   },
   {
     key: 'blocked',
     label: 'bloqueado',
-    color: 'var(--at-fg-muted)',
+    color: cssVar.fgMuted,
   },
   {
     key: 'pending',
     label: 'pendente',
-    color: 'var(--at-warning-300)',
+    color: cssVar.warning300,
   },
   {
     key: 'failed',
     label: 'falha',
-    color: 'var(--at-danger-300)',
+    color: cssVar.danger300,
   },
 ];
 
@@ -84,22 +85,26 @@ const CHANNEL_LABELS: Record<string, string> = {
 
 const cellStyle = {
   padding: '10px 14px',
-  fontSize: 'var(--at-fs-12)',
+  fontSize: cssVar.fs12,
   verticalAlign: 'top',
 } as const;
+
+/** Length of the `YYYY-MM-DD` date at the start of an ISO 8601 instant. */
+const ISO_DATE_LENGTH = 10;
 
 /**
  * Janela de 1 dia (UTC) em torno da data do envio — escopa o reveal à partição daquele dia,
  * evitando o scan frio de ~30 dias quando a busca não trouxe datas explícitas (ex.: busca por
  * telefone). `null` se `requested_at` não for uma data ISO válida (cai na janela da busca).
  *
- * @param {string} requestedAt - Data do envio (ISO 8601 UTC) da linha.
- * @returns {RevealWindowInterface | null} Janela do dia (`date_from = date_to = YYYY-MM-DD`), ou `null`.
+ * @param requestedAt - Data do envio (ISO 8601 UTC) da linha.
+ *
+ * @returns Janela do dia (`date_from = date_to = YYYY-MM-DD`), ou `null`.
  */
 function dayWindow(requestedAt: string): RevealWindowInterface | null {
   const day = requestedAt.slice(
     0,
-    10,
+    ISO_DATE_LENGTH,
   );
 
   return /^\d{4}-\d{2}-\d{2}$/.test(day)
@@ -110,29 +115,33 @@ function dayWindow(requestedAt: string): RevealWindowInterface | null {
     : null;
 }
 
+/** Length of the `dd/MM` day at the start of a {@link formatDateTime} text. */
+const DAY_MONTH_LENGTH = 5;
+
 /**
  * Sub-linha de finalização da coluna "Enviado": a data principal é sempre o ENVIO; esta linha responde
  * "foi finalizado? quando?". Finalizou no MESMO dia → só a hora; num dia POSTERIOR → a data inteira,
  * destacada (a entrega/falha cruzou a meia-noite); ainda `pending` → "não finalizado".
  *
- * @param {object} props - Datas da linha (ISO 8601 UTC).
- * @param {string} props.requestedAt - Instante do envio.
- * @param {string | null} props.finalizedAt - Instante da finalização, ou `null` se ainda não finalizou.
- * @returns {JSX.Element} A sub-linha de status de finalização.
+ * @param props - Datas da linha (ISO 8601 UTC).
+ * @param props.requestedAt - Instante do envio.
+ * @param props.finalizedAt - Instante da finalização, ou `null` se ainda não finalizou.
+ *
+ * @returns A sub-linha de status de finalização.
  */
 function FinalizeLine({
   requestedAt,
   finalizedAt,
-}: {
+}: Readonly<{
   requestedAt: string;
   finalizedAt: string | null
-}): JSX.Element {
+}>): JSX.Element {
   if (!finalizedAt) {
     return (
       <div style={{
-        marginTop: 'var(--at-space-2)',
+        marginTop: cssVar.space2,
         fontSize: 11,
-        color: 'var(--at-warning-300)',
+        color: cssVar.warning300,
       }}
       >
         não finalizado
@@ -144,22 +153,22 @@ function FinalizeLine({
 
   const laterDay = finalizedText.slice(
     0,
-    5,
+    DAY_MONTH_LENGTH,
   ) !== formatDateTime(requestedAt).slice(
     0,
-    5,
+    DAY_MONTH_LENGTH,
   );
 
   return (
     <div style={{
-      marginTop: 'var(--at-space-2)',
+      marginTop: cssVar.space2,
       fontSize: 11,
       fontWeight: laterDay
-        ? 600
-        : 400,
+        ? FONT_WEIGHT.semibold
+        : FONT_WEIGHT.regular,
       color: laterDay
-        ? 'var(--at-warning-300)'
-        : 'var(--at-fg-subtle)',
+        ? cssVar.warning300
+        : cssVar.fgSubtle,
     }}
     >
       {laterDay
@@ -179,10 +188,11 @@ interface FilterChipInterface {
  * Valor do chip de "Janela": intervalo formatado no fuso (`date_from`/`date_to`, efetivos ou crus) ou,
  * na ausência deles, o preset (`date_range`). `null` quando não há janela (busca cobriu o default).
  *
- * @param {string | undefined} from - Início da janela (ISO) ou `undefined`.
- * @param {string | undefined} to - Fim da janela (ISO) ou `undefined`.
- * @param {string | undefined} range - Preset (`24h`/`7d`/…) ou `undefined`.
- * @returns {string | null} Texto do chip, ou `null` se não há janela.
+ * @param from - Início da janela (ISO) ou `undefined`.
+ * @param to - Fim da janela (ISO) ou `undefined`.
+ * @param range - Preset (`24h`/`7d`/…) ou `undefined`.
+ *
+ * @returns Texto do chip, ou `null` se não há janela.
  */
 function windowChipValue(
   from: string | undefined,
@@ -208,9 +218,10 @@ function windowChipValue(
  * congelada do resultado (ISO), para o card declarar o escopo exato (cliente, telefone, status,
  * fornecedor, campanha, janela). Sem filtro = lista vazia (a busca cobriu a janela padrão).
  *
- * @param {SearchShippingsQuery | undefined} args - Filtros enviados à tool.
- * @param {SearchResultsResultInterface} result - Resultado (janela congelada `date_from`/`date_to`).
- * @returns {FilterChipInterface[]} Chips na ordem de exibição.
+ * @param args - Filtros enviados à tool.
+ * @param result - Resultado (janela congelada `date_from`/`date_to`).
+ *
+ * @returns Chips na ordem de exibição.
  */
 function buildFilterChips(
   args: SearchShippingsQuery | undefined,
@@ -318,26 +329,30 @@ function buildFilterChips(
   return chips;
 }
 
+/** Opacity of the download button while the export is running. */
+const DOWNLOADING_OPACITY = 0.7;
+
 /**
  * Card da tool `search_shippings`: tabela de envios encontrados. Telefone mascarado
  * por padrão, com reveal auditado por linha ({@link RevealField}); status colorido por tom;
  * `error_hint` em `<code>` vermelho ou "—"; rodapé com total e página.
  *
- * @param {object} props - Resultado da tool + janela do contexto.
- * @param {SearchResultsResultInterface} props.result - Envelope paginado da busca.
- * @param {RevealWindowInterface} [props.window] - Janela usada na busca (escopa o reveal por linha).
- * @param {SearchShippingsQuery} [props.args] - Filtros da busca (p/ o export paginar TODOS os resultados).
- * @returns {JSX.Element} O card de resultados de busca.
+ * @param props - Resultado da tool + janela do contexto.
+ * @param props.result - Envelope paginado da busca.
+ * @param [props.window] - Janela usada na busca (escopa o reveal por linha).
+ * @param [props.args] - Filtros da busca (p/ o export paginar TODOS os resultados).
+ *
+ * @returns O card de resultados de busca.
  */
 export function SearchResultsCard({
   result,
   window,
   args,
-}: {
+}: Readonly<{
   result: SearchResultsResultInterface;
   window?: RevealWindowInterface;
   args?: SearchShippingsQuery
-}): JSX.Element {
+}>): JSX.Element {
   const [
     downloading,
     setDownloading,
@@ -364,7 +379,7 @@ export function SearchResultsCard({
 
     downloadSearchExport(exportQuery)
       .catch(() => undefined)
-      .finally(() => setDownloading(false));
+      .finally(() => { setDownloading(false); });
   };
 
   // Const local: o TS narrow do `breakdown?` não atravessa o closure do `.map` do rodapé.
@@ -388,16 +403,16 @@ export function SearchResultsCard({
             display: 'flex',
             flexWrap: 'wrap',
             alignItems: 'center',
-            gap: 'var(--at-space-8)',
+            gap: cssVar.space8,
             padding: '10px 14px',
-            borderBottom: '1px solid var(--at-border)',
-            background: 'var(--at-bg-soft)',
+            borderBottom: cssVar.borderLine,
+            background: cssVar.bgSoft,
           }}
           >
             <span style={{
               fontSize: 11,
               fontWeight: 600,
-              color: 'var(--at-fg-muted)',
+              color: cssVar.fgMuted,
               textTransform: 'uppercase',
               letterSpacing: 0.4,
             }}
@@ -408,18 +423,18 @@ export function SearchResultsCard({
               <span
                 key={chip.label}
                 style={{
-                  display: 'inline-flex',
+                  display: cssValue.inlineFlex,
                   alignItems: 'center',
-                  gap: 'var(--at-space-4)',
+                  gap: cssVar.space4,
                   padding: '2px 8px',
                   borderRadius: 999,
-                  background: 'var(--at-white)',
-                  border: '1px solid var(--at-border)',
-                  fontSize: 'var(--at-fs-12)',
-                  color: 'var(--at-fg)',
+                  background: cssVar.white,
+                  border: cssVar.borderLine,
+                  fontSize: cssVar.fs12,
+                  color: cssVar.fg,
                 }}
               >
-                <span style={{ color: 'var(--at-fg-muted)' }}>{`${chip.label}:`}</span>
+                <span style={{ color: cssVar.fgMuted }}>{`${chip.label}:`}</span>
                 <b style={{ fontWeight: 600 }}>{chip.value}</b>
               </span>
             ))}
@@ -433,7 +448,7 @@ export function SearchResultsCard({
         }}
         >
           <thead>
-            <tr style={{ background: 'var(--at-bg-soft)' }}>
+            <tr style={{ background: cssVar.bgSoft }}>
               {COLUMNS.map((column) => (
                 <th
                   key={column}
@@ -442,10 +457,10 @@ export function SearchResultsCard({
                     padding: '9px 14px',
                     fontSize: 11,
                     fontWeight: 600,
-                    color: 'var(--at-fg-muted)',
+                    color: cssVar.fgMuted,
                     textTransform: 'uppercase',
                     letterSpacing: 0.4,
-                    borderBottom: '1px solid var(--at-border)',
+                    borderBottom: cssVar.borderLine,
                     whiteSpace: 'nowrap',
                   }}
                 >
@@ -463,15 +478,15 @@ export function SearchResultsCard({
                 key={row.id}
                 style={{
                   borderBottom: index < result.rows.length - 1
-                    ? '1px solid var(--at-border)'
+                    ? cssVar.borderLine
                     : 'none',
                 }}
               >
                 {/* Envio (Message ID) — identificador do envio, 1ª coluna */}
                 <td style={{
                   ...cellStyle,
-                  fontFamily: 'ui-monospace, Menlo, monospace',
-                  color: 'var(--at-fg)',
+                  fontFamily: cssValue.fontMono,
+                  color: cssVar.fg,
                   whiteSpace: 'nowrap',
                 }}
                 >
@@ -484,24 +499,24 @@ export function SearchResultsCard({
                       <span style={{
                         display: 'inline-block',
                         padding: '2px 8px',
-                        borderRadius: 'var(--at-radius-full)',
-                        background: 'var(--at-bg-soft)',
-                        border: '1px solid var(--at-border)',
+                        borderRadius: cssVar.radiusFull,
+                        background: cssVar.bgSoft,
+                        border: cssVar.borderLine,
                         fontSize: 11,
                         fontWeight: 600,
-                        color: 'var(--at-fg)',
+                        color: cssVar.fg,
                         whiteSpace: 'nowrap',
                       }}
                       >
                         {CHANNEL_LABELS[row.channel] ?? row.channel}
                       </span>
                     )
-                    : <span style={{ color: 'var(--at-fg-subtle)' }}>—</span>}
+                    : <span style={{ color: cssVar.fgSubtle }}>—</span>}
                 </td>
                 {/* Telefone */}
                 <td style={{
                   ...cellStyle,
-                  color: 'var(--at-fg)',
+                  color: cssVar.fg,
                 }}
                 >
                   <RevealField
@@ -518,11 +533,11 @@ export function SearchResultsCard({
                 {/* Enviado */}
                 <td style={{
                   ...cellStyle,
-                  color: 'var(--at-fg-muted)',
+                  color: cssVar.fgMuted,
                   whiteSpace: 'nowrap',
                 }}
                 >
-                  <div style={{ color: 'var(--at-fg)' }}>{formatDateTime(row.requested_at)}</div>
+                  <div style={{ color: cssVar.fg }}>{formatDateTime(row.requested_at)}</div>
                   <FinalizeLine
                     requestedAt={row.requested_at}
                     finalizedAt={row.finalized_at}
@@ -531,7 +546,7 @@ export function SearchResultsCard({
                 {/* Fornecedor */}
                 <td style={{
                   ...cellStyle,
-                  color: 'var(--at-fg)',
+                  color: cssVar.fg,
                 }}
                 >
                   {row.provider}
@@ -541,23 +556,23 @@ export function SearchResultsCard({
                   {row.error_hint
                     ? (
                       <code style={{
-                        fontFamily: 'ui-monospace, Menlo, monospace',
+                        fontFamily: cssValue.fontMono,
                         fontSize: 11,
-                        color: 'var(--at-danger-300)',
-                        background: 'var(--at-danger-50)',
+                        color: cssVar.danger300,
+                        background: cssVar.danger50,
                         padding: '2px 6px',
-                        borderRadius: 'var(--at-radius-4)',
+                        borderRadius: cssVar.radius4,
                       }}
                       >
                         {categoryLabel(row.error_hint)}
                       </code>
                     )
-                    : <span style={{ color: 'var(--at-fg-subtle)' }}>—</span>}
+                    : <span style={{ color: cssVar.fgSubtle }}>—</span>}
                 </td>
                 {/* Cliente */}
                 <td style={{
                   ...cellStyle,
-                  color: 'var(--at-fg-muted)',
+                  color: cssVar.fgMuted,
                 }}
                 >
                   {row.customer}
@@ -565,9 +580,9 @@ export function SearchResultsCard({
                 {/* App — UUID encurtado (quebra nos hífens, ~2 linhas) */}
                 <td style={{
                   ...cellStyle,
-                  fontFamily: 'ui-monospace, Menlo, monospace',
+                  fontFamily: cssValue.fontMono,
                   fontSize: 11,
-                  color: 'var(--at-fg-muted)',
+                  color: cssVar.fgMuted,
                   maxWidth: 160,
                   whiteSpace: 'normal',
                   overflowWrap: 'break-word',
@@ -575,22 +590,22 @@ export function SearchResultsCard({
                 >
                   {row.app_id ?? <span style={{
                     fontFamily: 'inherit',
-                    color: 'var(--at-fg-subtle)',
+                    color: cssVar.fgSubtle,
                   }}
                   >—</span>}
                 </td>
                 {/* Campanha — UUID encurtado (quebra nos hífens, ~2 linhas) */}
                 <td style={{
                   ...cellStyle,
-                  fontFamily: 'ui-monospace, Menlo, monospace',
+                  fontFamily: cssValue.fontMono,
                   fontSize: 11,
-                  color: 'var(--at-fg-muted)',
+                  color: cssVar.fgMuted,
                   maxWidth: 160,
                   whiteSpace: 'normal',
                   overflowWrap: 'break-word',
                 }}
                 >
-                  {row.campaign_id ?? <span style={{ color: 'var(--at-fg-subtle)' }}>—</span>}
+                  {row.campaign_id ?? <span style={{ color: cssVar.fgSubtle }}>—</span>}
                 </td>
               </tr>
             ))}
@@ -600,19 +615,19 @@ export function SearchResultsCard({
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 'var(--at-space-12)',
+        justifyContent: cssValue.spaceBetween,
+        gap: cssVar.space12,
         padding: '8px 14px',
-        borderTop: '1px solid var(--at-border)',
-        background: 'var(--at-bg-soft)',
-        fontSize: 'var(--at-fs-12)',
-        color: 'var(--at-fg-muted)',
+        borderTop: cssVar.borderLine,
+        background: cssVar.bgSoft,
+        fontSize: cssVar.fs12,
+        color: cssVar.fgMuted,
       }}
       >
         <span style={{
-          display: 'inline-flex',
+          display: cssValue.inlineFlex,
           alignItems: 'center',
-          gap: 'var(--at-space-12)',
+          gap: cssVar.space12,
           flexWrap: 'wrap',
         }}
         >
@@ -622,10 +637,10 @@ export function SearchResultsCard({
               <span
                 key={part.key}
                 style={{
-                  display: 'inline-flex',
+                  display: cssValue.inlineFlex,
                   alignItems: 'center',
-                  gap: 'var(--at-space-4)',
-                  fontVariantNumeric: 'tabular-nums',
+                  gap: cssVar.space4,
+                  fontVariantNumeric: cssValue.tabularNums,
                 }}
               >
                 <span style={{
@@ -635,7 +650,7 @@ export function SearchResultsCard({
                   background: part.color,
                 }}
                 />
-                <b style={{ color: 'var(--at-fg)' }}>{formatNumber(breakdown[part.key])}</b>
+                <b style={{ color: cssVar.fg }}>{formatNumber(breakdown[part.key])}</b>
                 {part.label}
               </span>
             ))
@@ -647,22 +662,22 @@ export function SearchResultsCard({
           disabled={downloading}
           title="Exporta TODAS as mensagens do filtro · telefone em claro (acesso auditado)"
           style={{
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
-            gap: 'var(--at-space-4)',
+            gap: cssVar.space4,
             height: 28,
-            padding: '0 var(--at-space-12)',
-            borderRadius: 'var(--at-radius-4)',
-            border: '1px solid var(--at-border)',
-            background: 'var(--at-white)',
-            color: 'var(--at-fg)',
-            fontSize: 'var(--at-fs-12)',
+            padding: cssVar.paddingInline12,
+            borderRadius: cssVar.radius4,
+            border: cssVar.borderLine,
+            background: cssVar.white,
+            color: cssVar.fg,
+            fontSize: cssVar.fs12,
             fontWeight: 600,
             cursor: downloading
               ? 'wait'
               : 'pointer',
             opacity: downloading
-              ? 0.7
+              ? DOWNLOADING_OPACITY
               : 1,
           }}
         >

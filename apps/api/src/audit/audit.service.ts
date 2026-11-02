@@ -24,22 +24,21 @@ const AUDIT_EXPORT_CAP = 5000;
  * NUNCA logar PII em claro (telefone, conteúdo de mensagem, e-mail, etc.).
  * Use `severity: 'pii'` para marcar acessos a dados sensíveis e mantenha
  * `detail`/`metadata` com referências (IDs, hashes) — jamais o valor cru.
- *
- * @property {string} [userId] - Subject (`sub`) do usuário autenticado, quando houver.
- * @property {AuditActionType} action - Ação auditada (ex.: `reveal_phone`).
- * @property {string} resource - Recurso afetado (ex.: rota `MÉTODO /caminho`).
- * @property {string} [detail] - Detalhe livre; apenas referências, NUNCA PII em claro.
- * @property {AuditSeverityType} severity - Severidade do evento (ex.: `info`, `pii`).
- * @property {string} [ipAddress] - IP de origem da requisição, quando disponível.
- * @property {Record<string, unknown>} [metadata] - Metadados estruturados; só referências (IDs/hashes), NUNCA PII em claro.
  */
 export interface AuditEntry {
+  /** Subject (`sub`) do usuário autenticado, quando houver. */
   userId?: string;
+  /** Ação auditada (ex.: `reveal_phone`). */
   action: AuditActionType;
+  /** Recurso afetado (ex.: rota `MÉTODO /caminho`). */
   resource: string;
+  /** Detalhe livre; apenas referências, NUNCA PII em claro. */
   detail?: string;
+  /** Severidade do evento (ex.: `info`, `pii`). */
   severity: AuditSeverityType;
+  /** IP de origem da requisição, quando disponível. */
   ipAddress?: string;
+  /** Metadados estruturados; só referências (IDs/hashes), NUNCA PII em claro. */
   metadata?: Record<string, unknown>;
 }
 
@@ -50,7 +49,7 @@ export interface AuditEntry {
 @Injectable()
 export class AuditService {
   /**
-   * @param {PrismaService} prisma - Acesso ao banco; usado apenas para INSERT no audit log.
+   * @param prisma - Acesso ao banco; usado apenas para INSERT no audit log.
    */
   constructor(private readonly prisma: PrismaService) {}
 
@@ -59,8 +58,9 @@ export class AuditService {
    *
    * NUNCA passe PII em claro em `detail` ou `metadata`.
    *
-   * @param {AuditEntry} entry - Entrada a ser gravada no audit log.
-   * @returns {Promise<void>} Resolve quando o INSERT é concluído.
+   * @param entry - Entrada a ser gravada no audit log.
+   *
+   * @returns Resolve quando o INSERT é concluído.
    */
   async record(entry: AuditEntry): Promise<void> {
     await this.prisma.auditLog.create({
@@ -80,8 +80,9 @@ export class AuditService {
    * Lista registros do audit log (mais recentes primeiro) com filtros e paginação — para a tela
    * de Audit log (somente leitura; RBAC na borda).
    *
-   * @param {ListAuditDto} dto - Filtros (ação/severidade/só-PII/busca) + paginação.
-   * @returns {Promise<PaginatedEnvelopeInterface<AuditLogEntryInterface>>} Página de registros.
+   * @param dto - Filtros (ação/severidade/só-PII/busca) + paginação.
+   *
+   * @returns Página de registros.
    */
   async list(dto: ListAuditDto): Promise<PaginatedEnvelopeInterface<AuditLogEntryInterface>> {
     const page = dto.page ?? 1;
@@ -122,8 +123,9 @@ export class AuditService {
    * Exporta os registros que casam os filtros (sem paginação), para download JSONL. Limitado a
    * {@link AUDIT_EXPORT_CAP} para não puxar o log inteiro de uma vez.
    *
-   * @param {ListAuditDto} dto - Mesmos filtros da listagem (paginação ignorada).
-   * @returns {Promise<AuditLogEntryInterface[]>} Registros (mais recentes primeiro), até o teto.
+   * @param dto - Mesmos filtros da listagem (paginação ignorada).
+   *
+   * @returns Registros (mais recentes primeiro), até o teto.
    */
   async exportAll(dto: ListAuditDto): Promise<AuditLogEntryInterface[]> {
     const rows = await this.prisma.auditLog.findMany({
@@ -143,8 +145,9 @@ export class AuditService {
   /**
    * Constrói o `where` do Prisma a partir dos filtros (ação/severidade/só-PII/usuário/janela/busca).
    *
-   * @param {ListAuditDto} dto - Filtros.
-   * @returns {Prisma.AuditLogWhereInput} Cláusula de filtro.
+   * @param dto - Filtros.
+   *
+   * @returns Cláusula de filtro.
    */
   private buildWhere(dto: ListAuditDto): Prisma.AuditLogWhereInput {
     const where: Prisma.AuditLogWhereInput = {};
@@ -192,7 +195,7 @@ export class AuditService {
   /**
    * Contadores do topo da tela de Audit log (eventos hoje, acessos a PII, mudanças de regra, total).
    *
-   * @returns {Promise<AuditSummaryInterface>} Contadores agregados.
+   * @returns Contadores agregados.
    */
   async summary(): Promise<AuditSummaryInterface> {
     const now = new Date();
@@ -227,7 +230,7 @@ export class AuditService {
    * Lista os usuários distintos presentes no audit log (para o filtro de usuário da tela), cada um
    * com o `id` (sub) e o nome de exibição resolvido (ou `null` → a tela mostra o id).
    *
-   * @returns {Promise<AuditUserOptionInterface[]>} Usuários distintos (sem nulos).
+   * @returns Usuários distintos (sem nulos).
    */
   async users(): Promise<AuditUserOptionInterface[]> {
     const rows = await this.prisma.auditLog.findMany({
@@ -252,8 +255,9 @@ export class AuditService {
   /**
    * Mapeia uma linha do Prisma para o registro de borda (snake_case).
    *
-   * @param {Prisma.AuditLogGetPayload<object>} row - Linha do audit log.
-   * @returns {AuditLogEntryInterface} Registro na borda.
+   * @param row - Linha do audit log.
+   *
+   * @returns Registro na borda.
    */
   private toEntry(
     row: {
@@ -290,10 +294,11 @@ export class AuditService {
    * tabela de usuários (RBAC). Subs não cadastrados (ex.: usuários de smoke/dev) ficam de fora do mapa
    * — a borda cai no próprio id.
    *
-   * @param {Array<string | null>} subs - Subs (`user_id`) a resolver (pode ter nulos/repetidos).
-   * @returns {Promise<Map<string, string>>} Mapa `sub → nome de exibição` (só os encontrados).
+   * @param subs - Subs (`user_id`) a resolver (pode ter nulos/repetidos).
+   *
+   * @returns Mapa `sub → nome de exibição` (só os encontrados).
    */
-  private async resolveUserNames(subs: Array<string | null>): Promise<Map<string, string>> {
+  private async resolveUserNames(subs: (string | null)[]): Promise<Map<string, string>> {
     const ids = [...new Set(subs.filter((sub): sub is string => Boolean(sub)))];
 
     if (ids.length === 0) {

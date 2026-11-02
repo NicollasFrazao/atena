@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CaretRight, ChatsCircle, CheckCircle, Flag, MagnifyingGlass, Warning } from '@phosphor-icons/react';
+import { CaretRightIcon as CaretRight, ChatsCircleIcon as ChatsCircle, CheckCircleIcon as CheckCircle, FlagIcon as Flag, MagnifyingGlassIcon as MagnifyingGlass, WarningIcon as Warning } from '@phosphor-icons/react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { IncidentInterface } from '@atena/types';
 import { acknowledgeIncident } from '../api/incidents';
@@ -8,19 +8,20 @@ import { SEVERITY_COLOR, SEVERITY_LABEL } from '../incidents/severity';
 import { ResolveIncidentModal } from '../incidents/ResolveIncidentModal';
 import { ToolResultFrame } from './tool-cards/ToolResultFrame';
 import { useChatContext } from './chat-context';
+import { cssValue, cssVar } from '../styles/tokens';
 
 /** Métricas exibidas na grade (rótulo, valor, se é o valor "fora do normal"). */
 type MetricTuple = [string, string, boolean];
 
 /** Estilo base dos botões de ação do card (pequenos, com ícone). */
 const ACTION_BUTTON = {
-  display: 'inline-flex',
+  display: cssValue.inlineFlex,
   alignItems: 'center',
-  gap: 'var(--at-space-4)',
+  gap: cssVar.space4,
   height: 30,
-  padding: '0 var(--at-space-12)',
-  borderRadius: 'var(--at-radius-4)',
-  fontSize: 'var(--at-fs-12)',
+  padding: cssVar.paddingInline12,
+  borderRadius: cssVar.radius4,
+  fontSize: cssVar.fs12,
   fontWeight: 600,
   cursor: 'pointer',
 } as const;
@@ -31,10 +32,11 @@ const ACTION_BUTTON = {
  * (Reconhecer / Investigar / Resolver) e a contagem de envios impactados. Auto-contido: as ações
  * usam o chat (Investigar), o lifecycle (Reconhecer) e o modal de resolução (Resolver).
  *
- * @param {{ incident: IncidentInterface }} props - Incidente recém-detectado.
- * @returns {JSX.Element} O cartão.
+ * @param props - Incidente recém-detectado.
+ *
+ * @returns O cartão.
  */
-export function IncidentChatCard({ incident }: { incident: IncidentInterface }): JSX.Element {
+export function IncidentChatCard({ incident }: Readonly<{ incident: IncidentInterface }>): JSX.Element {
   const chat = useChatContext();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -106,7 +108,7 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
             borderRadius: 999,
             background: `${color}1a`,
             color,
-            fontSize: 'var(--at-fs-12)',
+            fontSize: cssVar.fs12,
             fontWeight: 600,
           }}
           >
@@ -118,8 +120,8 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 'var(--at-space-8)',
-            marginBottom: 'var(--at-space-12)',
+            gap: cssVar.space8,
+            marginBottom: cssVar.space12,
           }}
           >
             {metrics.map(([
@@ -130,16 +132,16 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
               <div
                 key={label}
                 style={{
-                  background: 'var(--at-bg-soft)',
-                  border: '1px solid var(--at-border)',
-                  borderRadius: 'var(--at-radius-4)',
+                  background: cssVar.bgSoft,
+                  border: cssVar.borderLine,
+                  borderRadius: cssVar.radius4,
                   padding: '8px 10px',
                 }}
               >
                 <div style={{
-                  fontSize: 'var(--at-fs-10)',
+                  fontSize: cssVar.fs10,
                   fontWeight: 600,
-                  color: 'var(--at-fg-subtle)',
+                  color: cssVar.fgSubtle,
                   textTransform: 'uppercase',
                   letterSpacing: 0.5,
                 }}
@@ -147,14 +149,14 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
                   {label}
                 </div>
                 <div style={{
-                  fontFamily: 'var(--at-font-heading)',
-                  fontSize: 'var(--at-fs-16)',
+                  fontFamily: cssVar.fontHeading,
+                  fontSize: cssVar.fs16,
                   fontWeight: 700,
-                  fontVariantNumeric: 'tabular-nums',
+                  fontVariantNumeric: cssValue.tabularNums,
                   marginTop: 2,
                   color: danger
-                    ? 'var(--at-danger-200)'
-                    : 'var(--at-fg)',
+                    ? cssVar.danger200
+                    : cssVar.fg,
                 }}
                 >
                   {value}
@@ -165,9 +167,9 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
 
           <p style={{
             margin: 0,
-            fontSize: 'var(--at-fs-13)',
-            color: 'var(--at-fg)',
-            lineHeight: 'var(--at-lh-22)',
+            fontSize: cssVar.fs13,
+            color: cssVar.fg,
+            lineHeight: cssVar.lh22,
           }}
           >
             {incident.summary}
@@ -176,22 +178,22 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--at-space-8)',
-            marginTop: 'var(--at-space-12)',
+            gap: cssVar.space8,
+            marginTop: cssVar.space12,
             flexWrap: 'wrap',
           }}
           >
             <span style={{
-              display: 'inline-flex',
+              display: cssValue.inlineFlex,
               alignItems: 'center',
-              gap: 'var(--at-space-4)',
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg-muted)',
+              gap: cssVar.space4,
+              fontSize: cssVar.fs12,
+              color: cssVar.fgMuted,
             }}
             >
               <ChatsCircle size={13} />
               <span>
-                <b style={{ color: 'var(--at-fg)' }}>{incident.related_shippings}</b> envios impactados
+                <b style={{ color: cssVar.fg }}>{incident.related_shippings}</b> envios impactados
               </span>
             </span>
             <span style={{ flex: 1 }} />
@@ -205,8 +207,8 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
                   style={{
                     ...ACTION_BUTTON,
                     border: 'none',
-                    background: 'var(--at-primary)',
-                    color: 'var(--at-white)',
+                    background: cssVar.primary,
+                    color: cssVar.white,
                   }}
                 >
                   <CheckCircle size={14} />
@@ -219,8 +221,8 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
               style={{
                 ...ACTION_BUTTON,
                 border: '1px solid var(--at-primary)',
-                background: 'var(--at-white)',
-                color: 'var(--at-primary-dark)',
+                background: cssVar.white,
+                color: cssVar.primaryDark,
               }}
             >
               <MagnifyingGlass size={14} />
@@ -231,12 +233,12 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
               : (
                 <button
                   type="button"
-                  onClick={() => setResolving(true)}
+                  onClick={() => { setResolving(true); }}
                   style={{
                     ...ACTION_BUTTON,
-                    border: '1px solid var(--at-border)',
-                    background: 'var(--at-white)',
-                    color: 'var(--at-fg)',
+                    border: cssVar.borderLine,
+                    background: cssVar.white,
+                    color: cssVar.fg,
                   }}
                 >
                   <Flag size={14} />
@@ -245,12 +247,12 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
               )}
             <button
               type="button"
-              onClick={() => navigate(`/incidentes?detalhe=${incident.id}`)}
+              onClick={() => { navigate(`/incidentes?detalhe=${incident.id}`); }}
               style={{
                 ...ACTION_BUTTON,
                 border: 'none',
                 background: 'transparent',
-                color: 'var(--at-primary-dark)',
+                color: cssVar.primaryDark,
               }}
             >
               Detalhes
@@ -264,7 +266,7 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
         ? (
           <ResolveIncidentModal
             incident={incident}
-            onClose={() => setResolving(false)}
+            onClose={() => { setResolving(false); }}
             onResolved={() => {
               setResolving(false);
               invalidate();
@@ -280,10 +282,11 @@ export function IncidentChatCard({ incident }: { incident: IncidentInterface }):
  * Pílula de status em tempo real do incidente no cartão: "Resolvido" (resolved/auto_resolved) ou
  * "Em análise" + responsável (acknowledged). Em `detected` não mostra nada (as ações já indicam).
  *
- * @param {{ incident: IncidentInterface }} props - Incidente do cartão.
- * @returns {JSX.Element | null} A pílula, ou `null` se ainda não houve ação.
+ * @param props - Incidente do cartão.
+ *
+ * @returns A pílula, ou `null` se ainda não houve ação.
  */
-function IncidentLiveStatus({ incident }: { incident: IncidentInterface }): JSX.Element | null {
+function IncidentLiveStatus({ incident }: Readonly<{ incident: IncidentInterface }>): JSX.Element | null {
   const resolved = incident.status === 'resolved' || incident.status === 'auto_resolved';
   const acknowledged = incident.status === 'acknowledged';
 
@@ -303,19 +306,19 @@ function IncidentLiveStatus({ incident }: { incident: IncidentInterface }): JSX.
   }
 
   const color = resolved
-    ? 'var(--at-success-200)'
-    : 'var(--at-info-100)';
+    ? cssVar.success200
+    : cssVar.info100;
 
   return (
     <span style={{
-      display: 'inline-flex',
+      display: cssValue.inlineFlex,
       alignItems: 'center',
-      gap: 'var(--at-space-4)',
+      gap: cssVar.space4,
       padding: '2px 10px',
       borderRadius: 999,
       background: `${color}1a`,
       color,
-      fontSize: 'var(--at-fs-12)',
+      fontSize: cssVar.fs12,
       fontWeight: 600,
     }}
     >

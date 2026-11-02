@@ -10,9 +10,9 @@ import { HttpException, HttpStatus } from '@nestjs/common';
  */
 export class AppException extends HttpException {
   /**
-   * @param {string} code - Código estável do erro (ex.: 'not_found', 'conflict'); compõe `error.code`.
-   * @param {string} message - Mensagem legível ao consumidor; compõe `error.message`.
-   * @param {HttpStatus} [status=HttpStatus.BAD_REQUEST] - Status HTTP da resposta (default 400).
+   * @param code - Código estável do erro (ex.: 'not_found', 'conflict'); compõe `error.code`.
+   * @param message - Mensagem legível ao consumidor; compõe `error.message`.
+   * @param [status] - Status HTTP da resposta (default 400).
    */
   constructor(
     code: string,

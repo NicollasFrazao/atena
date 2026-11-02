@@ -22,8 +22,9 @@ const CATEGORY_LABEL: Record<string, string> = {
 /**
  * Rótulo PT-BR padronizado de uma categoria de erro/status; cai no valor cru se não mapeada.
  *
- * @param {string} category - Categoria crua (`error_hint`/`SmsStatusField`, ex.: `generic_error`).
- * @returns {string} Rótulo legível (ex.: `erro genérico`).
+ * @param category - Categoria crua (`error_hint`/`SmsStatusField`, ex.: `generic_error`).
+ *
+ * @returns Rótulo legível (ex.: `erro genérico`).
  */
 export function categoryLabel(category: string): string {
   return CATEGORY_LABEL[category] ?? category;
@@ -43,8 +44,9 @@ const LIFECYCLE_LABEL: Record<string, string> = {
  * (`queued`/`sent`/`in_progress`) tem rótulo próprio; o resto cai no {@link categoryLabel}
  * (`delivered` → "entregue", `generic_error` → "erro genérico", …). Fallback: o valor cru.
  *
- * @param {string} status - Status cru do detailed report (ex.: `queued`, `generic_error`).
- * @returns {string} Rótulo legível (ex.: `enfileirado`, `erro genérico`).
+ * @param status - Status cru do detailed report (ex.: `queued`, `generic_error`).
+ *
+ * @returns Rótulo legível (ex.: `enfileirado`, `erro genérico`).
  */
 export function statusDisplayLabel(status: string): string {
   return LIFECYCLE_LABEL[status] ?? categoryLabel(status);

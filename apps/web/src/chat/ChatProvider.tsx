@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback } from 'react';
+import { type ReactNode, useCallback, type JSX } from 'react';
 import type { WsServerEvent } from '@atena/types';
 import { useRealtimeEvent } from '../realtime/realtime-context';
 import { useChat } from './useChat';
@@ -11,10 +11,11 @@ import { ChatContext } from './chat-context';
  * Também escuta o `/ws/support`: a cada `incident.created`, injeta o incidente como um cartão inline
  * na conversa (proativo), em paralelo ao banner app-wide. Dedupe por id fica no `pushIncident`.
  *
- * @param {{ children: ReactNode }} props - Árvore que consome o contexto.
- * @returns {JSX.Element} O provedor.
+ * @param props - Árvore que consome o contexto.
+ *
+ * @returns O provedor.
  */
-export function ChatProvider({ children }: { children: ReactNode }): JSX.Element {
+export function ChatProvider({ children }: Readonly<{ children: ReactNode }>): JSX.Element {
   const chat = useChat();
 
   const {

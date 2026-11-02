@@ -1,0 +1,48 @@
+name: Bug report
+description: The assistant, the API or a screen behaves differently from the documentation.
+title: 'fix: '
+labels: [bug]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Chat and assistant (orchestrator, tools, refusal)
+        - Shippings, trail, reports (audit engine)
+        - Incidents, detector, rules, realtime
+        - Auth, RBAC, admin
+        - Audit log, PII reveal
+        - Observability
+        - Web app (screens)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The request, prompt or screen action, what came back, and what was stored. Never paste unmasked phone numbers or message content.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: Which documented behaviour or principle this contradicts.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Ideally a failing test; otherwise the smallest sequence of requests or steps, with the role used.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+      placeholder: e.g. 1a2b3c4
+    validations:
+      required: true

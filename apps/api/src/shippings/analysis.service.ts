@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 import type { RiskAnalysisInterface } from '@atena/types';
 import { AUDIT_QUERY, type AuditQueryServiceInterface } from '../audit-query/audit-query.interface';
 import { CONTENT_CACHE, type ContentCacheInterface } from '../cache/content-cache.interface';
+import { nonEmpty } from '../common/text.util';
 import { AnalyzeContentDto } from './dto/analyze-content.dto';
 import { analyzeRisk } from './risk.util';
 
@@ -18,8 +19,8 @@ import { analyzeRisk } from './risk.util';
 @Injectable()
 export class AnalysisService {
   /**
-   * @param {AuditQueryServiceInterface} audit - Motor de consulta (resolve `content_ref` do envio).
-   * @param {ContentCacheInterface} cache - Cache read-through `/tmp`↔S3 do conteúdo bruto.
+   * @param audit - Motor de consulta (resolve `content_ref` do envio).
+   * @param cache - Cache read-through `/tmp`↔S3 do conteúdo bruto.
    */
   constructor(
     @Inject(AUDIT_QUERY) private readonly audit: AuditQueryServiceInterface,
@@ -29,8 +30,10 @@ export class AnalysisService {
   /**
    * Analisa o risco do conteúdo informado (texto direto ou por `shipping_id`).
    *
-   * @param {AnalyzeContentDto} input - `text` OU `shipping_id` (ao menos um).
-   * @returns {Promise<RiskAnalysisInterface>} Score, veredito, categorias e explicação.
+   * @param input - `text` OU `shipping_id` (ao menos um).
+   *
+   * @returns Score, veredito, categorias e explicação.
+   *
    * @throws {NotFoundException} Se `shipping_id` não existir (`{ error: { code: 'not_found' } }`).
    * @throws {BadRequestException} Se nenhum texto puder ser resolvido (`{ error: { code: 'invalid_request' } }`).
    */
@@ -59,7 +62,7 @@ export class AnalysisService {
           ? await this.cache.getText(record.contentRef)
           : null);
 
-      text = raw?.trim() || undefined;
+      text = nonEmpty(raw?.trim());
     }
 
     if (!text) {

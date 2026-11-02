@@ -4,6 +4,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type JSX,
 } from 'react';
 import type { SessionUserInterface } from '@atena/types';
 import { fetchMe, logout } from '../api/auth';
@@ -14,6 +15,7 @@ import {
 } from './auth-context';
 import { Login } from './Login';
 import { AccessPending } from './AccessPending';
+import { cssVar } from '../styles/tokens';
 
 /** Estado interno do provider (usuário + fase). */
 interface AuthInternalState {
@@ -29,10 +31,11 @@ interface AuthInternalState {
  * Também registra o handler de 401 do `apiFetch`: uma sessão que expira no meio do uso volta para a
  * tela de login (em vez de recarregar a página).
  *
- * @param {{ children: ReactNode }} props - Árvore renderizada quando autenticado.
- * @returns {JSX.Element} O provedor + a view conforme o estado.
+ * @param props - Árvore renderizada quando autenticado.
+ *
+ * @returns O provedor + a view conforme o estado.
  */
-export function AuthProvider({ children }: { children: ReactNode }): JSX.Element {
+export function AuthProvider({ children }: Readonly<{ children: ReactNode }>): JSX.Element {
   const [
     state,
     setState,
@@ -73,10 +76,12 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
   useEffect(
     () => {
       // Sessão expirada no meio do uso (qualquer 401) → volta para o login.
-      setUnauthorizedHandler(() => setState({
-        user: null,
-        status: 'unauthenticated',
-      }));
+      setUnauthorizedHandler(() => {
+        setState({
+          user: null,
+          status: 'unauthenticated',
+        });
+      });
     },
     [],
   );
@@ -85,10 +90,12 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     () => {
       logout()
         .catch(() => undefined)
-        .finally(() => setState({
-          user: null,
-          status: 'unauthenticated',
-        }));
+        .finally(() => {
+          setState({
+            user: null,
+            status: 'unauthenticated',
+          });
+        });
     },
     [],
   );
@@ -141,7 +148,7 @@ function AuthLoading(): JSX.Element {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'var(--at-bg-soft)',
+      background: cssVar.bgSoft,
     }}
     >
       <span
@@ -151,7 +158,7 @@ function AuthLoading(): JSX.Element {
           height: 28,
           borderRadius: 999,
           border: '3px solid var(--at-border)',
-          borderTopColor: 'var(--at-primary)',
+          borderTopColor: cssVar.primary,
         }}
       />
     </div>

@@ -10,8 +10,9 @@ export const PERMISSIONS_KEY = 'requiredPermissions';
  *
  * Uso: `@Requires('pii:reveal')` · `@Requires('users:manage')`.
  *
- * @param {...PermissionType} permissions - Permissões exigidas.
- * @returns {CustomDecorator} Decorator que grava as permissões exigidas.
+ * @param permissions - Permissões exigidas.
+ *
+ * @returns Decorator que grava as permissões exigidas.
  */
 export const Requires = (...permissions: PermissionType[]): CustomDecorator => SetMetadata(
   PERMISSIONS_KEY,

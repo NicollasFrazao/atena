@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { IncidentInterface, WsServerEvent } from '@atena/types';
+import type { IncidentInterface } from '@atena/types';
 import { capNotices, eventToNotice } from './incident-notice';
 
 /** IncidentInterface mínimo para o mapeamento (só severity/summary/dimension_value importam aqui). */
@@ -69,7 +69,7 @@ describe('eventToNotice', () => {
       incident_id: 'inc_1',
       status: 'acknowledged',
       at: '2026-06-19T00:00:00Z',
-    } as WsServerEvent);
+    });
 
     const conn = eventToNotice({
       type: 'connection.status',

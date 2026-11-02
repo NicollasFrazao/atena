@@ -5,8 +5,9 @@ import type { AuditWindowInterface } from './audit-query.types';
  * Erro acionável (código `min_query_date`) para janelas fora do período confiável. O orquestrador o
  * repassa ao LLM, que explica ao usuário e pede uma janela a partir de `minQueryDate`.
  *
- * @param {string} minQueryDate - Data mínima (ISO) de dados confiáveis, ecoada na mensagem.
- * @returns {BadRequestException} Exceção com `error.code = 'min_query_date'`.
+ * @param minQueryDate - Data mínima (ISO) de dados confiáveis, ecoada na mensagem.
+ *
+ * @returns Exceção com `error.code = 'min_query_date'`.
  */
 function minQueryDateError(minQueryDate: string): BadRequestException {
   return new BadRequestException({
@@ -25,8 +26,9 @@ function minQueryDateError(minQueryDate: string): BadRequestException {
  * então responder sobre eles enganaria. Lança um erro acionável que o orquestrador repassa ao LLM
  * (que pede ao usuário uma janela a partir da data mínima). `null`/vazio desliga a guarda.
  *
- * @param {AuditWindowInterface | undefined} window - Janela resolvida da consulta.
- * @param {string | null} minQueryDate - Data mínima (ISO) de dados confiáveis; `null` = sem guarda.
+ * @param window - Janela resolvida da consulta.
+ * @param minQueryDate - Data mínima (ISO) de dados confiáveis; `null` = sem guarda.
+ *
  * @throws {BadRequestException} Se a janela for ausente/aberta ou começar antes de `minQueryDate`.
  */
 export function assertQueryWithinMinDate(
@@ -58,9 +60,11 @@ export function assertQueryWithinMinDate(
  * retorna 0 silenciosamente e confunde ("18/06 → 04/05"). Nesse caso REJEITA com o erro acionável
  * `min_query_date` — o usuário entende que a data pedida é anterior ao período confiável.
  *
- * @param {AuditWindowInterface | undefined} window - Janela resolvida (rolante ou explícita).
- * @param {string | null} minQueryDate - Data mínima (ISO); `null` = sem guarda (não recorta).
- * @returns {{ window: AuditWindowInterface | undefined; clamped: boolean }} Janela (recortada se preciso) + flag.
+ * @param window - Janela resolvida (rolante ou explícita).
+ * @param minQueryDate - Data mínima (ISO); `null` = sem guarda (não recorta).
+ *
+ * @returns Janela (recortada se preciso) + flag.
+ *
  * @throws {BadRequestException} Se a janela inteira for anterior ao piso (`to ≤ minQueryDate`).
  */
 export function clampWindowToMinDate(

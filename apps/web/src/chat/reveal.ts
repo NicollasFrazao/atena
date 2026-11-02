@@ -11,8 +11,9 @@ export interface RevealWindowInterface {
  * Monta a query-string da janela (`?date_from=…&date_to=…`); vazia se nada vier. A janela escopa o
  * lookup por id no backend — sem ela, a varredura cai na janela default (~30 dias) e pode estourar.
  *
- * @param {RevealWindowInterface} [window] - Datas do contexto.
- * @returns {string} A query-string (com `?`) ou string vazia.
+ * @param [window] - Datas do contexto.
+ *
+ * @returns A query-string (com `?`) ou string vazia.
  */
 function windowQuery(window?: RevealWindowInterface): string {
   const params = new URLSearchParams();
@@ -42,9 +43,10 @@ function windowQuery(window?: RevealWindowInterface): string {
  * Revela o telefone completo (PII) de um envio. O backend audita como `reveal_phone`
  * (severidade `pii`) — cada chamada é uma ação registrada; só dispare após confirmação do usuário.
  *
- * @param {string} shippingId - Id do envio (o `id` da linha de busca / `shipping_id` da trilha).
- * @param {RevealWindowInterface} [window] - Janela do contexto (mesma do search/trilha), escopa a busca.
- * @returns {Promise<RevealedPhoneInterface>} `{ shipping_id, phone_full }` (telefone NÃO mascarado).
+ * @param shippingId - Id do envio (o `id` da linha de busca / `shipping_id` da trilha).
+ * @param [window] - Janela do contexto (mesma do search/trilha), escopa a busca.
+ *
+ * @returns `{ shipping_id, phone_full }` (telefone NÃO mascarado).
  */
 export function revealPhone(
   shippingId: string,
@@ -60,9 +62,10 @@ export function revealPhone(
  * Revela o conteúdo bruto (PII) de um envio. O backend audita como `reveal_content`
  * (severidade `pii`) — cada chamada é uma ação registrada; só dispare após confirmação do usuário.
  *
- * @param {string} shippingId - Id do envio (o `shipping_id` da trilha).
- * @param {RevealWindowInterface} [window] - Janela do contexto (mesma do search/trilha), escopa a busca.
- * @returns {Promise<RevealedContentInterface>} `{ shipping_id, content_preview }` (conteúdo em claro).
+ * @param shippingId - Id do envio (o `shipping_id` da trilha).
+ * @param [window] - Janela do contexto (mesma do search/trilha), escopa a busca.
+ *
+ * @returns `{ shipping_id, content_preview }` (conteúdo em claro).
  */
 export function revealContent(
   shippingId: string,

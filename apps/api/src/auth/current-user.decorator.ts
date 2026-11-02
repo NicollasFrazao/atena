@@ -13,6 +13,7 @@ import type { AuthenticatedUserInterface } from './identity-provider.interface';
  *
  * @param {unknown} _data - Argumento do decorator (não utilizado).
  * @param {ExecutionContext} ctx - Contexto de execução do NestJS.
+ *
  * @returns {AuthenticatedUserInterface | undefined} Usuário autenticado, ou `undefined`
  *   se a request não tiver sido autenticada.
  */

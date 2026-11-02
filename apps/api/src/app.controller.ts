@@ -13,7 +13,7 @@ export class AppController {
   /**
    * Healthcheck simples da aplicação.
    *
-   * @returns {{ status: string; service: string }} Status fixo `'ok'` e o nome do serviço.
+   * @returns Status fixo `'ok'` e o nome do serviço.
    */
   @Get('health')
   health(): {

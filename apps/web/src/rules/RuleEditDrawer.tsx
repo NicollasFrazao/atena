@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Gear, Warning, X } from '@phosphor-icons/react';
+import { useEffect, useState, type JSX } from 'react';
+import { GearIcon as Gear, WarningIcon as Warning, XIcon } from '@phosphor-icons/react';
 import type {
   AnomalyRuleInterface,
   DimensionType,
@@ -15,6 +15,7 @@ import {
   ruleDescription,
   RULE_TYPE_LABEL,
 } from './rule-labels';
+import { cssValue, cssVar } from '../styles/tokens';
 
 /** Severidades selecionáveis (ordem crescente de impacto). */
 const SEVERITIES: IncidentSeverityType[] = [
@@ -53,21 +54,22 @@ function toDraft(rule: AnomalyRuleInterface): DraftInterface {
  * toggle de ativação no rodapé. Salva via `PUT /rules/:id` (auditado); o botão Salvar só habilita
  * quando há mudança.
  *
- * @param {object} props - Regra + callbacks.
- * @param {AnomalyRuleInterface} props.rule - Regra a editar.
- * @param {() => void} props.onClose - Fecha sem salvar.
- * @param {() => void} props.onSaved - Chamado após salvar com sucesso.
- * @returns {JSX.Element} O drawer de edição.
+ * @param props - Regra + callbacks.
+ * @param props.rule - Regra a editar.
+ * @param props.onClose - Fecha sem salvar.
+ * @param props.onSaved - Chamado após salvar com sucesso.
+ *
+ * @returns O drawer de edição.
  */
 export function RuleEditDrawer({
   rule,
   onClose,
   onSaved,
-}: {
+}: Readonly<{
   rule: AnomalyRuleInterface;
   onClose: () => void;
   onSaved: () => void
-}): JSX.Element {
+}>): JSX.Element {
   const [
     draft,
     setDraft,
@@ -96,18 +98,22 @@ export function RuleEditDrawer({
         onKey,
       );
 
-      return () => document.removeEventListener(
-        'keydown',
-        onKey,
-      );
+      return () => {
+        document.removeEventListener(
+          'keydown',
+          onKey,
+        );
+      };
     },
     [onClose],
   );
 
-  const patch = (next: Partial<DraftInterface>): void => setDraft((current) => ({
-    ...current,
-    ...next,
-  }));
+  const patch = (next: Partial<DraftInterface>): void => {
+    setDraft((current) => ({
+      ...current,
+      ...next,
+    }));
+  };
 
   const thresholdNumber = Number(draft.threshold);
   const windowNumber = Number(draft.windowMinutes);
@@ -153,7 +159,7 @@ export function RuleEditDrawer({
       rule.id,
       payload,
     )
-      .then(() => onSaved())
+      .then(() => { onSaved(); })
       .catch((err: unknown) => {
         setError(err instanceof ApiError
           ? err.message
@@ -180,37 +186,37 @@ export function RuleEditDrawer({
     >
       <div
         className="at-slide-right"
-        onClick={(event) => event.stopPropagation()}
+        onClick={(event) => { event.stopPropagation(); }}
         style={{
           width: 'min(520px, 100%)',
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          background: 'var(--at-white)',
+          background: cssVar.white,
           boxShadow: '-12px 0 40px rgba(0, 0, 0, 0.2)',
         }}
       >
         <div style={{
           padding: 'var(--at-space-20) var(--at-space-24)',
-          borderBottom: '1px solid var(--at-border)',
+          borderBottom: cssVar.borderLine,
         }}
         >
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--at-space-8)',
+            gap: cssVar.space8,
           }}
           >
             <Gear
               size={16}
-              color="var(--at-primary)"
+              color={cssVar.primary}
             />
             <h2 style={{
               margin: 0,
               flex: 1,
-              fontSize: 'var(--at-fs-18)',
+              fontSize: cssVar.fs18,
               fontWeight: 600,
-              color: 'var(--at-fg)',
+              color: cssVar.fg,
             }}
             >
               Editar regra
@@ -226,24 +232,24 @@ export function RuleEditDrawer({
                 height: 28,
                 border: 'none',
                 background: 'transparent',
-                color: 'var(--at-fg-muted)',
+                color: cssVar.fgMuted,
                 cursor: 'pointer',
               }}
             >
-              <X size={16} />
+              <XIcon size={16} />
             </button>
           </div>
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--at-space-8)',
-            marginTop: 'var(--at-space-8)',
+            gap: cssVar.space8,
+            marginTop: cssVar.space8,
           }}
           >
             <code style={{
-              fontFamily: 'ui-monospace, Menlo, monospace',
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg-muted)',
+              fontFamily: cssValue.fontMono,
+              fontSize: cssVar.fs12,
+              color: cssVar.fgMuted,
             }}
             >
               {rule.id}
@@ -258,7 +264,7 @@ export function RuleEditDrawer({
           padding: 'var(--at-space-20) var(--at-space-24)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 'var(--at-space-20)',
+          gap: cssVar.space20,
         }}
         >
           <Field
@@ -267,7 +273,7 @@ export function RuleEditDrawer({
           >
             <input
               value={draft.name}
-              onChange={(event) => patch({ name: event.target.value })}
+              onChange={(event) => { patch({ name: event.target.value }); }}
               style={INPUT_STYLE}
             />
           </Field>
@@ -276,28 +282,28 @@ export function RuleEditDrawer({
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 'var(--at-space-8)',
+              gap: cssVar.space8,
               padding: '10px 12px',
-              background: 'var(--at-bg-soft)',
-              border: '1px solid var(--at-border)',
-              borderRadius: 'var(--at-radius-4)',
-              fontSize: 'var(--at-fs-14)',
-              color: 'var(--at-fg-muted)',
+              background: cssVar.bgSoft,
+              border: cssVar.borderLine,
+              borderRadius: cssVar.radius4,
+              fontSize: cssVar.fs14,
+              color: cssVar.fgMuted,
             }}
             >
               {RULE_TYPE_LABEL[rule.rule_type]}
               <span style={{
                 marginLeft: 'auto',
-                fontSize: 'var(--at-fs-12)',
+                fontSize: cssVar.fs12,
               }}
               >
                 imutável
               </span>
             </div>
             <span style={{
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg-muted)',
-              lineHeight: 'var(--at-lh-22)',
+              fontSize: cssVar.fs12,
+              color: cssVar.fgMuted,
+              lineHeight: cssVar.lh22,
             }}
             >
               {ruleDescription(rule)}
@@ -308,14 +314,14 @@ export function RuleEditDrawer({
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: 'var(--at-space-4)',
+              gap: cssVar.space4,
             }}
             >
               {DIMENSIONS.map((value) => (
                 <SelectableButton
                   key={value}
                   selected={draft.dimension === value}
-                  onClick={() => patch({ dimension: value })}
+                  onClick={() => { patch({ dimension: value }); }}
                 >
                   {DIMENSION_LABEL[value]}
                 </SelectableButton>
@@ -326,14 +332,14 @@ export function RuleEditDrawer({
           <Field label="Severidade do incidente disparado">
             <div style={{
               display: 'flex',
-              gap: 'var(--at-space-4)',
+              gap: cssVar.space4,
             }}
             >
               {SEVERITIES.map((value) => (
                 <SelectableButton
                   key={value}
                   selected={draft.severity === value}
-                  onClick={() => patch({ severity: value })}
+                  onClick={() => { patch({ severity: value }); }}
                   grow
                 >
                   <span style={{
@@ -352,7 +358,7 @@ export function RuleEditDrawer({
           <Field label="Limiar (threshold)">
             <div style={{
               display: 'flex',
-              gap: 'var(--at-space-8)',
+              gap: cssVar.space8,
             }}
             >
               <input
@@ -360,27 +366,27 @@ export function RuleEditDrawer({
                 value={draft.threshold}
                 min={0}
                 step="any"
-                onChange={(event) => patch({ threshold: event.target.value })}
+                onChange={(event) => { patch({ threshold: event.target.value }); }}
                 style={{
                   ...INPUT_STYLE,
                   flex: 1,
                   height: 44,
-                  fontFamily: 'var(--at-font-heading)',
-                  fontSize: 'var(--at-fs-18)',
+                  fontFamily: cssVar.fontHeading,
+                  fontSize: cssVar.fs18,
                   fontWeight: 600,
-                  fontVariantNumeric: 'tabular-nums',
+                  fontVariantNumeric: cssValue.tabularNums,
                 }}
               />
               <div style={{
                 width: 56,
                 display: 'grid',
                 placeItems: 'center',
-                background: 'var(--at-bg-soft)',
-                border: '1px solid var(--at-border)',
-                borderRadius: 'var(--at-radius-4)',
-                fontSize: 'var(--at-fs-14)',
+                background: cssVar.bgSoft,
+                border: cssVar.borderLine,
+                borderRadius: cssVar.radius4,
+                fontSize: cssVar.fs14,
                 fontWeight: 600,
-                color: 'var(--at-fg-muted)',
+                color: cssVar.fgMuted,
               }}
               >
                 {rule.threshold_unit}
@@ -391,7 +397,7 @@ export function RuleEditDrawer({
           <Field label="Janela de avaliação">
             <div style={{
               display: 'flex',
-              gap: 'var(--at-space-8)',
+              gap: cssVar.space8,
             }}
             >
               <input
@@ -399,22 +405,22 @@ export function RuleEditDrawer({
                 value={draft.windowMinutes}
                 min={1}
                 step={1}
-                onChange={(event) => patch({ windowMinutes: event.target.value })}
+                onChange={(event) => { patch({ windowMinutes: event.target.value }); }}
                 style={{
                   ...INPUT_STYLE,
                   flex: 1,
-                  fontVariantNumeric: 'tabular-nums',
+                  fontVariantNumeric: cssValue.tabularNums,
                 }}
               />
               <div style={{
                 width: 80,
                 display: 'grid',
                 placeItems: 'center',
-                background: 'var(--at-bg-soft)',
-                border: '1px solid var(--at-border)',
-                borderRadius: 'var(--at-radius-4)',
-                fontSize: 'var(--at-fs-13)',
-                color: 'var(--at-fg-muted)',
+                background: cssVar.bgSoft,
+                border: cssVar.borderLine,
+                borderRadius: cssVar.radius4,
+                fontSize: cssVar.fs13,
+                color: cssVar.fgMuted,
               }}
               >
                 minutos
@@ -425,35 +431,35 @@ export function RuleEditDrawer({
           <div style={{
             display: 'flex',
             alignItems: 'flex-start',
-            gap: 'var(--at-space-12)',
+            gap: cssVar.space12,
             padding: '12px',
             border: `1px solid ${draft.shadowMode
-              ? 'var(--at-primary)'
-              : 'var(--at-border)'}`,
-            borderRadius: 'var(--at-radius-4)',
+              ? cssVar.primary
+              : cssVar.border}`,
+            borderRadius: cssVar.radius4,
             background: draft.shadowMode
-              ? 'var(--at-primary-lighter)'
-              : 'var(--at-white)',
+              ? cssVar.primaryLighter
+              : cssVar.white,
           }}
           >
             <Switch
               checked={draft.shadowMode}
-              onToggle={() => patch({ shadowMode: !draft.shadowMode })}
+              onToggle={() => { patch({ shadowMode: !draft.shadowMode }); }}
             />
             <div>
               <div style={{
-                fontSize: 'var(--at-fs-13)',
+                fontSize: cssVar.fs13,
                 fontWeight: 600,
-                color: 'var(--at-fg)',
+                color: cssVar.fg,
               }}
               >
                 Shadow mode (observação silenciosa)
               </div>
               <div style={{
-                fontSize: 'var(--at-fs-12)',
-                color: 'var(--at-fg-muted)',
-                marginTop: 'var(--at-space-4)',
-                lineHeight: 'var(--at-lh-22)',
+                fontSize: cssVar.fs12,
+                color: cssVar.fgMuted,
+                marginTop: cssVar.space4,
+                lineHeight: cssVar.lh22,
               }}
               >
                 Detecta e registra o incidente, mas <b>não notifica</b> (sem WebSocket/banner). Use
@@ -464,25 +470,25 @@ export function RuleEditDrawer({
 
           <div style={{
             display: 'flex',
-            gap: 'var(--at-space-8)',
+            gap: cssVar.space8,
             padding: '12px',
-            background: 'var(--at-warning-50)',
+            background: cssVar.warning50,
             border: '1px solid var(--at-warning-200)',
-            borderRadius: 'var(--at-radius-4)',
+            borderRadius: cssVar.radius4,
           }}
           >
             <Warning
               size={16}
-              color="var(--at-warning-200)"
+              color={cssVar.warning200}
               style={{
                 flexShrink: 0,
                 marginTop: 2,
               }}
             />
             <div style={{
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-warning-300)',
-              lineHeight: 'var(--at-lh-22)',
+              fontSize: cssVar.fs12,
+              color: cssVar.warning300,
+              lineHeight: cssVar.lh22,
             }}
             >
               Mudanças nesta regra são aplicadas imediatamente ao detector. Antes de afrouxar limiares,
@@ -495,11 +501,11 @@ export function RuleEditDrawer({
             ? (
               <div style={{
                 padding: '10px 12px',
-                borderRadius: 'var(--at-radius-4)',
-                background: 'var(--at-danger-50)',
+                borderRadius: cssVar.radius4,
+                background: cssVar.danger50,
                 border: '1px solid var(--at-danger-200)',
-                fontSize: 'var(--at-fs-12)',
-                color: 'var(--at-danger-300)',
+                fontSize: cssVar.fs12,
+                color: cssVar.danger300,
               }}
               >
                 {error}
@@ -511,20 +517,20 @@ export function RuleEditDrawer({
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 'var(--at-space-8)',
+          gap: cssVar.space8,
           padding: 'var(--at-space-16) var(--at-space-24)',
-          borderTop: '1px solid var(--at-border)',
-          background: 'var(--at-bg-soft)',
+          borderTop: cssVar.borderLine,
+          background: cssVar.bgSoft,
         }}
         >
           <Switch
             checked={draft.enabled}
-            onToggle={() => patch({ enabled: !draft.enabled })}
+            onToggle={() => { patch({ enabled: !draft.enabled }); }}
           />
           <span style={{
-            fontSize: 'var(--at-fs-13)',
+            fontSize: cssVar.fs13,
             fontWeight: 600,
-            color: 'var(--at-fg)',
+            color: cssVar.fg,
           }}
           >
             {draft.enabled
@@ -538,11 +544,11 @@ export function RuleEditDrawer({
             style={{
               height: 36,
               padding: '0 var(--at-space-16)',
-              borderRadius: 'var(--at-radius-4)',
-              border: '1px solid var(--at-border)',
-              background: 'var(--at-white)',
-              color: 'var(--at-fg)',
-              fontSize: 'var(--at-fs-14)',
+              borderRadius: cssVar.radius4,
+              border: cssVar.borderLine,
+              background: cssVar.white,
+              color: cssVar.fg,
+              fontSize: cssVar.fs14,
               fontWeight: 600,
               cursor: 'pointer',
             }}
@@ -556,15 +562,15 @@ export function RuleEditDrawer({
             style={{
               height: 36,
               padding: '0 var(--at-space-16)',
-              borderRadius: 'var(--at-radius-4)',
+              borderRadius: cssVar.radius4,
               border: 'none',
               background: valid && dirty && !submitting
-                ? 'var(--at-primary)'
-                : 'var(--at-bg-soft)',
+                ? cssVar.primary
+                : cssVar.bgSoft,
               color: valid && dirty && !submitting
-                ? 'var(--at-white)'
-                : 'var(--at-fg-subtle)',
-              fontSize: 'var(--at-fs-14)',
+                ? cssVar.white
+                : cssVar.fgSubtle,
+              fontSize: cssVar.fs14,
               fontWeight: 600,
               cursor: valid && dirty && !submitting
                 ? 'pointer'
@@ -587,12 +593,12 @@ const INPUT_STYLE = {
   height: 38,
   padding: '0 12px',
   border: '1.5px solid var(--at-border)',
-  borderRadius: 'var(--at-radius-4)',
+  borderRadius: cssVar.radius4,
   fontFamily: 'inherit',
-  fontSize: 'var(--at-fs-14)',
-  color: 'var(--at-fg)',
+  fontSize: cssVar.fs14,
+  color: cssVar.fg,
   outline: 'none',
-  background: 'var(--at-white)',
+  background: cssVar.white,
 } as const;
 
 /** Campo rotulado (label acima do controle). */
@@ -600,27 +606,27 @@ function Field({
   label,
   required,
   children,
-}: {
+}: Readonly<{
   label: string;
   required?: boolean;
   children: React.ReactNode
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <label style={{
       display: 'flex',
       flexDirection: 'column',
-      gap: 'var(--at-space-8)',
+      gap: cssVar.space8,
     }}
     >
       <span style={{
-        fontSize: 'var(--at-fs-12)',
+        fontSize: cssVar.fs12,
         fontWeight: 600,
-        color: 'var(--at-fg)',
+        color: cssVar.fg,
       }}
       >
         {label}
         {required
-          ? <span style={{ color: 'var(--at-danger-300)' }}> *</span>
+          ? <span style={{ color: cssVar.danger300 }}> *</span>
           : null}
       </span>
       {children}
@@ -634,12 +640,12 @@ function SelectableButton({
   onClick,
   grow,
   children,
-}: {
+}: Readonly<{
   selected: boolean;
   onClick: () => void;
   grow?: boolean;
   children: React.ReactNode
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <button
       type="button"
@@ -648,22 +654,22 @@ function SelectableButton({
         flex: grow
           ? 1
           : undefined,
-        display: 'inline-flex',
+        display: cssValue.inlineFlex,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 'var(--at-space-4)',
+        gap: cssVar.space4,
         padding: '8px 10px',
-        borderRadius: 'var(--at-radius-4)',
+        borderRadius: cssVar.radius4,
         border: `1px solid ${selected
-          ? 'var(--at-primary)'
-          : 'var(--at-border)'}`,
+          ? cssVar.primary
+          : cssVar.border}`,
         background: selected
-          ? 'var(--at-primary-lighter)'
-          : 'var(--at-white)',
+          ? cssVar.primaryLighter
+          : cssVar.white,
         color: selected
-          ? 'var(--at-primary-dark)'
-          : 'var(--at-fg)',
-        fontSize: 'var(--at-fs-12)',
+          ? cssVar.primaryDark
+          : cssVar.fg,
+        fontSize: cssVar.fs12,
         fontWeight: 600,
         cursor: 'pointer',
       }}
@@ -674,19 +680,19 @@ function SelectableButton({
 }
 
 /** Chip de severidade (cor + rótulo) para o cabeçalho do drawer. */
-function SeverityChip({ severity }: { severity: IncidentSeverityType }): JSX.Element {
+function SeverityChip({ severity }: Readonly<{ severity: IncidentSeverityType }>): JSX.Element {
   const color = SEVERITY_COLOR[severity];
 
   return (
     <span style={{
-      display: 'inline-flex',
+      display: cssValue.inlineFlex,
       alignItems: 'center',
-      gap: 'var(--at-space-4)',
+      gap: cssVar.space4,
       padding: '2px 8px',
       borderRadius: 999,
       background: `${color}1a`,
       color,
-      fontSize: 'var(--at-fs-12)',
+      fontSize: cssVar.fs12,
       fontWeight: 600,
     }}
     >
@@ -702,14 +708,17 @@ function SeverityChip({ severity }: { severity: IncidentSeverityType }): JSX.Ele
   );
 }
 
+/** Left offset of the toggle knob when on: track width (38) − knob (18) − inset (2). */
+const TOGGLE_KNOB_ON_LEFT_PX = 18;
+
 /** Toggle de ativação (switch). */
 function Switch({
   checked,
   onToggle,
-}: {
+}: Readonly<{
   checked: boolean;
   onToggle: () => void
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <button
       type="button"
@@ -723,8 +732,8 @@ function Switch({
         border: 'none',
         borderRadius: 999,
         background: checked
-          ? 'var(--at-primary)'
-          : 'var(--at-border)',
+          ? cssVar.primary
+          : cssVar.border,
         cursor: 'pointer',
         position: 'relative',
         flexShrink: 0,
@@ -734,12 +743,12 @@ function Switch({
         position: 'absolute',
         top: 2,
         left: checked
-          ? 18
+          ? TOGGLE_KNOB_ON_LEFT_PX
           : 2,
         width: 18,
         height: 18,
         borderRadius: 999,
-        background: 'var(--at-white)',
+        background: cssVar.white,
         transition: 'left .2s',
         boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)',
       }}

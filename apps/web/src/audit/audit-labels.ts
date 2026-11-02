@@ -2,6 +2,7 @@ import type {
   AuditActionType,
   AuditSeverityType,
 } from '@atena/types';
+import { cssVar } from '../styles/tokens';
 
 /** Rótulo PT-BR por ação auditada. */
 export const ACTION_LABEL: Record<AuditActionType, string> = {
@@ -35,7 +36,7 @@ export const FILTERABLE_ACTIONS: AuditActionType[] = [
 
 /** Cor de realce por severidade do evento. */
 export const SEVERITY_COLOR: Record<AuditSeverityType, string> = {
-  info: 'var(--at-fg-muted)',
+  info: cssVar.fgMuted,
   warning: '#E0A500',
   pii: '#C12722',
   config: '#0052CC',

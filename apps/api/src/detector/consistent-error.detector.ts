@@ -1,3 +1,4 @@
+import { HUNDRED_PERCENT, MS_PER_MINUTE } from '../common/units';
 import type {
   DetectionInterface,
   DetectorOptionsInterface,
@@ -12,7 +13,7 @@ function isTerminal(status: ShippingSampleInterface['finalStatus']): boolean {
 
 /** Formata uma fração como percentual legível (ex.: `0.66` → `66.0%`). */
 function pct(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
+  return `${(value * HUNDRED_PERCENT).toFixed(1)}%`;
 }
 
 /** Rótulo da categoria de erro de uma falha (`errorHint`); `desconhecido` se vazio. */
@@ -26,9 +27,9 @@ function categoryOf(message: ShippingSampleInterface): string {
  * Categoria de falha DOMINANTE de um conjunto de terminais, com sua contagem.
  * Determinístico: em empate, mantém a primeira categoria vista.
  *
- * @param {ShippingSampleInterface[]} terminals - Terminais (delivered/failed) da janela.
+ * @param terminals - Terminais (delivered/failed) da janela.
  *
- * @returns {{ category: string; count: number }} Categoria dominante e quantas falhas tem (`count: 0` se não houve falha).
+ * @returns Categoria dominante e quantas falhas tem (`count: 0` se não houve falha).
  */
 function dominantFailureCategory(terminals: ShippingSampleInterface[]): {
   category: string;
@@ -68,28 +69,41 @@ function dominantFailureCategory(terminals: ShippingSampleInterface[]): {
   };
 }
 
+/** One customer evaluated by the consistent-error rule over the current window. */
+interface CustomerEvaluationInterface {
+  /** Rule (threshold in %, window). */
+  rule: DetectorRuleInterface;
+  /** Customer evaluated (value of the dimension). */
+  customerId: string;
+  /** The customer's terminal samples in the lookback. */
+  terminals: ShippingSampleInterface[];
+  /** Start (ms) of the current window. */
+  currentStart: number;
+  /** End (ms) of the current window. */
+  currentEnd: number;
+  /** Calibration (minimum volume). */
+  opts: DetectorOptionsInterface;
+}
+
 /**
  * Avalia um cliente: dispara se a categoria de falha DOMINANTE cruzar o limiar
  * (piso, em % do volume terminal), com volume suficiente. Diferente do `failure_spike`
  * (taxa de falha TOTAL), aqui importa uma única categoria concentrada (ex.: `invalid_number`).
  *
- * @param {DetectorRuleInterface} rule - Regra (limiar em %, janela).
- * @param {string} customerId - Cliente avaliado (valor da dimensão).
- * @param {ShippingSampleInterface[]} terminals - Terminais do cliente no lookback.
- * @param {number} currentStart - Início (ms) da janela atual.
- * @param {number} currentEnd - Fim (ms) da janela atual.
- * @param {DetectorOptionsInterface} opts - Calibração (volume mínimo).
+ * @param evaluation - The rule, the customer and its terminal samples, the current window and the calibration.
  *
- * @returns {DetectionInterface | null} Anomalia detectada, ou `null`.
+ * @returns Anomalia detectada, ou `null`.
  */
-function evaluateCustomer(
-  rule: DetectorRuleInterface,
-  customerId: string,
-  terminals: ShippingSampleInterface[],
-  currentStart: number,
-  currentEnd: number,
-  opts: DetectorOptionsInterface,
-): DetectionInterface | null {
+function evaluateCustomer(evaluation: CustomerEvaluationInterface): DetectionInterface | null {
+  const {
+    rule,
+    customerId,
+    terminals,
+    currentStart,
+    currentEnd,
+    opts,
+  } = evaluation;
+
   const current = terminals.filter((message) => message.occurredAt.getTime() >= currentStart);
 
   if (current.length < opts.minTerminalVolume) {
@@ -112,7 +126,7 @@ function evaluateCustomer(
 
   const share = target.count / current.length;
 
-  if (share * 100 < rule.threshold) {
+  if (share * HUNDRED_PERCENT < rule.threshold) {
     return null;
   }
 
@@ -143,12 +157,12 @@ function evaluateCustomer(
  * falha (`errorHint`) concentrar ≥ `threshold%` do volume terminal, com volume
  * suficiente, dispara. Função pura — recebe `now` e a calibração, sem I/O.
  *
- * @param {DetectorRuleInterface} rule - Regra `consistent_error` (limiar em %).
- * @param {ShippingSampleInterface[]} messages - Mensagens do lookback (qualquer status).
- * @param {Date} now - Instante de referência.
- * @param {DetectorOptionsInterface} opts - Calibração.
+ * @param rule - Regra `consistent_error` (limiar em %).
+ * @param messages - Mensagens do lookback (qualquer status).
+ * @param now - Instante de referência.
+ * @param opts - Calibração.
  *
- * @returns {DetectionInterface[]} Uma detecção por cliente acima do limiar.
+ * @returns Uma detecção por cliente acima do limiar.
  */
 export function detectConsistentError(
   rule: DetectorRuleInterface,
@@ -157,7 +171,7 @@ export function detectConsistentError(
   opts: DetectorOptionsInterface,
 ): DetectionInterface[] {
   const currentEnd = now.getTime();
-  const currentStart = currentEnd - rule.windowMinutes * 60_000;
+  const currentStart = currentEnd - rule.windowMinutes * MS_PER_MINUTE;
 
   const byCustomer = new Map<string, ShippingSampleInterface[]>();
 
@@ -182,14 +196,14 @@ export function detectConsistentError(
     customerId,
     terminals,
   ] of byCustomer) {
-    const detection = evaluateCustomer(
+    const detection = evaluateCustomer({
       rule,
       customerId,
       terminals,
       currentStart,
       currentEnd,
       opts,
-    );
+    });
 
     if (detection) {
       detections.push(detection);

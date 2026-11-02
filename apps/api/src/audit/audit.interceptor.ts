@@ -9,14 +9,14 @@ import type { Request } from 'express';
 import { Observable, tap } from 'rxjs';
 import { AUDIT_KEY, type AuditMetaInterface } from './audit.decorator';
 import { AuditService } from './audit.service';
+import { routePath } from '../common/route-path';
 
 /**
  * Requisição autenticada — `user.sub` é o subject do JWT.
  * Tipagem mínima: o interceptor só lê o que precisa.
- *
- * @property {{ sub?: string }} [user] - Payload mínimo do usuário autenticado; `sub` é o subject do JWT.
  */
 interface AuthenticatedRequestInterface extends Request {
+  /** Payload mínimo do usuário autenticado; `sub` é o subject do JWT. */
   user?: { sub?: string };
 }
 
@@ -30,8 +30,8 @@ interface AuthenticatedRequestInterface extends Request {
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
   /**
-   * @param {Reflector} reflector - Lê a metadata `@Audit(...)` do handler/classe.
-   * @param {AuditService} audit - Serviço append-only usado para gravar a entrada.
+   * @param reflector - Lê a metadata `@Audit(...)` do handler/classe.
+   * @param audit - Serviço append-only usado para gravar a entrada.
    */
   constructor(
     private readonly reflector: Reflector,
@@ -43,9 +43,10 @@ export class AuditInterceptor implements NestInterceptor {
    * metadata, grava a entrada de auditoria APÓS o sucesso (via `tap`), em best-effort
    * (falha de auditoria nunca derruba a requisição). NUNCA loga PII — apenas rota/IDs.
    *
-   * @param {ExecutionContext} context - Contexto de execução do NestJS (handler + request).
-   * @param {CallHandler} next - Próximo passo da cadeia de execução.
-   * @returns {Observable<unknown>} Stream do handler, com o efeito colateral de auditoria.
+   * @param context - Contexto de execução do NestJS (handler + request).
+   * @param next - Próximo passo da cadeia de execução.
+   *
+   * @returns Stream do handler, com o efeito colateral de auditoria.
    */
   intercept(
     context: ExecutionContext,
@@ -89,14 +90,15 @@ export class AuditInterceptor implements NestInterceptor {
   /**
    * Deriva o `resource` a partir da rota da requisição (sem query string).
    *
-   * @param {AuthenticatedRequestInterface} request - Requisição em curso.
-   * @returns {string} Recurso no formato `MÉTODO /caminho` (sem query string).
+   * @param request - Requisição em curso.
+   *
+   * @returns Recurso no formato `MÉTODO /caminho` (sem query string).
    */
   private resolveResource(request: AuthenticatedRequestInterface): string {
     const method = request.method;
     // `route.path` é o template (ex.: `/shippings/:id`); fallback p/ `request.path` (SEM query
     // string — `originalUrl`/`url` vazariam PII como `phone=...` no campo `resource` do audit).
-    const path = request.route?.path ?? request.path;
+    const path = routePath(request);
 
     return `${method} ${path}`;
   }

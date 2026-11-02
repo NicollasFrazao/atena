@@ -1,50 +1,53 @@
-import { Buildings, UsersThree } from '@phosphor-icons/react';
+import type { JSX } from 'react';
+import { BuildingsIcon as Buildings, UsersThreeIcon as UsersThree } from '@phosphor-icons/react';
 import { ToolResultFrame } from './ToolResultFrame';
+import { cssValue, cssVar } from '../../styles/tokens';
 
 /** Resultado das tools `list_providers` / `list_customers` (lista + janela usada). */
 export interface CatalogListResultInterface {
   /** Janela temporal da lista (rótulo legível), ex.: "últimas 24h", "desde 2026-06-18T20:40:00Z (padrão)". */
   window?: string;
   providers?: string[];
-  customers?: Array<{
+  customers?: {
     id: string;
     name: string
-  }>;
+  }[];
   /** Total distinto na janela (clientes): `customers` pode trazer só os top-N mais ativos. */
   total?: number;
 }
 
 /** Estilo de cada chip de item (provedor/cliente). */
 const CHIP_STYLE = {
-  display: 'inline-flex',
+  display: cssValue.inlineFlex,
   alignItems: 'center',
   height: 26,
   padding: '0 10px',
-  borderRadius: 'var(--at-radius-full)',
-  background: 'var(--at-bg-soft)',
-  border: '1px solid var(--at-border)',
-  fontSize: 'var(--at-fs-12)',
+  borderRadius: cssVar.radiusFull,
+  background: cssVar.bgSoft,
+  border: cssVar.borderLine,
+  fontSize: cssVar.fs12,
   fontWeight: 600,
-  color: 'var(--at-fg)',
-  fontVariantNumeric: 'tabular-nums',
+  color: cssVar.fg,
+  fontVariantNumeric: cssValue.tabularNums,
 } as const;
 
 /**
  * Card das tools `list_providers` / `list_customers`: deixa EXPLÍCITA a janela temporal da lista
  * (subtítulo) e mostra os itens como chips — uma lista de "ativos" sem janela é ambígua.
  *
- * @param {object} props - Resultado da tool + o tipo de catálogo.
- * @param {CatalogListResultInterface} props.result - Lista + janela usada.
- * @param {'providers' | 'customers'} props.kind - Qual catálogo (define ícone, rótulo e a fonte dos itens).
- * @returns {JSX.Element} O card de catálogo.
+ * @param props - Resultado da tool + o tipo de catálogo.
+ * @param props.result - Lista + janela usada.
+ * @param props.kind - Qual catálogo (define ícone, rótulo e a fonte dos itens).
+ *
+ * @returns O card de catálogo.
  */
 export function CatalogListCard({
   result,
   kind,
-}: {
+}: Readonly<{
   result: CatalogListResultInterface;
   kind: 'providers' | 'customers'
-}): JSX.Element {
+}>): JSX.Element {
   const items = kind === 'providers'
     ? result.providers ?? []
     : (result.customers ?? []).map((customer) => customer.name);
@@ -79,7 +82,7 @@ export function CatalogListCard({
       <div style={{
         display: 'flex',
         flexWrap: 'wrap',
-        gap: 'var(--at-space-8)',
+        gap: cssVar.space8,
         padding: 18,
       }}
       >
@@ -94,8 +97,8 @@ export function CatalogListCard({
           ))
           : (
             <span style={{
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg-muted)',
+              fontSize: cssVar.fs12,
+              color: cssVar.fgMuted,
             }}
             >
               Nenhum {noun.slice(
@@ -109,8 +112,8 @@ export function CatalogListCard({
         ? (
           <div style={{
             padding: '0 18px 14px',
-            fontSize: 'var(--at-fs-12)',
-            color: 'var(--at-fg-muted)',
+            fontSize: cssVar.fs12,
+            color: cssVar.fgMuted,
           }}
           >
             Mostrando os {items.length} mais ativos de {result.total}.

@@ -29,14 +29,14 @@ import { SetStatusDto } from './dto/set-status.dto';
 @Controller('admin')
 export class AdminController {
   /**
-   * @param {UsersService} users - Serviço de usuários/papéis.
+   * @param users - Serviço de usuários/papéis.
    */
   constructor(private readonly users: UsersService) {}
 
   /**
    * `GET /admin/users` — lista todos os usuários (status, papéis, último login).
    *
-   * @returns {Promise<AdminUserInterface[]>} Usuários.
+   * @returns Usuários.
    */
   @Get('users')
   listUsers(): Promise<AdminUserInterface[]> {
@@ -46,7 +46,7 @@ export class AdminController {
   /**
    * `GET /admin/roles` — catálogo de papéis e as permissões que cada um concede (para a UI).
    *
-   * @returns {RoleCatalogItemInterface[]} Papéis disponíveis.
+   * @returns Papéis disponíveis.
    */
   @Get('roles')
   roles(): RoleCatalogItemInterface[] {
@@ -56,10 +56,11 @@ export class AdminController {
   /**
    * `PUT /admin/users/:id/roles` — define o conjunto de papéis de um usuário. Auditado.
    *
-   * @param {string} id - `sub` do usuário-alvo.
-   * @param {SetRolesDto} body - Papéis a atribuir.
-   * @param {AuthenticatedUserInterface} [actor] - Admin autenticado (autoria da mudança).
-   * @returns {Promise<AdminUserInterface>} Usuário atualizado.
+   * @param id - `sub` do usuário-alvo.
+   * @param body - Papéis a atribuir.
+   * @param [actor] - Admin autenticado (autoria da mudança).
+   *
+   * @returns Usuário atualizado.
    */
   @Put('users/:id/roles')
   @Audit('user_role_update', 'info')
@@ -78,10 +79,11 @@ export class AdminController {
   /**
    * `PATCH /admin/users/:id/status` — habilita/desabilita um usuário. Auditado.
    *
-   * @param {string} id - `sub` do usuário-alvo.
-   * @param {SetStatusDto} body - Novo status.
-   * @param {AuthenticatedUserInterface} actor - Usuário autenticado que executa a ação (autoria/audit).
-   * @returns {Promise<AdminUserInterface>} Usuário atualizado.
+   * @param id - `sub` do usuário-alvo.
+   * @param body - Novo status.
+   * @param actor - Usuário autenticado que executa a ação (autoria/audit).
+   *
+   * @returns Usuário atualizado.
    */
   @Patch('users/:id/status')
   @Audit('user_status_update', 'info')

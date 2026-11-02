@@ -19,6 +19,9 @@ import type {
   LlmStreamChunkType,
 } from './llm-provider.interface';
 
+/** Rough characters per token of the fake input-token estimate. */
+const CHARS_PER_TOKEN = 4;
+
 /**
  * Provider LLM determinístico para dev/local e testes (sem credencial do Bedrock).
  *
@@ -31,7 +34,7 @@ export class FakeLlmProvider implements LlmProviderInterface {
   /**
    * Identifica o provider/modelo ativo: `fake` (sem credencial), rotulado como `Simulado`.
    *
-   * @returns {LlmDescriptorInterface} `{ provider: 'fake', model: 'Simulado' }`.
+   * @returns `{ provider: 'fake', model: 'Simulado' }`.
    */
   describe(): LlmDescriptorInterface {
     return {
@@ -46,9 +49,11 @@ export class FakeLlmProvider implements LlmProviderInterface {
    *  - a última mensagem casa com uma tool  → `tool_use` + `stop('tool_use')`;
    *  - nenhuma tool aplicável               → `stop('refusal')` (nunca inventa dado).
    *
-   * @param {LlmConverseParamsInterface} params - Sistema, histórico e catálogo de tools da rodada.
-   * @returns {AsyncIterable<LlmStreamChunkType>} Stream de eventos simulando o provider real.
+   * @param params - Sistema, histórico e catálogo de tools da rodada.
+   *
+   * @returns Stream de eventos simulando o provider real.
    */
+  // eslint-disable-next-line @typescript-eslint/require-await -- the async generator implements the provider's async-stream contract; the fake has nothing to await
   async *converseStream(params: LlmConverseParamsInterface): AsyncIterable<LlmStreamChunkType> {
     // 2º turno: a aplicação acabou de executar a tool e devolveu o resultado → resposta final.
     // Checa a ÚLTIMA mensagem (não `some`): resultados de tool de turnos ANTERIORES, reconstruídos
@@ -125,15 +130,16 @@ export class FakeLlmProvider implements LlmProviderInterface {
   private inputTokens(params: LlmConverseParamsInterface): number {
     return Math.max(
       1,
-      Math.ceil(JSON.stringify(params.messages).length / 4),
+      Math.ceil(JSON.stringify(params.messages).length / CHARS_PER_TOKEN),
     );
   }
 
   /**
    * Extrai o texto da última mensagem `user` da conversa.
    *
-   * @param {LlmConverseParamsInterface} params - Parâmetros da rodada de conversa.
-   * @returns {string} Texto da última mensagem do usuário (serializado se não for string); vazio se não houver.
+   * @param params - Parâmetros da rodada de conversa.
+   *
+   * @returns Texto da última mensagem do usuário (serializado se não for string); vazio se não houver.
    */
   private lastUserText(params: LlmConverseParamsInterface): string {
     const last = [...params.messages].reverse().find((message) => message.role === 'user');
@@ -150,9 +156,10 @@ export class FakeLlmProvider implements LlmProviderInterface {
   /**
    * Heurística texto → tool, restrita ao catálogo disponível em `params.tools`.
    *
-   * @param {string} text - Texto (em minúsculas) da última mensagem do usuário.
-   * @param {LlmConverseParamsInterface} params - Parâmetros da rodada; `tools` limita o catálogo permitido.
-   * @returns {{ name: ToolNameType; args: Record<string, unknown> } | null} Tool escolhida com seus argumentos, ou `null` se nenhuma se aplica.
+   * @param text - Texto (em minúsculas) da última mensagem do usuário.
+   * @param params - Parâmetros da rodada; `tools` limita o catálogo permitido.
+   *
+   * @returns Tool escolhida com seus argumentos, ou `null` se nenhuma se aplica.
    */
   private pickTool(
     text: string,
@@ -163,16 +170,16 @@ export class FakeLlmProvider implements LlmProviderInterface {
   } | null {
     const allowed = new Set((params.tools ?? []).map((tool) => tool.name));
 
-    const phone = text.match(/\+?\d[\d\s().-]{7,}\d/)?.[0]?.replace(
+    const phone = (/\+?\d[\d\s().-]{7,}\d/.exec(text))?.[0]?.replace(
       /[\s().-]/g,
       '',
     );
 
-    const candidates: Array<{
+    const candidates: {
       when: boolean;
       name: ToolNameType;
       args: Record<string, unknown>
-    }> = [
+    }[] = [
       {
         when: /trilha|trail|eventos/.test(text),
         name: 'get_shipping_trail',

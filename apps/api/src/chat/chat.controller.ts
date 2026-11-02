@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Logger, Param, Patch, Post, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Logger, Param, Patch, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { Audit } from '../audit/audit.decorator';
 import { Requires } from '../auth/rbac/requires.decorator';
@@ -26,8 +26,8 @@ export class ChatController {
   private readonly logger = new Logger(ChatController.name);
 
   /**
-   * @param {ChatService} chat - Serviço de sessões/mensagens de chat.
-   * @param {OrchestratorService} orchestrator - Orquestrador do stream de resposta.
+   * @param chat - Serviço de sessões/mensagens de chat.
+   * @param orchestrator - Orquestrador do stream de resposta.
    */
   constructor(
     private readonly chat: ChatService,
@@ -37,9 +37,10 @@ export class ChatController {
   /**
    * `POST /chat/sessions` — cria uma sessão de chat do usuário logado. Auditado como `session_start`.
    *
-   * @param {CreateSessionDto} body - Título inicial opcional.
-   * @param {AuthenticatedUserInterface} [user] - Usuário autenticado (dono da sessão).
-   * @returns {Promise<{ session_id: string }>} Id da sessão criada.
+   * @param body - Título inicial opcional.
+   * @param [user] - Usuário autenticado (dono da sessão).
+   *
+   * @returns Id da sessão criada.
    */
   @Post()
   @Audit('session_start', 'info')
@@ -56,8 +57,9 @@ export class ChatController {
   /**
    * `GET /chat/sessions` — lista as sessões do usuário logado (histórico).
    *
-   * @param {AuthenticatedUserInterface} [user] - Usuário autenticado (dono das sessões).
-   * @returns {Promise<ChatSessionListItemInterface[]>} Sessões mais recentes primeiro.
+   * @param [user] - Usuário autenticado (dono das sessões).
+   *
+   * @returns Sessões mais recentes primeiro.
    */
   @Get()
   list(@CurrentUser() user?: AuthenticatedUserInterface) {
@@ -67,10 +69,11 @@ export class ChatController {
   /**
    * `PATCH /chat/sessions/:id` — renomeia a sessão (título do cabeçalho/histórico) do usuário logado.
    *
-   * @param {string} id - Id da sessão.
-   * @param {RenameSessionDto} body - Novo título (1–200 chars).
-   * @param {AuthenticatedUserInterface} [user] - Usuário autenticado (dono da sessão).
-   * @returns {Promise<{ session_id: string; title: string }>} Sessão renomeada.
+   * @param id - Id da sessão.
+   * @param body - Novo título (1–200 chars).
+   * @param [user] - Usuário autenticado (dono da sessão).
+   *
+   * @returns Sessão renomeada.
    */
   @Patch(':id')
   update(
@@ -91,9 +94,10 @@ export class ChatController {
   /**
    * `GET /chat/sessions/:id/messages` — histórico de mensagens de uma sessão do usuário logado.
    *
-   * @param {string} id - Id da sessão.
-   * @param {AuthenticatedUserInterface} [user] - Usuário autenticado (dono da sessão).
-   * @returns {Promise<ChatMessageInterface[]>} Mensagens em ordem cronológica.
+   * @param id - Id da sessão.
+   * @param [user] - Usuário autenticado (dono da sessão).
+   *
+   * @returns Mensagens em ordem cronológica.
    */
   @Get(':id/messages')
   messages(
@@ -115,10 +119,12 @@ export class ChatController {
    * Usa resposta library-specific (`@Res`) para escrever os frames SSE; a sessão é
    * validada antes de abrir o stream (404 estruturado se não existir).
    *
-   * @param {string} id - Id da sessão.
-   * @param {SendMessageDto} body - Texto da mensagem do usuário.
-   * @param {Response} res - Resposta Express (frames `text/event-stream`).
-   * @returns {Promise<void>} Resolve quando o stream é encerrado.
+   * @param id - Id da sessão.
+   * @param body - Texto da mensagem do usuário.
+   * @param res - Resposta Express (frames `text/event-stream`).
+   *
+   * @returns Resolve quando o stream é encerrado.
+   *
    * @throws {NotFoundException} Se a sessão não existir (antes de abrir o stream).
    */
   @Post(':id/messages')
@@ -134,7 +140,7 @@ export class ChatController {
     );
 
     // Stream SSE: 200 (não 201; o @Post default não se aplica bem ao streaming).
-    res.status(200);
+    res.status(HttpStatus.OK);
 
     res.setHeader(
       'Content-Type',

@@ -24,11 +24,12 @@ export interface AuditQueryServiceInterface {
   /**
    * Busca paginada de registros de entrega que casam o filtro (`search_shippings`).
    *
-   * @param {AuditSearchFilterInterface} filter - Filtros (janela obrigatória; phone/status/provider/customer opcionais).
-   * @param {number} page - Página (base 1).
-   * @param {number} limit - Itens por página.
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento da varredura (etapas do motor).
-   * @returns {Promise<DeliveryPageInterface>} Linhas da página + total de itens do filtro.
+   * @param filter - Filtros (janela obrigatória; phone/status/provider/customer opcionais).
+   * @param page - Página (base 1).
+   * @param limit - Itens por página.
+   * @param [onProgress] - Callback de andamento da varredura (etapas do motor).
+   *
+   * @returns Linhas da página + total de itens do filtro.
    */
   search(
     filter: AuditSearchFilterInterface,
@@ -40,15 +41,16 @@ export interface AuditQueryServiceInterface {
   /**
    * Registro consolidado de um envio por id (para reveal de telefone e análise de conteúdo).
    *
-   * @param {string} shippingId - Id estável do destinatário.
-   * @param {AuditWindowInterface} [window] - Janela a varrer (idealmente a mesma do search/trilha que
+   * @param shippingId - Id estável do destinatário.
+   * @param [window] - Janela a varrer (idealmente a mesma do search/trilha que
    *   produziu o id). Sem ela, cai na janela default (~30 dias) e a varredura fria pode estourar
    *   timeout — um lookup pontual por id deve sempre receber a janela do contexto.
-   * @param {boolean} [expand=true] - Expandir a janela pelo buffer de status tardio (±lateStatusBuffer,
+   * @param [expand=true] - Expandir a janela pelo buffer de status tardio (±lateStatusBuffer,
    *   ~6 dias) p/ capturar o desfecho terminal fora da janela. `false` (reveal): varre SÓ a
    *   janela/filtros (~1 dia) — o telefone/conteúdo está no evento do próprio dia, então o desfecho
    *   terminal é dispensável e a leitura fria fica muito mais barata.
-   * @returns {Promise<DeliveryRecordInterface | null>} O registro, ou `null` se não existir.
+   *
+   * @returns O registro, ou `null` se não existir.
    */
   getShipping(
     shippingId: string,
@@ -63,10 +65,11 @@ export interface AuditQueryServiceInterface {
    * varredura cai nas partições já quentes no cache `/tmp` (leitura em ms, sem ir ao S3). Ausente →
    * o motor cai na janela default (varredura potencialmente larga e fria).
    *
-   * @param {string} shippingId - Id estável do destinatário.
-   * @param {AuditWindowInterface} [window] - Janela da varredura (idealmente a mesma do search).
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento da varredura (etapas do motor).
-   * @returns {Promise<DeliveryTrailInterface | null>} A trilha, ou `null` se não existir.
+   * @param shippingId - Id estável do destinatário.
+   * @param [window] - Janela da varredura (idealmente a mesma do search).
+   * @param [onProgress] - Callback de andamento da varredura (etapas do motor).
+   *
+   * @returns A trilha, ou `null` se não existir.
    */
   getTrail(
     shippingId: string,
@@ -77,10 +80,11 @@ export interface AuditQueryServiceInterface {
   /**
    * Relatório de entregabilidade agregado em SQL (`generate_delivery_report`).
    *
-   * @param {AuditSearchFilterInterface} filter - Janela + filtros opcionais.
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento da varredura (etapas do motor).
-   * @param {AbortSignal} [signal] - Cancela a varredura entre partições se abortado (ex.: cliente desconectou).
-   * @returns {Promise<DeliveryReportAggregateInterface>} Totais, quebra por provedor, hourly e top-erros.
+   * @param filter - Janela + filtros opcionais.
+   * @param [onProgress] - Callback de andamento da varredura (etapas do motor).
+   * @param [signal] - Cancela a varredura entre partições se abortado (ex.: cliente desconectou).
+   *
+   * @returns Totais, quebra por provedor, hourly e top-erros.
    */
   deliveryReport(
     filter: AuditSearchFilterInterface,
@@ -91,8 +95,9 @@ export interface AuditQueryServiceInterface {
   /**
    * Provedores distintos na janela (`list_providers`), em ordem alfabética.
    *
-   * @param {AuditWindowInterface} [window] - Janela temporal; ausente → janela default.
-   * @returns {Promise<string[]>} Nomes de provedores distintos (não nulos).
+   * @param [window] - Janela temporal; ausente → janela default.
+   *
+   * @returns Nomes de provedores distintos (não nulos).
    */
   distinctProviders(window?: AuditWindowInterface): Promise<string[]>;
 
@@ -101,9 +106,10 @@ export interface AuditQueryServiceInterface {
    * Retorna os MAIS ATIVOS (top-N por volume) + o total distinto — para não despejar centenas de ids
    * no LLM (lento/caro na geração) e ainda informar o tamanho real do conjunto.
    *
-   * @param {AuditWindowInterface} [window] - Janela temporal; ausente → janela default.
-   * @param {string} [search] - Termo para filtrar o cliente (match parcial); opcional.
-   * @returns {Promise<{ items: string[]; total: number }>} Top-N clientes por volume + total distinto.
+   * @param [window] - Janela temporal; ausente → janela default.
+   * @param [search] - Termo para filtrar o cliente (match parcial); opcional.
+   *
+   * @returns Top-N clientes por volume + total distinto.
    */
   distinctCustomers(
     window?: AuditWindowInterface,
@@ -117,8 +123,9 @@ export interface AuditQueryServiceInterface {
    * Amostras de TERMINAIS (delivered/failed) na janela, com `errorHint`, para os detectores
    * `consistent_error`/`delivery_rate_drop`. Janelamento por desfecho (`finalizedAt`).
    *
-   * @param {AuditWindowInterface} window - Janela de lookback (por desfecho).
-   * @returns {Promise<ShippingSampleInterface[]>} Amostras terminais (sem PII).
+   * @param window - Janela de lookback (por desfecho).
+   *
+   * @returns Amostras terminais (sem PII).
    */
   terminalSamples(window: AuditWindowInterface): Promise<ShippingSampleInterface[]>;
 
@@ -126,8 +133,9 @@ export interface AuditQueryServiceInterface {
    * Amostras de ENVIOS (qualquer status) na janela, com `provider`/`requestedAt`/`finalizedAt`,
    * para o detector `webhook_silence`. Janelamento por envio (`requestedAt`).
    *
-   * @param {AuditWindowInterface} window - Janela de lookback (por envio).
-   * @returns {Promise<ShippingSampleInterface[]>} Amostras de envio (sem PII).
+   * @param window - Janela de lookback (por envio).
+   *
+   * @returns Amostras de envio (sem PII).
    */
   sendSamples(window: AuditWindowInterface): Promise<ShippingSampleInterface[]>;
 
@@ -135,9 +143,10 @@ export interface AuditQueryServiceInterface {
    * Registros de entrega por uma lista de ids (na janela dada) — usado para buscar EXATAMENTE as
    * mensagens que um incidente marcou como impactadas (ids persistidos pelo detector).
    *
-   * @param {string[]} ids - Ids dos destinatários (`md5(campaign_id||phone)`).
-   * @param {AuditWindowInterface} window - Janela (a da detecção; escopa as partições).
-   * @returns {Promise<DeliveryRecordInterface[]>} Os registros que casam os ids (ordem de `requested_at`).
+   * @param ids - Ids dos destinatários (`md5(campaign_id||phone)`).
+   * @param window - Janela (a da detecção; escopa as partições).
+   *
+   * @returns Os registros que casam os ids (ordem de `requested_at`).
    */
   searchByIds(
     ids: string[],
@@ -150,8 +159,9 @@ export interface AuditQueryServiceInterface {
    * (a ação é auditada com severidade `pii`). O arquivo tem delimitador `;` e header snake_case; o
    * chamador é responsável por enviá-lo e removê-lo.
    *
-   * @param {AuditSearchFilterInterface} filter - Filtros (janela + phone/status/provider/customer/campaign).
-   * @returns {Promise<string>} Caminho do arquivo CSV gerado.
+   * @param filter - Filtros (janela + phone/status/provider/customer/campaign).
+   *
+   * @returns Caminho do arquivo CSV gerado.
    */
   exportSearchCsv(filter: AuditSearchFilterInterface): Promise<string>;
 
@@ -160,9 +170,10 @@ export interface AuditQueryServiceInterface {
    * das mensagens impactadas de um incidente. Mesma forma do {@link exportSearchCsv} (telefone **EM
    * CLARO**, header snake_case, `;`); lista vazia gera um CSV só com o header.
    *
-   * @param {string[]} ids - Ids dos destinatários (impactados pelo incidente).
-   * @param {AuditWindowInterface} window - Janela (a da detecção; escopa as partições).
-   * @returns {Promise<string>} Caminho do arquivo CSV gerado.
+   * @param ids - Ids dos destinatários (impactados pelo incidente).
+   * @param window - Janela (a da detecção; escopa as partições).
+   *
+   * @returns Caminho do arquivo CSV gerado.
    */
   exportByIdsCsv(
     ids: string[],
@@ -174,8 +185,9 @@ export interface AuditQueryServiceInterface {
    * referenciado por `token`) — download byte-exato com o total exibido, lido do disco (sem S3 nem
    * re-materialização). `null` se o token for inválido ou o snapshot já tiver expirado (TTL).
    *
-   * @param {string} token - Token do snapshot (`DeliveryPageInterface.snapshotToken`).
-   * @returns {Promise<string | null>} Caminho do CSV gerado, ou `null` se o snapshot não existe.
+   * @param token - Token do snapshot (`DeliveryPageInterface.snapshotToken`).
+   *
+   * @returns Caminho do CSV gerado, ou `null` se o snapshot não existe.
    */
   exportSnapshotCsv(token: string): Promise<string | null>;
 
@@ -184,8 +196,9 @@ export interface AuditQueryServiceInterface {
    * S3 (frias/recentes), objetos lidos, taxa de acerto do cache, tempo médio e custo estimado. Para
    * observabilidade de custo (`GET /observability`), não é PII.
    *
-   * @param {number} [windowHours] - Janela temporal em horas (default 24); agrega os eventos persistidos.
-   * @returns {Promise<AuditScanStatsInterface>} Estatísticas de scan do S3 na janela.
+   * @param [windowHours] - Janela temporal em horas (default 24); agrega os eventos persistidos.
+   *
+   * @returns Estatísticas de scan do S3 na janela.
    */
   scanStats(windowHours?: number): Promise<AuditScanStatsInterface>;
 }

@@ -57,6 +57,14 @@ function configStub(values: Record<string, unknown>): ConfigService {
   return { get: (key: string) => values[key] } as unknown as ConfigService;
 }
 
+/** Alphabetical comparator for `sort` (the default sort compares UTF-16 code units). */
+function byText(
+  left: string,
+  right: string,
+): number {
+  return left.localeCompare(right);
+}
+
 const WINDOW: AuditWindowInterface = {
   from: new Date('2026-06-17T00:00:00Z'),
   to: new Date('2026-06-18T00:00:00Z'),
@@ -344,7 +352,7 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
     expect(zapsms?.sent).toBe(1); // C5 (sms_flash)
     expect(zapsms?.delivered).toBe(1);
 
-    expect(report.topErrors.map((row) => row.code).sort()).toEqual([
+    expect(report.topErrors.map((row) => row.code).sort(byText)).toEqual([
       'request_error', // bounce virou 'blocked' → sai do top de erros
     ]);
   });
@@ -368,7 +376,7 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
     // Fixture tem 2 clientes na janela (1001, 9001); o cliente 9001 abrange sms e sms_flash (C5).
     expect(total).toBe(2);
 
-    expect([...items].sort()).toEqual([
+    expect([...items].sort(byText)).toEqual([
       '1001',
       '9001',
     ]);
@@ -392,7 +400,7 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
 
     expect(samples).toHaveLength(3); // C1 + C5 delivered; C4 failed (C2 bounce→blocked e C3 pending excluídos)
 
-    expect(samples.map((sample) => sample.finalStatus).sort()).toEqual([
+    expect(samples.map((sample) => sample.finalStatus).sort(byText)).toEqual([
       'delivered',
       'delivered',
       'failed',
@@ -814,7 +822,7 @@ describe('DuckDbAuditQueryService — send-based estrito + reconciliação de ca
     // delivered raw 12:05 (+3h BRT→UTC) = 15:05 — NÃO o bounce de 12:09 (=15:09).
     expect(rprec?.finalizedAt?.toISOString()).toBe('2026-06-10T15:05:00.000Z');
     // requested_at = queued 12:00 (+3h) = 15:00.
-    expect(rprec?.requestedAt?.toISOString()).toBe('2026-06-10T15:00:00.000Z');
+    expect(rprec?.requestedAt.toISOString()).toBe('2026-06-10T15:00:00.000Z');
   });
 
   it('#5 objeto que chega DEPOIS do settle é relido (reconciliação por LIST — não fica faltando)', async () => {

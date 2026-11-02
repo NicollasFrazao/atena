@@ -1,29 +1,41 @@
-import { ShieldCheck } from '@phosphor-icons/react';
+import type { JSX } from 'react';
+import { ShieldCheckIcon as ShieldCheck } from '@phosphor-icons/react';
 import { type RiskAnalysisInterface, type RiskVerdictType } from '@atena/types';
 import { ToolResultFrame } from './ToolResultFrame';
+import { cssValue, cssVar } from '../../styles/tokens';
+import { PERCENT_SCALE } from '../../util/units';
 
-/** Rótulo (pt-BR) e cores por veredito de risco. */
-const VERDICT_VISUALS: Record<RiskVerdictType, {
+/** Rótulo (pt-BR) e cores de um veredito de risco. */
+interface VerdictVisualInterface {
   label: string;
   color: string;
-  background: string
-}> = {
+  background: string;
+}
+
+/** Rótulo (pt-BR) e cores por veredito de risco. */
+const VERDICT_VISUALS: Record<RiskVerdictType, VerdictVisualInterface> = {
   low: {
     label: 'Baixo',
-    color: 'var(--at-success-300)',
-    background: 'var(--at-success-50)',
+    color: cssVar.success300,
+    background: cssVar.success50,
   },
   medium: {
     label: 'Médio',
-    color: 'var(--at-warning-300)',
-    background: 'var(--at-warning-50)',
+    color: cssVar.warning300,
+    background: cssVar.warning50,
   },
   high: {
     label: 'Alto',
-    color: 'var(--at-danger-300)',
-    background: 'var(--at-danger-50)',
+    color: cssVar.danger300,
+    background: cssVar.danger50,
   },
 };
+
+/**
+ * The same map, indexed by any string: the verdict arrives in a tool result over SSE and can fall
+ * outside {@link RiskVerdictType} at run time.
+ */
+const VISUALS_BY_RECEIVED_VERDICT: Partial<Record<string, VerdictVisualInterface>> = VERDICT_VISUALS;
 
 /** Comprimento aproximado do arco do gauge (semicírculo de raio 50). */
 const ARC_LENGTH = 157;
@@ -32,11 +44,12 @@ const ARC_LENGTH = 157;
  * Card da tool `analyze_shipping_content`: gauge SVG do score, veredito colorido,
  * barras por categoria (`strength` em %) e a explicação.
  *
- * @param {{ result: RiskAnalysisInterface }} props - Análise de risco.
- * @returns {JSX.Element} O card de análise de risco.
+ * @param props - Análise de risco.
+ *
+ * @returns O card de análise de risco.
  */
-export function RiskCard({ result }: { result: RiskAnalysisInterface }): JSX.Element {
-  const visual = VERDICT_VISUALS[result.verdict] ?? VERDICT_VISUALS.medium;
+export function RiskCard({ result }: Readonly<{ result: RiskAnalysisInterface }>): JSX.Element {
+  const visual = VISUALS_BY_RECEIVED_VERDICT[result.verdict] ?? VERDICT_VISUALS.medium;
 
   const clampedScore = Math.max(
     0,
@@ -47,7 +60,7 @@ export function RiskCard({ result }: { result: RiskAnalysisInterface }): JSX.Ele
   );
 
   // Score exibido em escala 0–100% (1 casa decimal); o `score` cru continua sendo 0–1 no contrato.
-  const scorePercent = `${(clampedScore * 100).toFixed(1)}%`;
+  const scorePercent = `${(clampedScore * PERCENT_SCALE).toFixed(1)}%`;
 
   return (
     <ToolResultFrame
@@ -59,7 +72,7 @@ export function RiskCard({ result }: { result: RiskAnalysisInterface }): JSX.Ele
       <div style={{
         display: 'grid',
         gridTemplateColumns: '180px 1fr',
-        gap: 'var(--at-space-20)',
+        gap: cssVar.space20,
         padding: 18,
       }}
       >
@@ -68,7 +81,7 @@ export function RiskCard({ result }: { result: RiskAnalysisInterface }): JSX.Ele
           flexDirection: 'column',
           alignItems: 'center',
           padding: 14,
-          borderRadius: 'var(--at-radius-8)',
+          borderRadius: cssVar.radius8,
           background: visual.background,
         }}
         >
@@ -86,7 +99,7 @@ export function RiskCard({ result }: { result: RiskAnalysisInterface }): JSX.Ele
             >
               <path
                 d="M 10 60 A 50 50 0 0 1 110 60"
-                stroke="var(--at-white)"
+                stroke={cssVar.white}
                 strokeWidth="10"
                 fill="none"
                 strokeLinecap="round"
@@ -113,7 +126,7 @@ export function RiskCard({ result }: { result: RiskAnalysisInterface }): JSX.Ele
                 fontSize: 22,
                 fontWeight: 700,
                 color: visual.color,
-                fontVariantNumeric: 'tabular-nums',
+                fontVariantNumeric: cssValue.tabularNums,
               }}
               >
                 {scorePercent}
@@ -121,8 +134,8 @@ export function RiskCard({ result }: { result: RiskAnalysisInterface }): JSX.Ele
             </div>
           </div>
           <div style={{
-            marginTop: 'var(--at-space-4)',
-            fontSize: 'var(--at-fs-12)',
+            marginTop: cssVar.space4,
+            fontSize: cssVar.fs12,
             fontWeight: 600,
             color: visual.color,
             textTransform: 'uppercase',
@@ -135,10 +148,10 @@ export function RiskCard({ result }: { result: RiskAnalysisInterface }): JSX.Ele
 
         <div>
           <div style={{
-            marginBottom: 'var(--at-space-8)',
+            marginBottom: cssVar.space8,
             fontSize: 11,
             fontWeight: 600,
-            color: 'var(--at-fg-subtle)',
+            color: cssVar.fgSubtle,
             textTransform: 'uppercase',
             letterSpacing: 0.5,
           }}
@@ -148,26 +161,26 @@ export function RiskCard({ result }: { result: RiskAnalysisInterface }): JSX.Ele
           <div style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 'var(--at-space-8)',
-            marginBottom: 'var(--at-space-16)',
+            gap: cssVar.space8,
+            marginBottom: cssVar.space16,
           }}
           >
             {result.categories.map((category) => {
-              const percent = Math.round(category.strength * 100);
+              const percent = Math.round(category.strength * PERCENT_SCALE);
 
               return (
                 <div key={category.name}>
                   <div style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    fontSize: 'var(--at-fs-14)',
-                    color: 'var(--at-fg)',
+                    justifyContent: cssValue.spaceBetween,
+                    fontSize: cssVar.fs14,
+                    color: cssVar.fg,
                   }}
                   >
                     <span>{category.name}</span>
                     <span style={{
-                      color: 'var(--at-fg-muted)',
-                      fontVariantNumeric: 'tabular-nums',
+                      color: cssVar.fgMuted,
+                      fontVariantNumeric: cssValue.tabularNums,
                     }}
                     >
                       {percent}%
@@ -175,9 +188,9 @@ export function RiskCard({ result }: { result: RiskAnalysisInterface }): JSX.Ele
                   </div>
                   <div style={{
                     height: 4,
-                    marginTop: 'var(--at-space-4)',
-                    background: 'var(--at-bg-soft)',
-                    borderRadius: 'var(--at-radius-full)',
+                    marginTop: cssVar.space4,
+                    background: cssVar.bgSoft,
+                    borderRadius: cssVar.radiusFull,
                     overflow: 'hidden',
                   }}
                   >
@@ -185,7 +198,7 @@ export function RiskCard({ result }: { result: RiskAnalysisInterface }): JSX.Ele
                       width: `${percent}%`,
                       height: '100%',
                       background: visual.color,
-                      borderRadius: 'var(--at-radius-full)',
+                      borderRadius: cssVar.radiusFull,
                     }}
                     />
                   </div>
@@ -194,9 +207,9 @@ export function RiskCard({ result }: { result: RiskAnalysisInterface }): JSX.Ele
             })}
           </div>
           <div style={{
-            fontSize: 'var(--at-fs-14)',
-            color: 'var(--at-fg-muted)',
-            lineHeight: 'var(--at-lh-22)',
+            fontSize: cssVar.fs14,
+            color: cssVar.fgMuted,
+            lineHeight: cssVar.lh22,
           }}
           >
             {result.explanation}

@@ -10,90 +10,90 @@ scaffoldVersion: "2.0.0"
 
 # Security & Compliance Notes
 
-> Estado do repo: **MVP implementado**. Os controles abaixo refletem o **código atual** (`apps/api/src`), com referência histórica de design no handoff ([`README.md` §5 (princípios)](../../design_handoff_atena/README.md), [`01`](../../design_handoff_atena/01-backend-api-contract.md), [`02`](../../design_handoff_atena/02-data-model.md)). Nota: a API serializa em `snake_case` na borda (revisão do handoff).
+> Repository state: **MVP implemented**. The controls below reflect the **current code** (`apps/api/src`), with historical design references in the handoff ([`README.md` §5 (principles)](../../docs/design_handoff_atena/README.md), [`01`](../../docs/design_handoff_atena/01-backend-api-contract.md), [`02`](../../docs/design_handoff_atena/02-data-model.md)). Note: the API serializes in `snake_case` at the edge (a revision of the handoff).
 
-A Atena dá a times de suporte acesso a dados de envio de SMS — que incluem **PII** (telefone e conteúdo de mensagem) e dados de clientes. Por isso a segurança não é um módulo separável: ela está embutida nos 5 princípios de arquitetura não-negociáveis. Os controles centrais são:
+Atena gives support teams access to SMS sending data — which includes **PII** (phone number and message content) and customer data. That is why security is not a separable module: it is built into the 5 non-negotiable architecture principles. The core controls are:
 
-1. **PII mascarada por padrão**, revelada só sob ação explícita e auditada.
-2. **Audit log imutável (1 ano)** para toda ação sensível.
-3. **RBAC** com dois papéis, aplicado por guard em cada endpoint.
-4. **Validação dupla** (UI desabilita + backend revalida) para mudanças de estado.
-5. **A IA é intérprete, não executora**: o LLM nunca toca o banco e nunca fabrica dados.
+1. **PII masked by default**, revealed only through an explicit, audited action.
+2. **Immutable audit log (1 year)** for every sensitive action.
+3. **RBAC** with four roles, enforced by a guard on every endpoint.
+4. **Double validation** (the UI disables + the backend revalidates) for state changes.
+5. **The AI is an interpreter, not an executor**: the LLM never touches the database and never fabricates data.
 
 ## Authentication & Authorization
 
-**Autenticação (OIDC + sessão por cookie JWT).** A auth é **OIDC Microsoft Entra** (state/nonce/PKCE), atrás de `IdentityProviderInterface` (trocável de IdP), **restrita ao domínio `@example.com`**, sem senha própria. A troca de `code` por token gera uma **sessão stateless por cookie JWT** (`atena_session`, `SameSite=None; Secure; HttpOnly`, TTL 8h); o mesmo cookie autentica os endpoints REST e o handshake socket.io de `/ws/support`. Endpoints: `/api/auth/login|callback|me|logout`. Em dev, `AUTH_DEV_BYPASS` resolve um usuário stub — **fail-closed**: só vale com `=true` **e** `NODE_ENV != production`. O **SSO corporativo completo (SAML + SCIM) é débito residual** (ver [`tech-debt.md`](./tech-debt.md)).
+**Authentication (OIDC + JWT cookie session).** Auth is **Microsoft Entra OIDC** (state/nonce/PKCE), behind `IdentityProviderInterface` (IdP-swappable), **restricted to the `@example.com` domain**, with no password of its own. Exchanging the `code` for a token creates a **stateless JWT cookie session** (`atena_session`, `SameSite=None; Secure; HttpOnly`, TTL 8h); the same cookie authenticates the REST endpoints and the socket.io handshake of `/ws/support`. Endpoints: `/api/auth/login|callback|me|logout`. In dev, `AUTH_DEV_BYPASS` resolves a stub user — **fail-closed**: only effective with `=true` **and** `NODE_ENV != production`. **Full corporate SSO (SAML + SCIM) is residual debt** (see [`tech-debt.md`](./tech-debt.md)).
 
-**Sessão expirada.** Cookie rejeitado/expirado retorna **401 Unauthorized**; o frontend reage com um overlay bloqueante que oferece re-login. A conversa em andamento é preservada no Histórico (`chat_sessions`/`chat_messages`), então o 401 não descarta trabalho. Sem revogação central do cookie antes do `exp` 8h (débito residual); a revogação de **papéis** é imediata (cache curto + lookup no banco).
+**Expired session.** A rejected/expired cookie returns **401 Unauthorized**; the frontend reacts with a blocking overlay that offers re-login. The ongoing conversation is preserved in the History (`chat_sessions`/`chat_messages`), so the 401 does not discard work. No central revocation of the cookie before the 8h `exp` (residual debt); **role** revocation is immediate (short cache + database lookup).
 
-**Autorização (RBAC gerenciado no app).** Papéis no banco (`users`/`user_roles`), **atribuídos por admin — NÃO vêm do IdP**. Catálogo: `admin`, `support_lead`, `support_analyst`, `viewer`. Modelo **papéis→permissões** (mapa em código `auth/rbac/permissions.ts`); guard **`@Requires(perm)`** (AND das permissões) rodando antes da tool/handler. Papéis lidos do banco por requisição (cache ~30s). Gate de acesso: sem papel → `access_pending`; `disabled` → `access_disabled`. Bootstrap de admins por `AUTH_ADMIN_EMAILS`. Permissões-chave: `pii:reveal` (revelar telefone/conteúdo **e** os exports CSV com PII), `incidents:ack`/`resolve`/`comment`, `rules:edit`, `users:manage`.
+**Authorization (app-managed RBAC).** Roles in the database (`users`/`user_roles`), **assigned by an admin — they do NOT come from the IdP**. Catalog: `admin`, `support_lead`, `support_analyst`, `viewer`. A **roles→permissions** model (map in code `auth/rbac/permissions.ts`); guard **`@Requires(perm)`** (AND of the permissions) running before the tool/handler. Roles read from the database per request (~30s cache). Access gate: no role → `access_pending`; `disabled` → `access_disabled`. Admin bootstrap via `AUTH_ADMIN_EMAILS`. Key permissions: `pii:reveal` (reveal phone/content **and** the CSV exports with PII), `incidents:ack`/`resolve`/`comment`, `rules:edit`, `users:manage`.
 
-Permissão é responsabilidade da aplicação, nunca do LLM (princípio 1): quem peça uma ação restrita em linguagem natural não contorna o RBAC — a tool é executada pela aplicação sob o guard do endpoint, que nega sem a permissão.
+Permission is the application's responsibility, never the LLM's (principle 1): someone who asks for a restricted action in natural language does not bypass RBAC — the tool is executed by the application under the endpoint's guard, which denies it without the permission.
 
 ## Secrets & Sensitive Data
 
-**PII mascarada por padrão (princípio 5 / RNF-1.4).** Os dois campos de PII — telefone e conteúdo do SMS — chegam **mascarados** em qualquer resposta de tool. O valor em claro só aparece após um *reveal* explícito do usuário, que **gera entry no audit log**:
+**PII masked by default (principle 5 / RNF-1.4).** The two PII fields — phone and SMS content — arrive **masked** in every tool response. The clear-text value only appears after an explicit *reveal* by the user, which **creates an audit log entry**:
 
-- **Telefone** — a resposta traz `phone` mascarado; o telefone em claro só é retornado por `POST /shippings/:id/reveal-phone` quando o usuário tem a permissão `pii:reveal` → ação de audit `reveal_phone`.
-- **Conteúdo do SMS** — `content_preview` só vem **após** reveal (`POST /shippings/:id/reveal-content`); mascarado por padrão. O front exige um passo de **confirmação** antes de revelar, com aviso explícito de que a ação é auditada → ação de audit `reveal_content`. Leitura via cache transitório (read-through) dos dados brutos: lê-se primeiro do **`/tmp`**; se o conteúdo não estiver lá, **busca-se no S3** (via `content_ref`) sob demanda **com log de acesso**, populando o `/tmp`.
+- **Phone** — the response carries a masked `phone`; the clear-text phone is only returned by `POST /shippings/:id/reveal-phone` when the user has the `pii:reveal` permission → audit action `reveal_phone`.
+- **SMS content** — `content_preview` only comes **after** a reveal (`POST /shippings/:id/reveal-content`); masked by default. The front end requires a **confirmation** step before revealing, with an explicit warning that the action is audited → audit action `reveal_content`. Read via the transient (read-through) cache of the raw data: it is read first from **`/tmp`**; if the content is not there, it is **fetched from S3** (via `content_ref`) on demand **with access logging**, populating `/tmp`.
 
-**Separação dado-da-app (MySQL) vs `/tmp` vs S3.** O dado de **ENTREGA não fica no MySQL** — vem do **detailed report no S3** (`s3://example-sms-delivery-reports`), consultado por DuckDB. O MySQL guarda só dado da aplicação (chat, incidentes, regras, audit log, usuários/papéis). O conteúdo sensível/PII fica no **S3**; a leitura usa um cache transitório (read-through): primeiro o `/tmp`, e se não estiver lá, busca-se no S3 (via `content_ref`), populando o `/tmp` — para evitar muitas requisições ao S3 num curto período e manter os brutos fora do banco. O `/tmp` é cache efêmero/rebuildável; o conteúdo bruto durável vive no S3 (default seguro).
+**Separation of app data (MySQL) vs `/tmp` vs S3.** **DELIVERY data does not live in MySQL** — it comes from the **detailed report in S3** (`s3://example-sms-delivery-reports`), queried by DuckDB. MySQL stores only application data (chat, incidents, rules, audit log, users/roles). Sensitive content/PII lives in **S3**; reads use a transient (read-through) cache: first `/tmp`, and if it is not there, it is fetched from S3 (via `content_ref`), populating `/tmp` — to avoid many requests to S3 in a short period and to keep raw data out of the database. `/tmp` is an ephemeral/rebuildable cache; the durable raw content lives in S3 (secure default).
 
-**Telefone sem PII em logs.** No grão da auditoria o telefone é normalizado para só-dígitos e usado na composição do id (`md5(campaign_id||'|'||phone)`); a regra de código é **nunca logar PII** — logs usam IDs/`phone_hash`, e apenas `method + path` (sem query string). Ver [code-style.md](./code-style.md).
+**No phone PII in logs.** In the audit grain the phone is normalized to digits only and used to compose the id (`md5(campaign_id||'|'||phone)`); the code rule is **never log PII** — logs use IDs/`phone_hash`, and only `method + path` (no query string). See [code-style.md](./code-style.md).
 
-**Audit log imutável (RNF-1.5).** A tabela `audit_log` é **append-only**. A role do aplicativo recebe **apenas INSERT + SELECT** — sem UPDATE/DELETE no nível do banco. É preenchida por um **interceptor global NestJS** (`@Audit`, princípio 4), não por chamadas ad-hoc. O enum de `action` inclui: `tool_call`, `reveal_phone`, `reveal_content`, `incident_created`, `incident_ack`, `incident_resolve`, `session_start`, `export_report`, `rule_update`, `user_role_update`, `user_status_update`; `severity` ∈ `info | warning | pii | config`. Cada entry registra `user_id` (ou `system` p/ o detector), `resource`, `ip_address` e `metadata`.
+**Immutable audit log (RNF-1.5).** The `audit_log` table is **append-only**. The application role receives **only INSERT + SELECT** — no UPDATE/DELETE at the database level. It is filled by a **global NestJS interceptor** (`@Audit`, principle 4), not by ad-hoc calls. The `action` enum includes: `tool_call`, `reveal_phone`, `reveal_content`, `incident_created`, `incident_ack`, `incident_resolve`, `session_start`, `export_report`, `rule_update`, `user_role_update`, `user_status_update`; `severity` ∈ `info | warning | pii | config`. Each entry records `user_id` (or `system` for the detector), `resource`, `ip_address` and `metadata`.
 
-**Segredos no repo (harness policy).** [`.context/harness/policy.json`](../harness/policy.json) tem `defaultEffect: allow` mas uma regra `deny` (`block-secrets`) que bloqueia qualquer caminho `**/.env*`, `**/*.pem`, `**/*.key`, `**/*secret*`. Em produção, segredos (client secret / credenciais OIDC do login social institucional, credenciais Amazon Bedrock, credenciais S3/MySQL) devem vir de vault / secret manager — nunca commitados. O `.gitignore` deve reforçar o mesmo. Atualmente nenhum `.env` real existe no repo.
+**Secrets in the repo (harness policy).** [`.context/harness/policy.json`](../harness/policy.json) has `defaultEffect: allow` but a `deny` rule (`block-secrets`) that blocks any path `**/.env*`, `**/*.pem`, `**/*.key`, `**/*secret*`. In production, secrets (client secret / OIDC credentials of the institutional social login, Amazon Bedrock credentials, S3/MySQL credentials) must come from a vault / secret manager — never committed. The `.gitignore` should reinforce the same. Currently no real `.env` exists in the repo.
 
 ## Compliance & Policies
 
-- **RNF-1.4 — PII mascarada por padrão + reveal auditado** (telefone e conteúdo; confirmação antes de revelar conteúdo; permissão `pii:reveal`).
-- **RNF-1.5 — Audit log imutável** (append-only, role INSERT+SELECT, interceptor global `@Audit`).
-- **RNF-1.6 — RBAC gerenciado no app** (papéis `admin`/`support_lead`/`support_analyst`/`viewer` no banco, guard `@Requires(perm)` por endpoint).
-- **Princípio 2 — LLM não fabrica dados.** Todo dado estruturado (telefone, ID, status, número) vem do retorno de uma tool determinística rodada pela aplicação. Pedido sem tool aplicável → **recusa explícita** (`RefusalCard`), nunca um valor inventado. As tools read-only do catálogo são `search_shippings`, `get_shipping_trail`, `analyze_shipping_content`, `generate_delivery_report`, `list_providers`, `list_customers`, `list_incidents`, `get_incident`, `generate_incident_report`.
-- **Princípio 3 — Mudança de estado de incidente não é tool do LLM.** `acknowledge`/`resolve`/`comment` só via UI + validação server-side; o LLM não pode disparar nem influenciar essas transições.
-- **Retenção** — chat (sessões/mensagens): job diário configurável (`CHAT_RETENTION_DAYS`, default 90). O dado de entrega vem do detailed report no S3 (não há purga local). Audit log: append-only.
+- **RNF-1.4 — PII masked by default + audited reveal** (phone and content; confirmation before revealing content; `pii:reveal` permission).
+- **RNF-1.5 — Immutable audit log** (append-only, INSERT+SELECT role, global `@Audit` interceptor).
+- **RNF-1.6 — App-managed RBAC** (roles `admin`/`support_lead`/`support_analyst`/`viewer` in the database, `@Requires(perm)` guard per endpoint).
+- **Principle 2 — The LLM does not fabricate data.** All structured data (phone, ID, status, number) comes from the return value of a deterministic tool run by the application. A request with no applicable tool → **explicit refusal** (`RefusalCard`), never an invented value. The catalog's read-only tools are `search_shippings`, `get_shipping_trail`, `analyze_shipping_content`, `generate_delivery_report`, `list_providers`, `list_customers`, `list_incidents`, `get_incident`, `generate_incident_report`.
+- **Principle 3 — Incident state changes are not an LLM tool.** `acknowledge`/`resolve`/`comment` only via UI + server-side validation; the LLM can neither trigger nor influence these transitions.
+- **Retention** — chat (sessions/messages): configurable daily job (`CHAT_RETENTION_DAYS`, default 90). Delivery data comes from the detailed report in S3 (there is no local purge). Audit log: append-only.
 
 ## Incident Response
 
-Aqui "incidente" tem dois sentidos — não confundir:
+Here "incident" has two meanings — do not mix them up:
 
-**1. Incidentes do produto (anomalias de envio).** O detector de anomalias cria `incidents` e empurra via **socket.io** (`incident.created/updated/auto_resolved`). O ciclo de vida (`detected → acknowledged → resolved | auto_resolved`) é controlado **só pela UI**, com **validação dupla** (RF-2.4):
+**1. Product incidents (shipping anomalies).** The anomaly detector creates `incidents` and pushes them via **socket.io** (`incident.created/updated/auto_resolved`). The lifecycle (`detected → acknowledged → resolved | auto_resolved`) is controlled **only by the UI**, with **double validation** (RF-2.4):
 
-- A UI desabilita botões/campos conforme o estado, **e** o backend **revalida** todo `POST /api/incidents/:id/resolve`. Regras server-side: `action_category` obrigatório; `action_description` ≥ 20 chars (≥ 10 no fluxo `auto_resolved`); se `action_category` ∈ {`internal_escalated`, `provider_escalated`} → `escalated_to` obrigatório; só permite transição de `acknowledged`/`detected`/`auto_resolved` → `resolved`. Toda mudança escreve em `incident_activity` (`status_change`) **+** audit log (`incident_ack` / `incident_resolve`). Validação client-side é só UX — a fonte da verdade é o backend.
+- The UI disables buttons/fields according to the state, **and** the backend **revalidates** every `POST /api/incidents/:id/resolve`. Server-side rules: `action_category` mandatory; `action_description` ≥ 20 chars (≥ 10 in the `auto_resolved` flow); if `action_category` ∈ {`internal_escalated`, `provider_escalated`} → `escalated_to` mandatory; only allows the transition from `acknowledged`/`detected`/`auto_resolved` → `resolved`. Every change writes to `incident_activity` (`status_change`) **+** the audit log (`incident_ack` / `incident_resolve`). Client-side validation is only UX — the source of truth is the backend.
 
-**2. Resposta a incidente de segurança (operacional).** Não há runbook nem contatos formalizados — gap a preencher conforme o time/infra. O **audit log** é a principal fonte forense (quem revelou qual PII, quando, de qual IP, e quais tools rodaram), e a observabilidade (`GET /api/observability`, Datadog opcional) cobre o comportamento do próprio assistente (uso/latência por tool, erros, recusas).
+**2. Security incident response (operational).** There is no formalized runbook nor contact list — a gap to fill according to the team/infra. The **audit log** is the main forensic source (who revealed which PII, when, from which IP, and which tools ran), and observability (`GET /api/observability`, optional Datadog) covers the behavior of the assistant itself (usage/latency per tool, errors, refusals).
 
-Ver também [`architecture.md`](./architecture.md) para como esses controles se encaixam no fluxo orquestrador → tools → dados.
+See also [`architecture.md`](./architecture.md) for how these controls fit into the orchestrator → tools → data flow.
 
-## Fase 1 — verificação (Sprint 1, fase V)
+## Phase 1 — verification (Sprint 1, V phase)
 
-Checklist de validação do backend da Fase 1 (código + testes automatizados, sem infra):
+Validation checklist for the Phase 1 backend (code + automated tests, no infra):
 
-- **PII mascarada por padrão.** `ShippingsService.search`/`getTrail` devolvem `phone_masked` e omitem `content_preview`; teste garante que o miolo do telefone não vaza (`shippings.service.spec`).
-- **Reveal só sob demanda e auditado.** `POST /shippings/:id/reveal-phone` e `/reveal-content` expõem o dado completo apenas na resposta (nunca em log/audit), com `@Audit('reveal_phone'|'reveal_content','pii')`; conteúdo indisponível → 422 (`reveal.service.spec`).
-- **LLM não fabrica dados.** O orquestrador só roteia tools do catálogo; sem tool aplicável → evento `refusal` (`orchestrator.service.spec`). Dado estruturado vem sempre do retorno de uma tool determinística.
-- **Tudo auditado.** Endpoints de tool com `@Audit('tool_call')` (interceptor global) e cada tool rodada pelo orquestrador grava `tool_call` via `AuditService`. Audit log append-only.
-- **RBAC enforçado.** `AuthGuard` + guard de permissões globais (`APP_GUARD`); endpoints exigem `@Requires(perm)`; `/health` e `/auth/*` são `@Public`. **Login OIDC real ligado e validado** (state/nonce/PKCE + sessão por cookie JWT); em dev, `auth.devBypass` resolve um usuário stub `admin` (fail-closed: `=true` E `NODE_ENV != production`). Testes cobrem negação 401/403.
-- **Validação de entrada.** DTOs `class-validator` + `ValidationPipe` global (`whitelist`+`transform`); erros no shape `{ error: { code, message } }` pelo `AllExceptionsFilter`.
-- **Observabilidade.** `MetricsInterceptor` global loga latência/erro por requisição (sem PII); o orquestrador loga latência por tool e grava `latency_ms` na metadata do audit. Métricas via DogStatsD/Datadog (opcional).
-- **E2e HTTP.** Pipeline completo (prefixo/pipe/guards/interceptors/SSE/filtro): `http.e2e.spec` (Prisma mockado, roda no `make test`) **e** `db.e2e-spec` — **integração contra MySQL real** via `make test-e2e` (sobe o banco, migra, semeia; valida search/trilha/providers/reveal+audit/report/chat-SSE sobre o seed).
+- **PII masked by default.** `ShippingsService.search`/`getTrail` return `phone_masked` and omit `content_preview`; a test guarantees that the middle digits of the phone do not leak (`shippings.service.spec`).
+- **Reveal only on demand and audited.** `POST /shippings/:id/reveal-phone` and `/reveal-content` expose the full data only in the response (never in log/audit), with `@Audit('reveal_phone'|'reveal_content','pii')`; unavailable content → 422 (`reveal.service.spec`).
+- **The LLM does not fabricate data.** The orchestrator only routes tools from the catalog; no applicable tool → `refusal` event (`orchestrator.service.spec`). Structured data always comes from the return value of a deterministic tool.
+- **Everything audited.** Tool endpoints with `@Audit('tool_call')` (global interceptor) and every tool run by the orchestrator writes `tool_call` via `AuditService`. Append-only audit log.
+- **RBAC enforced.** Global `AuthGuard` + permissions guard (`APP_GUARD`); endpoints require `@Requires(perm)`; `/health` and `/auth/*` are `@Public`. **Real OIDC login enabled and validated** (state/nonce/PKCE + JWT cookie session); in dev, `auth.devBypass` resolves a stub `admin` user (fail-closed: `=true` AND `NODE_ENV != production`). Tests cover 401/403 denial.
+- **Input validation.** `class-validator` DTOs + global `ValidationPipe` (`whitelist`+`transform`); errors in the shape `{ error: { code, message } }` via `AllExceptionsFilter`.
+- **Observability.** Global `MetricsInterceptor` logs latency/error per request (no PII); the orchestrator logs latency per tool and records `latency_ms` in the audit metadata. Metrics via DogStatsD/Datadog (optional).
+- **HTTP e2e.** Full pipeline (prefix/pipe/guards/interceptors/SSE/filter): `http.e2e.spec` (mocked Prisma, runs in `make test`) **and** `db.e2e-spec` — **integration against real MySQL** via `make test-e2e` (starts the database, migrates, seeds; validates search/trail/providers/reveal+audit/report/chat-SSE over the seed).
 
-**Notas:**
-- Reveal de conteúdo ponta a ponta depende de credenciais/bucket S3 (conteúdo indisponível → 422).
+**Notes:**
+- End-to-end content reveal depends on S3 credentials/bucket (unavailable content → 422).
 
-## Fase 2 — verificação (Sprint 2, fase V)
+## Phase 2 — verification (Sprint 2, V phase)
 
-Checklist de validação da Fase 2 (incidentes + detecção + tempo real + tools/relatório + observabilidade):
+Validation checklist for Phase 2 (incidents + detection + real time + tools/report + observability):
 
-- **Princípio 3 — mudança de estado não é tool do LLM.** O lifecycle (`acknowledge`/`resolve`/`comment`) vive **só** em `IncidentLifecycleController` (REST), separado do read; o orquestrador NÃO tem case de ack/resolve/comment no `execute()` — as únicas tools de incidente expostas ao LLM são read-only (`list_incidents`/`get_incident`/`generate_incident_report`). Verificado nos testes (lifecycle service + e2e) e por inspeção do `switch` do orquestrador.
-- **Validação dupla server-side (§D).** `IncidentLifecycleService` revalida toda transição: `acknowledge` só de `detected`; `resolve` só de `detected`/`acknowledged`/`auto_resolved` (senão **409**); `action_description` ≥ 20 chars (≥ 10 em `auto_resolved`) e `escalated_to` obrigatório em `*_escalated` (senão **422**). Coberto por `incident-lifecycle.service.spec` + e2e (`409`/`422` reais).
-- **RBAC em todos os endpoints.** `@Requires(perm)` em incidentes (read + lifecycle), regras (`GET/PUT /rules`), relatório de incidentes (`POST /reports/incidents`), detector (`POST /dev/detect`), observabilidade (`GET /observability`) e admin de usuários. Guards globais rodam antes do handler.
-- **Tudo auditado.** `incident_ack`/`incident_resolve` gravados explicitamente pelo lifecycle (metadata com `incident_id`/`action_category`, sem PII); `rule_update` em toda edição de regra (severity `config`); `user_role_update`/`user_status_update` em mudanças de admin; as tools read-only entram como `tool_call`.
-- **Sem PII em incidente / WS / observabilidade.** Incidentes agregam por **dimensão** (provider/customer) — `detectionPayload` traz regra/janela/resumo/métricas, nunca telefone/conteúdo. Eventos socket.io (`incident.created/updated/auto_resolved`, `connection.status`) carregam id/status/métricas, sem PII. `GET /observability` expõe contagens (sessões, uso por tool, reveals, conexões WS), sem PII.
-- **Socket.io autenticado.** Handshake do `/ws/support` exige a sessão por cookie JWT; sem identidade, desconecta. Dev: `auth.devBypass` aceita sem cookie (igual ao REST).
-- **Detector não fabrica nem fecha indevidamente.** Cria incidente sem duplicar dimensão aberta; auto-resolve só quando a anomalia some. Regra em **shadow mode** registra mas não notifica. `system` é o ator (sem `user_id`) nas atividades automáticas.
+- **Principle 3 — state change is not an LLM tool.** The lifecycle (`acknowledge`/`resolve`/`comment`) lives **only** in `IncidentLifecycleController` (REST), separate from the read side; the orchestrator has NO ack/resolve/comment case in `execute()` — the only incident tools exposed to the LLM are read-only (`list_incidents`/`get_incident`/`generate_incident_report`). Verified by the tests (lifecycle service + e2e) and by inspecting the orchestrator's `switch`.
+- **Server-side double validation (§D).** `IncidentLifecycleService` revalidates every transition: `acknowledge` only from `detected`; `resolve` only from `detected`/`acknowledged`/`auto_resolved` (otherwise **409**); `action_description` ≥ 20 chars (≥ 10 for `auto_resolved`) and `escalated_to` mandatory for `*_escalated` (otherwise **422**). Covered by `incident-lifecycle.service.spec` + e2e (real `409`/`422`).
+- **RBAC on every endpoint.** `@Requires(perm)` on incidents (read + lifecycle), rules (`GET/PUT /rules`), incident report (`POST /reports/incidents`), detector (`POST /dev/detect`), observability (`GET /observability`) and user admin. Global guards run before the handler.
+- **Everything audited.** `incident_ack`/`incident_resolve` written explicitly by the lifecycle (metadata with `incident_id`/`action_category`, no PII); `rule_update` on every rule edit (severity `config`); `user_role_update`/`user_status_update` on admin changes; the read-only tools are recorded as `tool_call`.
+- **No PII in incidents / WS / observability.** Incidents aggregate by **dimension** (provider/customer) — `detectionPayload` carries rule/window/summary/metrics, never phone/content. socket.io events (`incident.created/updated/auto_resolved`, `connection.status`) carry id/status/metrics, no PII. `GET /observability` exposes counts (sessions, usage per tool, reveals, WS connections), no PII.
+- **Authenticated socket.io.** The `/ws/support` handshake requires the JWT cookie session; without an identity, it disconnects. Dev: `auth.devBypass` accepts without a cookie (same as REST).
+- **The detector neither fabricates nor closes improperly.** It creates an incident without duplicating an open dimension; it auto-resolves only when the anomaly goes away. A rule in **shadow mode** records but does not notify. `system` is the actor (no `user_id`) on automatic activities.
 
-**Notas (Fase 2):**
-- **`POST /api/dev/detect`** é gatilho de DEV (RBAC-guarded); o scan agendado liga por `DETECT_ENABLED`. Em produção, considerar gatear/remover o gatilho dev.
-- A fonte da entrega é o **detailed report no S3** (`example-sms-delivery-reports`); o canal coberto é `sms`/`sms_flash` (voz/RCS fora).
+**Notes (Phase 2):**
+- **`POST /api/dev/detect`** is a DEV trigger (RBAC-guarded); the scheduled scan is turned on by `DETECT_ENABLED`. In production, consider gating/removing the dev trigger.
+- The delivery source is the **detailed report in S3** (`example-sms-delivery-reports`); the covered channel is `sms`/`sms_flash` (voice/RCS out).

@@ -39,7 +39,7 @@ const DEFAULT_SEARCH_LIMIT = 50;
 @Injectable()
 export class ShippingsService {
   /**
-   * @param {AuditQueryServiceInterface} audit - Motor de consulta de auditoria (S3 via DuckDB).
+   * @param audit - Motor de consulta de auditoria (S3 via DuckDB).
    */
   constructor(
     @Inject(AUDIT_QUERY) private readonly audit: AuditQueryServiceInterface,
@@ -55,9 +55,9 @@ export class ShippingsService {
    * Guarda: busca/export por `campaign_id` (lookup pontual) sem janela varreria ~30 dias no S3 — cara
    * demais. Lança erro acionável (o orquestrador repassa ao LLM, que pede a janela ao usuário).
    *
-   * @param {string | undefined} campaignId - Filtro por campaign_id, se houver.
-   * @param {AuditWindowInterface | null | undefined} window - Janela resolvida (ausente = sem janela).
-   * @returns {void}
+   * @param campaignId - Filtro por campaign_id, se houver.
+   * @param window - Janela resolvida (ausente = sem janela).
+   *
    * @throws {BadRequestException} Se `campaignId` presente sem janela.
    */
   private requireWindowForCampaign(
@@ -88,12 +88,12 @@ export class ShippingsService {
    * Sem `date_range` explícito, o motor aplica a janela default (S3 não permite varrer todo o
    * histórico por consulta). Devolve um envelope paginado já normalizado (snake_case, PII mascarada).
    *
-   * @param {SearchShippingsDto} query - Filtros e paginação validados (page default 1, limit default 50).
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento da varredura (etapas do motor).
-   * @returns {Promise<PaginatedEnvelopeInterface<SearchResultRowInterface> & { date_from: string | null; date_to: string; breakdown: { delivered: number; failed: number; pending: number } }>}
-   *   Envelope paginado + a janela EFETIVA CONGELADA (`date_from`/`date_to`, ISO) + o `breakdown` por
-   *   status (entregue/falha/pendente) de TODO o conjunto. O export usa a janela exata (download bate
-   *   com o `total`), e o breakdown casa com o CSV baixado.
+   * @param query - Filtros e paginação validados (page default 1, limit default 50).
+   * @param [onProgress] - Callback de andamento da varredura (etapas do motor).
+   *
+   * @returns The paginated envelope + the FROZEN effective window (`date_from`/`date_to`, ISO) + the
+   *   `breakdown` by status (delivered/failed/pending) of the whole set. The export uses the exact
+   *   window (the download matches the `total`), and the breakdown matches the downloaded CSV.
    */
   async search(
     query: SearchShippingsDto,
@@ -185,12 +185,13 @@ export class ShippingsService {
    * O `phone` sai mascarado (`phone_masked`) e o `content_preview` é OMITIDO por padrão (PII) —
    * só é revelado via endpoint de reveal auditado.
    *
-   * @param {string} shippingId - Identificador do envio.
-   * @param {AuditWindowInterface} [window] - Janela da varredura (idealmente a mesma do `search_shippings`
+   * @param shippingId - Identificador do envio.
+   * @param [window] - Janela da varredura (idealmente a mesma do `search_shippings`
    *   que produziu o `id`, para cair no cache `/tmp` quente). É recortada à data mínima confiável
    *   (mesma política do `search`): nunca rejeita por data antiga, só clampa o início.
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento da varredura (etapas do motor).
-   * @returns {Promise<ShippingTrailInterface | null>} A trilha do envio, ou `null` se não existir.
+   * @param [onProgress] - Callback de andamento da varredura (etapas do motor).
+   *
+   * @returns A trilha do envio, ou `null` se não existir.
    */
   async getTrail(
     shippingId: string,
@@ -240,9 +241,10 @@ export class ShippingsService {
    * trazer EXATAMENTE os envios que o detector marcou como impactados. Saída normalizada
    * (snake_case, telefone mascarado).
    *
-   * @param {string[]} ids - Ids dos destinatários (impactados).
-   * @param {AuditWindowInterface} window - Janela da detecção (escopa as partições).
-   * @returns {Promise<SearchResultRowInterface[]>} Linhas dos envios impactados.
+   * @param ids - Ids dos destinatários (impactados).
+   * @param window - Janela da detecção (escopa as partições).
+   *
+   * @returns Linhas dos envios impactados.
    */
   async byIds(
     ids: string[],
@@ -266,9 +268,10 @@ export class ShippingsService {
    * exibido, sem re-escanear o S3). Se o snapshot expirou/é inválido, cai no export por filtro
    * (janela congelada) — ainda preciso a menos do lag de ingestão.
    *
-   * @param {SearchShippingsDto} query - Filtros (os mesmos do search; paginação ignorada).
-   * @param {string} [token] - Token do snapshot da busca (`export_token`); precede o filtro.
-   * @returns {Promise<string>} Caminho do CSV gerado (o controller envia com BOM e remove ao fim).
+   * @param query - Filtros (os mesmos do search; paginação ignorada).
+   * @param [token] - Token do snapshot da busca (`export_token`); precede o filtro.
+   *
+   * @returns Caminho do CSV gerado (o controller envia com BOM e remove ao fim).
    */
   async exportCsvFile(
     query: SearchShippingsDto,
@@ -312,9 +315,10 @@ export class ShippingsService {
    * detecção, e devolve o caminho — base do download auditado do detalhe (`GET /incidents/:id/
    * shippings/export`). Espelha {@link byIds}, mas em CSV via stream em vez de linhas mascaradas.
    *
-   * @param {string[]} ids - Ids dos destinatários impactados (persistidos pelo detector).
-   * @param {AuditWindowInterface} window - Janela da detecção (escopa as partições).
-   * @returns {Promise<string>} Caminho do CSV gerado (o controller envia com BOM e remove ao fim).
+   * @param ids - Ids dos destinatários impactados (persistidos pelo detector).
+   * @param window - Janela da detecção (escopa as partições).
+   *
+   * @returns Caminho do CSV gerado (o controller envia com BOM e remove ao fim).
    */
   async exportByIdsCsvFile(
     ids: string[],
@@ -329,8 +333,9 @@ export class ShippingsService {
   /**
    * Normaliza um registro de entrega (do motor) em uma linha de busca (snake_case + PII mascarada).
    *
-   * @param {DeliveryRecordInterface} record - Registro de entrega do {@link AuditQueryServiceInterface}.
-   * @returns {SearchResultRowInterface} Linha com `phone_masked`, `status`, `provider`, `customer`,
+   * @param record - Registro de entrega do {@link AuditQueryServiceInterface}.
+   *
+   * @returns Linha com `phone_masked`, `status`, `provider`, `customer`,
    *   `requested_at` (envio, ISO 8601), `finalized_at` (finalização ou `null`) e `error_hint`.
    */
   private toRow(record: DeliveryRecordInterface): SearchResultRowInterface {

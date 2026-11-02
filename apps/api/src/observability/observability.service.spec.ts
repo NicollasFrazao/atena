@@ -14,7 +14,7 @@ const FAKE_LLM = {
 
 /** Motor de auditoria mockado: só o `scanStats` (custo de S3) importa aqui. */
 const FAKE_AUDIT = {
-  scanStats: async () => ({
+  scanStats: () => Promise.resolve({
     queries: 0,
     partitions_total: 0,
     partitions_cached: 0,

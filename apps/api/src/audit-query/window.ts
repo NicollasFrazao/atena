@@ -1,11 +1,9 @@
 import type { AuditWindowInterface } from './audit-query.types';
+import { MS_PER_DAY } from '../common/units';
 import { appTimeZone, resolveBoundInTz, startOfRecentDays } from './tz';
 
-/** Milissegundos em um dia. */
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /** Presets de "últimos N dias-calendário" (alinhados ao fuso). `24h` é rolante; `all` é sem limite. */
-const PRESET_DAYS: Record<string, number> = {
+const PRESET_DAYS: Partial<Record<string, number>> = {
   '7d': 7,
   '30d': 30,
 };
@@ -30,10 +28,11 @@ export interface WindowInputInterface {
  * - **`7d`/`30d`** são N dias-calendário **no fuso** (do início do dia mais antigo até agora).
  * - **`all`** = sem limite inferior.
  *
- * @param {WindowInputInterface} input - Datas/atalho vindos da requisição.
- * @param {string} [timeZone] - Fuso IANA de interpretação (default {@link appTimeZone}).
- * @param {Date} [now] - Instante de referência (default: agora).
- * @returns {AuditWindowInterface | undefined} Janela resolvida (em UTC), ou `undefined` (default do motor).
+ * @param input - Datas/atalho vindos da requisição.
+ * @param [timeZone] - Fuso IANA de interpretação (default {@link appTimeZone}).
+ * @param [now] - Instante de referência (default: agora).
+ *
+ * @returns Janela resolvida (em UTC), ou `undefined` (default do motor).
  */
 export function resolveWindow(
   input: WindowInputInterface,
@@ -76,10 +75,11 @@ export function resolveWindow(
 /**
  * Resolve a janela de um atalho `date_range` no fuso.
  *
- * @param {string} range - Atalho (`24h`/`7d`/`30d`/`all`).
- * @param {string} timeZone - Fuso IANA.
- * @param {Date} now - Instante de referência.
- * @returns {AuditWindowInterface | undefined} Janela (UTC), ou `undefined` p/ atalho desconhecido.
+ * @param range - Atalho (`24h`/`7d`/`30d`/`all`).
+ * @param timeZone - Fuso IANA.
+ * @param now - Instante de referência.
+ *
+ * @returns Janela (UTC), ou `undefined` p/ atalho desconhecido.
  */
 function presetWindow(
   range: string,
@@ -88,7 +88,7 @@ function presetWindow(
 ): AuditWindowInterface | undefined {
   if (range === '24h') {
     return {
-      from: new Date(now.getTime() - DAY_MS),
+      from: new Date(now.getTime() - MS_PER_DAY),
       to: null,
     };
   }

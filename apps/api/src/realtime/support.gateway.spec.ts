@@ -27,19 +27,12 @@ const EMPTY_HANDSHAKE = {
 
 /** ConfigService falso: `auth.devBypass` controlável; nome do cookie fixo. */
 function mockConfig(devBypass: boolean): ConfigService {
-  return {
-    get: jest.fn((key: string) => {
-      if (key === 'auth.devBypass') {
-        return devBypass;
-      }
+  const values: Partial<Record<string, unknown>> = {
+    'auth.devBypass': devBypass,
+    'auth.session.cookieName': 'atena_session',
+  };
 
-      if (key === 'auth.session.cookieName') {
-        return 'atena_session';
-      }
-
-      return undefined;
-    }),
-  } as unknown as ConfigService;
+  return { get: jest.fn((key: string) => values[key]) } as unknown as ConfigService;
 }
 
 /** AuthService falso: `verifySession` programável. */

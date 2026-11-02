@@ -1,5 +1,6 @@
-import { type ReactNode } from 'react';
+import { type ReactNode, type JSX } from 'react';
 import { toolLabel } from '../tools-catalog';
+import { cssVar } from '../../styles/tokens';
 
 /** Props da moldura compartilhada dos cards de resultado de tool. */
 export interface ToolResultFrameProps {
@@ -21,8 +22,9 @@ export interface ToolResultFrameProps {
  * Moldura compartilhada dos cards de resultado de tool: header com ícone, nome técnico
  * em monoespaçada, título, subtítulo opcional e slot de ações; corpo com os `children`.
  *
- * @param {ToolResultFrameProps} props - Conteúdo do header e corpo.
- * @returns {JSX.Element} A moldura do card.
+ * @param props - Conteúdo do header e corpo.
+ *
+ * @returns A moldura do card.
  */
 export function ToolResultFrame({
   icon,
@@ -31,24 +33,24 @@ export function ToolResultFrame({
   subtitle,
   actions,
   children,
-}: ToolResultFrameProps): JSX.Element {
+}: Readonly<ToolResultFrameProps>): JSX.Element {
   return (
     <div style={{
-      marginTop: 'var(--at-space-8)',
-      background: 'var(--at-white)',
-      border: '1px solid var(--at-border)',
-      borderRadius: 'var(--at-radius-8)',
+      marginTop: cssVar.space8,
+      background: cssVar.white,
+      border: cssVar.borderLine,
+      borderRadius: cssVar.radius8,
       overflow: 'hidden',
-      boxShadow: 'var(--at-shadow-xs)',
+      boxShadow: cssVar.shadowXs,
     }}
     >
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--at-space-8)',
+        gap: cssVar.space8,
         padding: '10px 14px',
-        background: 'var(--at-primary-lighter)',
-        borderBottom: '1px solid var(--at-border)',
+        background: cssVar.primaryLighter,
+        borderBottom: cssVar.borderLine,
       }}
       >
         <div style={{
@@ -56,9 +58,9 @@ export function ToolResultFrame({
           placeItems: 'center',
           width: 22,
           height: 22,
-          borderRadius: 'var(--at-radius-4)',
-          background: 'var(--at-white)',
-          color: 'var(--at-primary)',
+          borderRadius: cssVar.radius4,
+          background: cssVar.white,
+          color: cssVar.primary,
           boxShadow: 'inset 0 0 0 1px var(--at-border)',
         }}
         >
@@ -74,29 +76,29 @@ export function ToolResultFrame({
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--at-space-8)',
+            gap: cssVar.space8,
             flexWrap: 'wrap',
           }}
           >
             <span style={{
-              fontSize: 'var(--at-fs-12)',
+              fontSize: cssVar.fs12,
               fontWeight: 600,
-              color: 'var(--at-primary)',
+              color: cssVar.primary,
             }}
             >
               {toolLabel(toolName)}
             </span>
             <span style={{
               fontSize: 11,
-              color: 'var(--at-fg-subtle)',
+              color: cssVar.fgSubtle,
             }}
             >
               ·
             </span>
             <span style={{
-              fontSize: 'var(--at-fs-12)',
+              fontSize: cssVar.fs12,
               fontWeight: 600,
-              color: 'var(--at-fg)',
+              color: cssVar.fg,
             }}
             >
               {title}
@@ -105,7 +107,7 @@ export function ToolResultFrame({
           {subtitle
             ? <div style={{
               fontSize: 11,
-              color: 'var(--at-fg-muted)',
+              color: cssVar.fgMuted,
             }}
             >
               {subtitle}

@@ -7,7 +7,9 @@ export const ChatContext = createContext<ChatStateInterface | null>(null);
 /**
  * Acessa o estado do chat compartilhado. Deve estar dentro de `<ChatProvider>`.
  *
- * @returns {ChatStateInterface} Estado/ações do chat.
+ * @returns Estado/ações do chat.
+ *
+ * @throws {@link Error} when called outside a `<ChatProvider>`.
  */
 export function useChatContext(): ChatStateInterface {
   const ctx = useContext(ChatContext);

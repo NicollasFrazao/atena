@@ -30,17 +30,17 @@ type IncidentWithActivitiesType = IncidentInterface & { activities: IncidentActi
 @Controller('incidents')
 export class IncidentLifecycleController {
   /**
-   * @param {IncidentLifecycleService} lifecycle - Serviço de mudança de estado de incidentes.
+   * @param lifecycle - Serviço de mudança de estado de incidentes.
    */
   constructor(private readonly lifecycle: IncidentLifecycleService) {}
 
   /**
    * `POST /incidents/:id/acknowledge` — reconhece (`detected` → `acknowledged`).
    *
-   * @param {string} id - Id do incidente.
-   * @param {AuthenticatedUserInterface} [user] - Operador autenticado.
+   * @param id - Id do incidente.
+   * @param [user] - Operador autenticado.
    *
-   * @returns {Promise<IncidentWithActivitiesType>} Incidente atualizado + atividades.
+   * @returns Incidente atualizado + atividades.
    */
   @Post(':id/acknowledge')
   @Requires('incidents:ack')
@@ -58,11 +58,11 @@ export class IncidentLifecycleController {
   /**
    * `POST /incidents/:id/resolve` — resolve manualmente, com validação §D.
    *
-   * @param {string} id - Id do incidente.
-   * @param {ResolveIncidentDto} body - Categoria/descrição da ação (+ escalonamento/tags).
-   * @param {AuthenticatedUserInterface} [user] - Operador autenticado.
+   * @param id - Id do incidente.
+   * @param body - Categoria/descrição da ação (+ escalonamento/tags).
+   * @param [user] - Operador autenticado.
    *
-   * @returns {Promise<IncidentWithActivitiesType>} Incidente resolvido + atividades.
+   * @returns Incidente resolvido + atividades.
    */
   @Post(':id/resolve')
   @Requires('incidents:resolve')
@@ -82,11 +82,11 @@ export class IncidentLifecycleController {
   /**
    * `POST /incidents/:id/comment` — adiciona um comentário (sem mudar estado).
    *
-   * @param {string} id - Id do incidente.
-   * @param {AddCommentDto} body - Texto do comentário.
-   * @param {AuthenticatedUserInterface} [user] - Operador autenticado.
+   * @param id - Id do incidente.
+   * @param body - Texto do comentário.
+   * @param [user] - Operador autenticado.
    *
-   * @returns {Promise<IncidentActivityInterface>} Atividade de comentário criada.
+   * @returns Atividade de comentário criada.
    */
   @Post(':id/comment')
   @Requires('incidents:comment')

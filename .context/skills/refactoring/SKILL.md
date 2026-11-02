@@ -10,61 +10,61 @@ scaffoldVersion: "2.0.0"
 ---
 ## Workflow
 
-Contexto: hoje só existe o protótipo de referência em `docs/(protótipo original, não incluído)*.jsx`. O caso de refatoração mais comum no Atena é **migrar do protótipo para produção** (NestJS no backend, React + `atena-design-system` no frontend) sem copiar JSX e sem quebrar os 5 princípios nem os shapes de contrato. Quando houver código de produção, valem também as refatorações internas normais.
+Context: the production code exists — `apps/api` (NestJS), `apps/web` (React + in-house components on the `--at-*` tokens) and `packages/types` (`@atena/types`). The original reference prototype (`prototype/*.jsx`) is not included in the repo; it only survives as screenshots and the design reference in `docs/design_handoff_atena/`. Refactoring in Atena means the usual internal refactorings of that code, plus bringing screens closer to the design without copying prototype JSX — always without breaking the 5 principles or the contract shapes.
 
-1. **Defina o invariante a preservar.** No Atena isso é mais que "comportamento igual": é manter (a) os 5 princípios (README §5), (b) os shapes de contrato (§C de `01-backend-api-contract.md` / `prototype/data.jsx`), (c) `camelCase` na API ↔ `snake_case` no DB.
-2. **Garanta uma rede de segurança.** Se já há testes (provável Jest, quando o runner existir), rode-os antes/depois. Sem testes, valide contra o shape do mock e contra os requisitos da spec; não refatore às cegas tocando audit/PII/validação.
-3. **Migração protótipo → produção (não copiar JSX):** leia o componente em `prototype/*.jsx` só como referência de comportamento e layout; reescreva usando os componentes reais do `atena-design-system` (Button, Badge, Card, Table, Dialog, Tabs, Switch) e Phosphor. O protótipo reimplementou esses à mão por rodar standalone — descarte essa reimplementação. Ex.: `SearchResults` (`tool-results.jsx:72`) vira uma Table do design-system consumindo o shape §C.1.
-4. **Extraia tipos compartilhados em `@atena/types`.** Tipos derivados dos shapes do contrato (SearchRow §C.1, Trail §C.2, Incident §C.5, etc.) vão para o pacote `@atena/types`, importado por backend e frontend — uma única fonte da verdade. Não duplique a forma em dois lugares.
-5. **Uma mudança por vez, commits frequentes** (Conventional Commits, ver `AGENTS.md`).
-6. **Revalide os invariantes:** PII continua mascarada por padrão e reveal ainda gera audit; tool continua server-side (LLM não toca o banco); ack/resolve continuam fora do catálogo de tools; validação server-side do resolve (§D) intacta; shape de resposta inalterado.
+1. **Define the invariant to preserve.** In Atena that is more than "same behavior": it means keeping (a) the 5 principles (README §5), (b) the contract shapes (`@atena/types` / `docs/openapi.yaml`; origin in §C of `01-backend-api-contract.md`), (c) `snake_case` at the API ↔ `snake_case` in the DB (with Prisma Client's camelCase mapped at the edge).
+2. **Make sure there is a safety net.** Tests exist — Jest in `apps/api`, Vitest in `apps/web`, Playwright for browser e2e — run them before/after (`npm test`). Where a path has no tests, add one first or validate against the `@atena/types` shape and the spec's requirements; do not refactor blindly anything that touches audit/PII/validation.
+3. **Design parity without copying JSX:** use the prototype screenshots and `05-design-reference.md` only as a behavior and layout reference; implement with the in-house components of `apps/web/src/` and Phosphor. The prototype hand-reimplemented primitives because it ran standalone — that reimplementation is not something to bring back. E.g. the prototype's `SearchResults` is `SearchResultsCard` (`apps/web/src/chat/tool-cards/SearchResultsCard.tsx`), consuming `SearchResultRowInterface` (§C.1).
+4. **Extract shared types into `@atena/types`.** Types derived from the contract shapes (`SearchResultRowInterface` §C.1, `ShippingTrailInterface` §C.2, `IncidentInterface` §C.5, etc.) go into the `@atena/types` package (`packages/types/src/index.ts`), imported by backend and frontend — a single source of truth. Do not duplicate the shape in two places.
+5. **One change at a time, frequent commits** (Conventional Commits, see `AGENTS.md` and `.context/docs/code-style.md`).
+6. **Revalidate the invariants:** PII still masked by default and reveal still generates audit; tools still server-side (the LLM does not touch the database); ack/resolve still outside the tool catalog; server-side validation of resolve (§D) intact; response shape unchanged.
 
 ## Examples
 
-**Extrair tipo compartilhado para `@atena/types` (em vez de duplicar o shape):**
+**Extract a shared type into `@atena/types` (instead of duplicating the shape):**
 ```typescript
-// Antes: shape do incidente redefinido no backend e copiado no frontend (divergem com o tempo).
+// Before: the incident shape redefined in the backend and copied in the frontend (they drift over time).
 
-// Depois: @atena/types/incident.ts — fonte única, derivada de §C.5
-export type IncidentSeverity = 'info' | 'warning' | 'critical';
-export type IncidentStatus  = 'detected' | 'acknowledged' | 'resolved' | 'auto_resolved';
-export type DimensionType   = 'provider' | 'customer' | 'route' | 'global';
+// After: packages/types/src/index.ts — single source, derived from §C.5
+export type IncidentSeverityType = 'info' | 'warning' | 'critical';
+export type IncidentStatusType = 'detected' | 'acknowledged' | 'resolved' | 'auto_resolved';
+export type DimensionType = 'provider' | 'customer' | 'route' | 'global';
 
-export interface Incident {
-  id: string;                 // camelCase na API (DB: incident_id, snake_case)
+export interface IncidentInterface {
+  id: string;                      // PK `id` in the DB as well
   rule: string;
-  severity: IncidentSeverity;
-  status: IncidentStatus;
-  dimensionType: DimensionType;
-  dimensionValue: string | null;
-  detectedAt: string;         // ISO 8601 UTC
-  // ...resto conforme §C.5 / MOCK.incidents[]
+  severity: IncidentSeverityType;
+  status: IncidentStatusType;
+  dimension_type: DimensionType;   // snake_case at the API (Prisma Client: dimensionType)
+  dimension_value: string;
+  detected_at: string;             // ISO 8601 UTC
+  // ...the rest per §C.5 / docs/openapi.yaml
 }
-// Backend (NestJS) e frontend (React) importam o MESMO tipo. O mapeamento
-// snake_case→camelCase mora no mapper do Prisma, não vaza pra UI.
+// Backend (NestJS) and frontend (React) import the SAME type. The camelCase→snake_case
+// mapping of Prisma Client lives at the API edge (service/serializer), never in the UI.
 ```
 
-**Migrar componente do protótipo p/ produção sem copiar JSX:**
+**Port a prototype behavior without copying JSX:**
 ```
-PhoneCell (prototype/tool-results.jsx:53, useMaskedPhone) reimplementa máscara/reveal à mão.
-Na produção: reescrever usando o design-system, preservando o invariante de PII —
-  phoneMasked por padrão; reveal só com permissão + confirmação; reveal chama o backend
-  que retorna phoneFull E escreve audit 'reveal_phone' (princípio 5).
-NÃO portar a lógica de máscara client-side como verdade: a app decide o que revelar.
+The prototype's PhoneCell (with useMaskedPhone) hand-implemented masking/reveal on the client.
+In production it is RevealField (apps/web/src/chat/tool-cards/RevealField.tsx), preserving the PII invariant —
+  phone_masked by default; reveal only with permission + confirmation; the reveal calls the backend
+  (POST /api/shippings/{id}/reveal-phone), which returns phone_full AND writes audit 'reveal_phone' (principle 5).
+Do NOT port client-side masking logic as the truth: the app decides what to reveal.
 ```
 
 ## Quality Bar
 
-- Refatoração preserva os 5 princípios — se a mudança permite o LLM tocar o banco, expõe ack/resolve como tool, remove audit de um reveal, ou desmascara PII por padrão, NÃO é refatoração, é regressão de segurança.
-- Shapes de contrato imutáveis: depois da mudança, o response/payload ainda bate com `prototype/data.jsx` / §C. Renomear campo de API é quebra de contrato, não refactor.
-- `camelCase` na API ↔ `snake_case` no DB sempre preservado; o mapeamento fica no ORM.
-- Migrar do protótipo = reescrever com `atena-design-system`, nunca colar JSX de `prototype/`. A reimplementação manual de componentes no protótipo é descartável.
-- Tipos compartilhados vão para `@atena/types`; nada de duplicar a mesma forma em backend e frontend.
-- Validação server-side do resolve (§D) e a imutabilidade do `audit_log` (só INSERT+SELECT) não são afrouxadas por "limpeza".
-- Sem testes/rede de segurança, não refatore caminhos sensíveis (audit, PII, validação, RBAC). Commits pequenos, Conventional Commits.
+- A refactoring preserves the 5 principles — if the change lets the LLM touch the database, exposes ack/resolve as a tool, removes the audit of a reveal, or unmasks PII by default, it is NOT a refactoring, it is a security regression.
+- Immutable contract shapes: after the change, the response/payload still matches `@atena/types` / `docs/openapi.yaml`. Renaming an API field is a contract break, not a refactor.
+- `snake_case` at the API ↔ `snake_case` in the DB always preserved; the mapping from Prisma Client's camelCase stays at the edge.
+- Matching the design = implementing with the in-house components on the `--at-*` tokens, never pasting prototype JSX. The prototype's hand reimplementation of components is disposable.
+- Shared types go into `@atena/types`; never duplicate the same shape in backend and frontend.
+- The server-side validation of resolve (§D) and the immutability of `audit_log` (INSERT+SELECT only) are not loosened by "cleanup".
+- Without tests/a safety net, do not refactor sensitive paths (audit, PII, validation, RBAC). Small commits, Conventional Commits.
 
 ## Resource Strategy
 
-- Sem `scripts/`/`references/`/`assets/` próprios: a referência de comportamento é o `prototype/` e os shapes vivem em `docs/design_handoff_atena/`.
-- Para o destino dos tipos, aponte para o pacote `@atena/types` (direção do handoff) em vez de inventar caminhos de produção que ainda não existem.
-- Referencie §C do contrato e §5.3 de `02-data-model.md` para shapes/enum em vez de recopiá-los aqui.
+- No `scripts/`/`references/`/`assets/` of its own: the behavior reference is the code itself plus `docs/design_handoff_atena/`, and the shapes live in `@atena/types`.
+- For the destination of types, point to the `@atena/types` package (`packages/types/src/index.ts`) instead of inventing paths.
+- Reference `@atena/types`/`docs/openapi.yaml` and `apps/api/prisma/schema.prisma` (historically §C of the contract and §5.3 of `02-data-model.md`) for shapes/enums instead of re-copying them here.

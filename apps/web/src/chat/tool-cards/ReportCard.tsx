@@ -1,37 +1,39 @@
-import { useState } from 'react';
-import { Broadcast, Buildings, Download, Funnel, TrendUp, UsersThree } from '@phosphor-icons/react';
+import { useState, type JSX } from 'react';
+import { BroadcastIcon as Broadcast, BuildingsIcon as Buildings, DownloadIcon as Download, FunnelIcon as Funnel, TrendUpIcon as TrendUp, UsersThreeIcon as UsersThree } from '@phosphor-icons/react';
 import { type DeliveryReportInterface, type ShippingStatusType } from '@atena/types';
 import { downloadDeliveryReport } from '../../api/reports';
 import { categoryLabel } from '../../rules/rule-labels';
 import { ToolResultFrame } from './ToolResultFrame';
 import { HourlyChart } from './HourlyChart';
 import { formatNumber } from './format';
+import { cssValue, cssVar } from '../../styles/tokens';
+import { PERCENT_SCALE } from '../../util/units';
 
 /** KPI a exibir no strip: rótulo, chave em `totals` e cor. */
-const KPI_DEFS: Array<{
+const KPI_DEFS: {
   label: string;
   key: keyof DeliveryReportInterface['totals'];
   color: string
-}> = [
+}[] = [
   {
     label: 'Total',
     key: 'sent',
-    color: 'var(--at-fg)',
+    color: cssVar.fg,
   },
   {
     label: 'Entregues',
     key: 'delivered',
-    color: 'var(--at-success-300)',
+    color: cssVar.success300,
   },
   {
     label: 'Falhas',
     key: 'failed',
-    color: 'var(--at-danger-300)',
+    color: cssVar.danger300,
   },
   {
     label: 'Pendentes',
     key: 'pending',
-    color: 'var(--at-warning-300)',
+    color: cssVar.warning300,
   },
 ];
 
@@ -44,59 +46,66 @@ type OutcomeKeyType = 'delivered' | 'failed' | 'blocked' | 'pending';
  * entrega, então fica do lado do verde), depois Pendentes, e **Falha por ÚLTIMO** (o pior desfecho no
  * fim). Compartilhado pelas duas barras; as chaves existem em `totals` e em cada `by_provider`.
  */
-const OUTCOME_SEGMENTS: Array<{
+const OUTCOME_SEGMENTS: {
   label: string;
   key: OutcomeKeyType;
   color: string
-}> = [
+}[] = [
   {
     label: 'Entregues',
     key: 'delivered',
-    color: 'var(--at-success-300)',
+    color: cssVar.success300,
   },
   {
     label: 'Bloqueados',
     key: 'blocked',
-    color: 'var(--at-fg-muted)',
+    color: cssVar.fgMuted,
   },
   {
     label: 'Pendentes',
     key: 'pending',
-    color: 'var(--at-warning-300)',
+    color: cssVar.warning300,
   },
   {
     label: 'Falhas',
     key: 'failed',
-    color: 'var(--at-danger-300)',
+    color: cssVar.danger300,
   },
 ];
 
-/** Contagens por desfecho — base de uma barra empilhada (`totals` e `by_provider[i]` satisfazem). */
-type OutcomeCountsInterface = Record<OutcomeKeyType, number>;
+/**
+ * Contagens por desfecho — base de uma barra empilhada (`totals` e `by_provider[i]` satisfazem).
+ *
+ * @remarks
+ * Partial because a report persisted in the history before a field existed (e.g. `blocked`) lacks
+ * that key at run time, whatever the current contract says.
+ */
+type OutcomeCountsInterface = Partial<Record<OutcomeKeyType, number>>;
 
 /**
  * Barra horizontal EMPILHADA dos desfechos: uma fatia por segmento, proporcional ao `total`, na ordem
  * de {@link OUTCOME_SEGMENTS}. Defensiva a campos ausentes (dado antigo persistido) via `?? 0`.
  *
- * @param {{ counts: OutcomeCountsInterface; total: number; height: number }} props - Contagens, base e altura.
- * @returns {JSX.Element} A barra empilhada.
+ * @param props - Contagens, base e altura.
+ *
+ * @returns A barra empilhada.
  */
 function StackedOutcomeBar({
   counts,
   total,
   height,
-}: {
+}: Readonly<{
   counts: OutcomeCountsInterface;
   total: number;
   height: number
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <div style={{
       display: 'flex',
       height,
-      borderRadius: 'var(--at-radius-full)',
+      borderRadius: cssVar.radiusFull,
       overflow: 'hidden',
-      background: 'var(--at-bg-soft)',
+      background: cssVar.bgSoft,
     }}
     >
       {OUTCOME_SEGMENTS.map((segment) => {
@@ -104,7 +113,7 @@ function StackedOutcomeBar({
 
         const pct = total === 0
           ? 0
-          : (value / total) * 100;
+          : (value / total) * PERCENT_SCALE;
 
         return pct > 0
           ? (
@@ -123,15 +132,19 @@ function StackedOutcomeBar({
   );
 }
 
+/** Opacity of the download button while the export is running. */
+const DOWNLOADING_OPACITY = 0.7;
+
 /**
  * Card da tool `generate_delivery_report`: KPIs (total/entregues/falhas/pendentes),
  * gráfico horário interativo da taxa por hora, barras por fornecedor (rate %) e lista de top erros.
  * O botão CSV baixa as mensagens do recorte (telefone em claro, acesso auditado) via `csv_url`.
  *
- * @param {{ result: DeliveryReportInterface }} props - Relatório de entregabilidade.
- * @returns {JSX.Element} O card de relatório.
+ * @param props - Relatório de entregabilidade.
+ *
+ * @returns O card de relatório.
  */
-export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX.Element {
+export function ReportCard({ result }: Readonly<{ result: DeliveryReportInterface }>): JSX.Element {
   const [
     downloading,
     setDownloading,
@@ -142,7 +155,7 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
 
     downloadDeliveryReport(result.csv_url)
       .catch(() => undefined)
-      .finally(() => setDownloading(false));
+      .finally(() => { setDownloading(false); });
   };
 
   return (
@@ -158,21 +171,21 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
           disabled={downloading}
           title="Baixa as mensagens do relatório · telefone em claro (acesso auditado)"
           style={{
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
-            gap: 'var(--at-space-4)',
+            gap: cssVar.space4,
             padding: '4px 10px',
-            border: '1px solid var(--at-border)',
-            borderRadius: 'var(--at-radius-4)',
-            background: 'var(--at-white)',
-            color: 'var(--at-fg)',
+            border: cssVar.borderLine,
+            borderRadius: cssVar.radius4,
+            background: cssVar.white,
+            color: cssVar.fg,
             fontSize: 11,
             fontWeight: 600,
             cursor: downloading
               ? 'wait'
               : 'pointer',
             opacity: downloading
-              ? 0.7
+              ? DOWNLOADING_OPACITY
               : 1,
           }}
         >
@@ -189,30 +202,30 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 'var(--at-space-8)',
-          marginBottom: 'var(--at-space-16)',
+          gap: cssVar.space8,
+          marginBottom: cssVar.space16,
         }}
         >
           {KPI_DEFS.map((kpi) => {
             // % do total (envios). O próprio "Total" é a base, então não mostra fração.
             const share = kpi.key === 'sent' || result.totals.sent === 0
               ? null
-              : (result.totals[kpi.key] / result.totals.sent) * 100;
+              : (result.totals[kpi.key] / result.totals.sent) * PERCENT_SCALE;
 
             return (
               <div
                 key={kpi.label}
                 style={{
                   padding: '10px 12px',
-                  background: 'var(--at-bg-soft)',
-                  border: '1px solid var(--at-border)',
-                  borderRadius: 'var(--at-radius-4)',
+                  background: cssVar.bgSoft,
+                  border: cssVar.borderLine,
+                  borderRadius: cssVar.radius4,
                 }}
               >
                 <div style={{
                   fontSize: 10,
                   fontWeight: 600,
-                  color: 'var(--at-fg-subtle)',
+                  color: cssVar.fgSubtle,
                   textTransform: 'uppercase',
                   letterSpacing: 0.5,
                 }}
@@ -220,12 +233,12 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
                   {kpi.label}
                 </div>
                 <div style={{
-                  marginTop: 'var(--at-space-2)',
+                  marginTop: cssVar.space2,
                   fontSize: 22,
                   fontWeight: 700,
                   lineHeight: 1.2,
                   color: kpi.color,
-                  fontVariantNumeric: 'tabular-nums',
+                  fontVariantNumeric: cssValue.tabularNums,
                 }}
                 >
                   {formatNumber(result.totals[kpi.key])}
@@ -233,10 +246,10 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
                 {share !== null
                   ? (
                     <div style={{
-                      marginTop: 'var(--at-space-2)',
+                      marginTop: cssVar.space2,
                       fontSize: 11,
-                      color: 'var(--at-fg-muted)',
-                      fontVariantNumeric: 'tabular-nums',
+                      color: cssVar.fgMuted,
+                      fontVariantNumeric: cssValue.tabularNums,
                     }}
                     >
                       {share.toFixed(1)}% do total
@@ -250,7 +263,7 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
 
         <CompositionBar totals={result.totals} />
 
-        <div style={{ marginBottom: 'var(--at-space-16)' }}>
+        <div style={{ marginBottom: cssVar.space16 }}>
           <HourlyChart
             title="Taxa de entrega por hora"
             points={result.hourly.map((bucket) => ({
@@ -265,7 +278,7 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
         <div style={{
           display: 'grid',
           gridTemplateColumns: '1.2fr 1fr',
-          gap: 'var(--at-space-16)',
+          gap: cssVar.space16,
         }}
         >
           <div>
@@ -273,7 +286,7 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
             <div style={{
               display: 'flex',
               flexDirection: 'column',
-              gap: 'var(--at-space-8)',
+              gap: cssVar.space8,
             }}
             >
               {result.by_provider.map((provider) => (
@@ -283,13 +296,13 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
                     display: 'grid',
                     gridTemplateColumns: '70px 1fr 60px',
                     alignItems: 'center',
-                    gap: 'var(--at-space-8)',
+                    gap: cssVar.space8,
                   }}
                 >
                   <div style={{
-                    fontSize: 'var(--at-fs-14)',
+                    fontSize: cssVar.fs14,
                     fontWeight: 600,
-                    color: 'var(--at-fg)',
+                    color: cssVar.fg,
                   }}
                   >
                     {provider.name}
@@ -302,11 +315,11 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
                   {/* Taxa em tom neutro: a COR do desfecho já é comunicada pela composição da barra
                       (verde/cinza/âmbar/vermelho), então o número não precisa repetir o sinal. */}
                   <div style={{
-                    fontFamily: 'ui-monospace, Menlo, monospace',
-                    fontSize: 'var(--at-fs-12)',
+                    fontFamily: cssValue.fontMono,
+                    fontSize: cssVar.fs12,
                     fontWeight: 600,
                     textAlign: 'right',
-                    color: 'var(--at-fg)',
+                    color: cssVar.fg,
                   }}
                   >
                     {provider.rate.toFixed(1)}%
@@ -320,14 +333,14 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
             <div style={{
               display: 'flex',
               flexDirection: 'column',
-              gap: 'var(--at-space-4)',
+              gap: cssVar.space4,
             }}
             >
               {result.top_errors.map((error) => {
                 // Participação do código de erro no total de envios (mesma base dos KPIs).
                 const share = result.totals.sent === 0
                   ? null
-                  : (error.count / result.totals.sent) * 100;
+                  : (error.count / result.totals.sent) * PERCENT_SCALE;
 
                 return (
                   <div
@@ -335,29 +348,29 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
+                      justifyContent: cssValue.spaceBetween,
                       padding: '6px 8px',
-                      background: 'var(--at-bg-soft)',
-                      border: '1px solid var(--at-border)',
-                      borderRadius: 'var(--at-radius-4)',
+                      background: cssVar.bgSoft,
+                      border: cssVar.borderLine,
+                      borderRadius: cssVar.radius4,
                     }}
                   >
                     <code style={{
-                      fontFamily: 'ui-monospace, Menlo, monospace',
+                      fontFamily: cssValue.fontMono,
                       fontSize: 11,
-                      color: 'var(--at-fg)',
+                      color: cssVar.fg,
                     }}
                     >
                       {categoryLabel(error.code)}
                     </code>
                     <span style={{
-                      display: 'inline-flex',
+                      display: cssValue.inlineFlex,
                       alignItems: 'baseline',
-                      gap: 'var(--at-space-8)',
-                      fontFamily: 'ui-monospace, Menlo, monospace',
-                      fontSize: 'var(--at-fs-12)',
-                      color: 'var(--at-fg-muted)',
-                      fontVariantNumeric: 'tabular-nums',
+                      gap: cssVar.space8,
+                      fontFamily: cssValue.fontMono,
+                      fontSize: cssVar.fs12,
+                      color: cssVar.fgMuted,
+                      fontVariantNumeric: cssValue.tabularNums,
                     }}
                     >
                       {formatNumber(error.count)}
@@ -365,7 +378,7 @@ export function ReportCard({ result }: { result: DeliveryReportInterface }): JSX
                         ? (
                           <span style={{
                             fontSize: 11,
-                            color: 'var(--at-fg-subtle)',
+                            color: cssVar.fgSubtle,
                           }}
                           >
                             {share.toFixed(1)}%
@@ -397,22 +410,22 @@ const STATUS_LABEL: Record<ShippingStatusType, string> = {
 function ScopeChip({
   icon,
   children,
-}: {
+}: Readonly<{
   icon: JSX.Element;
   children: string
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <span style={{
-      display: 'inline-flex',
+      display: cssValue.inlineFlex,
       alignItems: 'center',
-      gap: 'var(--at-space-4)',
+      gap: cssVar.space4,
       padding: '3px 10px',
       borderRadius: 999,
-      background: 'var(--at-bg-soft)',
-      border: '1px solid var(--at-border)',
+      background: cssVar.bgSoft,
+      border: cssVar.borderLine,
       fontSize: 12,
       fontWeight: 600,
-      color: 'var(--at-fg)',
+      color: cssVar.fg,
     }}
     >
       {icon}
@@ -425,22 +438,29 @@ function ScopeChip({
  * Linha de escopo do relatório: chips com os filtros aplicados (cliente / provedor / status) para
  * deixar claro de qual recorte são os números. Sem filtros, mostra "Todos os clientes e provedores".
  *
- * @param {{ filters?: DeliveryReportInterface['filters'] }} props - Filtros ecoados pelo backend.
- * @returns {JSX.Element} A linha de chips de escopo.
+ * @param props - Filtros ecoados pelo backend.
+ *
+ * @returns A linha de chips de escopo.
  */
-function ReportScope({ filters }: { filters?: DeliveryReportInterface['filters'] }): JSX.Element {
+function ReportScope({ filters }: Readonly<{ filters?: DeliveryReportInterface['filters'] }>): JSX.Element {
   const customer = filters?.customer_id;
   const provider = filters?.provider;
   const status = filters?.status;
-  const hasAny = Boolean(customer || provider || status);
+
+  // Truthiness on purpose: an empty string echoed by the backend counts as "no filter".
+  const hasAny = [
+    customer,
+    provider,
+    status,
+  ].some(Boolean);
 
   return (
     <div style={{
       display: 'flex',
       alignItems: 'center',
       flexWrap: 'wrap',
-      gap: 'var(--at-space-8)',
-      marginBottom: 'var(--at-space-16)',
+      gap: cssVar.space8,
+      marginBottom: cssVar.space16,
     }}
     >
       {hasAny
@@ -480,22 +500,24 @@ function ReportScope({ filters }: { filters?: DeliveryReportInterface['filters']
  * entregue/falha/bloqueado/pendente (soma = total) + legenda. Comunica "para onde foram os envios" e
  * dá ao `blocked` (controle de entrega) uma fatia distinta — separada dos desfechos e fora da taxa.
  *
- * @param {{ totals: DeliveryReportInterface['totals'] }} props - Totais por status (soma = `sent`).
- * @returns {JSX.Element} A barra de composição.
+ * @param props - Totais por status (soma = `sent`).
+ *
+ * @returns A barra de composição.
  */
-function CompositionBar({ totals }: { totals: DeliveryReportInterface['totals'] }): JSX.Element {
+function CompositionBar({ totals }: Readonly<{ totals: DeliveryReportInterface['totals'] }>): JSX.Element {
   const total = totals.sent;
 
   // Defensivo: relatórios ANTIGOS (persistidos no histórico ANTES do campo `blocked`) não têm a
   // chave → conta como 0 (o type exige, mas o dado em runtime pode ser mais velho que o contrato).
-  const count = (key: OutcomeKeyType): number => totals[key] ?? 0;
+  const persistedCounts: OutcomeCountsInterface = totals;
+  const count = (key: OutcomeKeyType): number => persistedCounts[key] ?? 0;
 
   const share = (key: OutcomeKeyType): number => (total === 0
     ? 0
-    : (count(key) / total) * 100);
+    : (count(key) / total) * PERCENT_SCALE);
 
   return (
-    <div style={{ marginBottom: 'var(--at-space-16)' }}>
+    <div style={{ marginBottom: cssVar.space16 }}>
       <SectionLabel>Composição dos envios</SectionLabel>
       <StackedOutcomeBar
         counts={totals}
@@ -505,20 +527,20 @@ function CompositionBar({ totals }: { totals: DeliveryReportInterface['totals'] 
       <div style={{
         display: 'flex',
         flexWrap: 'wrap',
-        gap: 'var(--at-space-12)',
-        marginTop: 'var(--at-space-8)',
+        gap: cssVar.space12,
+        marginTop: cssVar.space8,
       }}
       >
         {OUTCOME_SEGMENTS.map((segment) => (
           <span
             key={segment.label}
             style={{
-              display: 'inline-flex',
+              display: cssValue.inlineFlex,
               alignItems: 'center',
-              gap: 'var(--at-space-4)',
+              gap: cssVar.space4,
               fontSize: 11,
-              color: 'var(--at-fg-muted)',
-              fontVariantNumeric: 'tabular-nums',
+              color: cssVar.fgMuted,
+              fontVariantNumeric: cssValue.tabularNums,
             }}
           >
             <span style={{
@@ -538,13 +560,13 @@ function CompositionBar({ totals }: { totals: DeliveryReportInterface['totals'] 
 }
 
 /** Rótulo de seção em maiúsculas usado no corpo do relatório. */
-function SectionLabel({ children }: { children: string }): JSX.Element {
+function SectionLabel({ children }: Readonly<{ children: string }>): JSX.Element {
   return (
     <div style={{
-      marginBottom: 'var(--at-space-8)',
+      marginBottom: cssVar.space8,
       fontSize: 11,
       fontWeight: 600,
-      color: 'var(--at-fg-subtle)',
+      color: cssVar.fgSubtle,
       textTransform: 'uppercase',
       letterSpacing: 0.5,
     }}

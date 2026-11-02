@@ -34,7 +34,7 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
   private client?: Client;
 
   /**
-   * @param {ConfigService} configService - Acesso à configuração OIDC
+   * @param configService - Acesso à configuração OIDC
    *   (`issuerUrl`, `clientId`, `clientSecret`, `redirectUri`) e ao domínio
    *   institucional permitido (`auth.allowedDomain`).
    */
@@ -48,8 +48,9 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
    * login silencioso na sessão existente da Microsoft — assim o usuário pode entrar com OUTRA
    * conta após sair (nosso `logout` só limpa o cookie local; a sessão do IdP permanece).
    *
-   * @param {AuthorizationChallengeInterface} challenge - `state`/`nonce`/`codeChallenge`.
-   * @returns {Promise<string>} URL de autorização absoluta do IdP, com escopos
+   * @param challenge - `state`/`nonce`/`codeChallenge`.
+   *
+   * @returns URL de autorização absoluta do IdP, com escopos
    *   `openid profile email` e `response_mode=query`.
    */
   async getAuthorizationUrl(challenge: AuthorizationChallengeInterface): Promise<string> {
@@ -73,9 +74,11 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
    * desafio original), extrai as claims do `id_token`, valida o domínio institucional e
    * normaliza o resultado para {@link AuthenticatedUserInterface}.
    *
-   * @param {Record<string, string>} params - Query params do callback do IdP (`code`, `state`, …).
-   * @param {CallbackChallengeInterface} challenge - Desafio original (do cookie curto).
-   * @returns {Promise<AuthenticatedIdentityInterface>} Identidade autenticada e normalizada.
+   * @param params - Query params do callback do IdP (`code`, `state`, …).
+   * @param challenge - Desafio original (do cookie curto).
+   *
+   * @returns Identidade autenticada e normalizada.
+   *
    * @throws {UnauthorizedException} Se o e-mail estiver fora do domínio institucional permitido.
    */
   async handleCallback(
@@ -108,11 +111,12 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
    * container até o Entra às vezes dá hiccup). Se o `code` já tiver sido consumido na 1ª tentativa,
    * o retry falha com `invalid_grant` — erro claro, não pior que não tentar.
    *
-   * @param {Client} client - Client OIDC.
-   * @param {string} redirectUri - Redirect URI registrado.
-   * @param {Record<string, string>} params - Query params do callback.
-   * @param {CallbackChallengeInterface} challenge - Desafio (state/nonce/codeVerifier).
-   * @returns {Promise<TokenSet>} Tokens validados.
+   * @param client - Client OIDC.
+   * @param redirectUri - Redirect URI registrado.
+   * @param params - Query params do callback.
+   * @param challenge - Desafio (state/nonce/codeVerifier).
+   *
+   * @returns Tokens validados.
    */
   private async exchangeCode(
     client: Client,
@@ -148,8 +152,9 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
   /**
    * Identifica erros transitórios de rede/timeout (dignos de 1 retry).
    *
-   * @param {unknown} err - Erro capturado.
-   * @returns {boolean} `true` se for timeout/conexão (não um erro de protocolo do IdP).
+   * @param err - Erro capturado.
+   *
+   * @returns `true` se for timeout/conexão (não um erro de protocolo do IdP).
    */
   private isTransientNetworkError(err: unknown): boolean {
     const message = err instanceof Error
@@ -163,7 +168,7 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
    * Inicializa (uma única vez) o Client OIDC a partir do issuer configurado,
    * via discovery, e o cacheia para chamadas subsequentes.
    *
-   * @returns {Promise<Client>} Client OIDC pronto para uso.
+   * @returns Client OIDC pronto para uso.
    */
   private async getClient(): Promise<Client> {
     if (this.client) {
@@ -196,8 +201,8 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
    * Qualquer e-mail fora de `@${allowedDomain}` é rejeitado (comparação
    * case-insensitive). É a fronteira que restringe o acesso à organização.
    *
-   * @param {string} email - E-mail extraído das claims do IdP.
-   * @returns {void}
+   * @param email - E-mail extraído das claims do IdP.
+   *
    * @throws {UnauthorizedException} Se o domínio não estiver configurado ou o
    *   e-mail não pertencer ao domínio permitido.
    */

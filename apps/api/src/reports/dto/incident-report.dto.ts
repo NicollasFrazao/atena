@@ -9,13 +9,9 @@ import type {
   IncidentSeverityType,
 } from '@atena/types';
 
-/**
- * Filtros opcionais do relatório de incidentes. snake_case na borda.
- *
- * @property {IncidentSeverityType} [severity] - Restringe à severidade.
- * @property {DimensionType} [dimension] - Restringe ao tipo de dimensão.
- */
+/** Filtros opcionais do relatório de incidentes. snake_case na borda. */
 export class IncidentReportFiltersDto {
+  /** Restringe à severidade. */
   @IsOptional()
   @IsIn([
     'info',
@@ -24,6 +20,7 @@ export class IncidentReportFiltersDto {
   ])
   severity?: IncidentSeverityType;
 
+  /** Restringe ao tipo de dimensão. */
   @IsOptional()
   @IsIn([
     'provider',
@@ -34,13 +31,9 @@ export class IncidentReportFiltersDto {
   dimension?: DimensionType;
 }
 
-/**
- * Body de `generate_incident_report` (POST /api/reports/incidents). snake_case na borda.
- *
- * @property {string} [date_range] - Janela: `'24h'` (default) | `'7d'` | `'30d'` | `'all'`.
- * @property {IncidentReportFiltersDto} [filters] - Filtros opcionais (severidade/dimensão).
- */
+/** Body de `generate_incident_report` (POST /api/reports/incidents). snake_case na borda. */
 export class IncidentReportDto {
+  /** Janela: `'24h'` (default) | `'7d'` | `'30d'` | `'all'`. */
   @IsOptional()
   @IsIn([
     '24h',
@@ -50,6 +43,7 @@ export class IncidentReportDto {
   ])
   date_range?: string;
 
+  /** Filtros opcionais (severidade/dimensão). */
   @IsOptional()
   @ValidateNested()
   @Type(() => IncidentReportFiltersDto)

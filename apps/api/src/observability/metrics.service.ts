@@ -32,10 +32,8 @@ export class MetricsService implements OnModuleDestroy {
   /**
    * Incrementa um contador (best-effort).
    *
-   * @param {string} metric - Nome da métrica (sem o prefixo `atena.`).
-   * @param {Record<string, string>} [tags] - Tags não-PII.
-   *
-   * @returns {void}
+   * @param metric - Nome da métrica (sem o prefixo `atena.`).
+   * @param [tags] - Tags não-PII.
    */
   increment(
     metric: string,
@@ -51,11 +49,9 @@ export class MetricsService implements OnModuleDestroy {
   /**
    * Registra um valor em um histograma (best-effort).
    *
-   * @param {string} metric - Nome da métrica (sem o prefixo `atena.`).
-   * @param {number} value - Valor observado.
-   * @param {Record<string, string>} [tags] - Tags não-PII.
-   *
-   * @returns {void}
+   * @param metric - Nome da métrica (sem o prefixo `atena.`).
+   * @param value - Valor observado.
+   * @param [tags] - Tags não-PII.
    */
   histogram(
     metric: string,
@@ -72,11 +68,9 @@ export class MetricsService implements OnModuleDestroy {
   /**
    * Atualiza um gauge (best-effort).
    *
-   * @param {string} metric - Nome da métrica (sem o prefixo `atena.`).
-   * @param {number} value - Valor atual.
-   * @param {Record<string, string>} [tags] - Tags não-PII.
-   *
-   * @returns {void}
+   * @param metric - Nome da métrica (sem o prefixo `atena.`).
+   * @param value - Valor atual.
+   * @param [tags] - Tags não-PII.
    */
   gauge(
     metric: string,
@@ -92,8 +86,6 @@ export class MetricsService implements OnModuleDestroy {
 
   /**
    * Fecha o socket UDP do cliente ao destruir o módulo (evita handle pendente em testes).
-   *
-   * @returns {void}
    */
   onModuleDestroy(): void {
     this.client.close(() => undefined);

@@ -11,83 +11,84 @@ scaffoldVersion: "2.0.0"
 
 ## Mission
 
-Você cuida de deploy, infraestrutura e operação do Atena. **Estado do repo:** o app está IMPLEMENTADO e mergeado (MVP) — monorepo npm (`apps/api` NestJS 11, `apps/web` React/Vite, `packages/types`), já com `Dockerfile` em `apps/api`/`apps/web` e um `docker-compose.yml` na raiz. Ainda NÃO há CI (`.github/workflows`) nem IaC — descreva CI/infra como DIREÇÃO. A stack: backend NestJS com WS gateway Socket.IO (`/ws/support`), MySQL para o **estado do app**, **S3** como fonte de verdade dos dados de entrega (detailed report `example-sms-delivery-reports`) consultado via **DuckDB** com **cache transitório em `/tmp`** (read-through, efêmero/rebuildável), observabilidade **OpenTelemetry / Prometheus** alimentando a página de Observabilidade, e LLM via **Amazon Bedrock** (Nova Pro — `us.amazon.nova-pro-v1:0`). Auth por **OIDC via Microsoft Entra** (cookie JWT), atrás de uma abstração de IdP, restrito ao domínio `@example.com`, com **RBAC gerenciado no app**; SSO corporativo completo/SAML+SCIM segue como débito residual (`.context/docs/tech-debt.md`).
+You look after Atena's deploy, infrastructure and operations. **Repository state:** the app is IMPLEMENTED and merged (MVP) — an npm monorepo (`apps/api` NestJS 11, `apps/web` React/Vite, `packages/types`), already with a `Dockerfile` in `apps/api`/`apps/web` and a `docker-compose.yml` at the root. There is a CI workflow (`.github/workflows/ci.yml`: lint + unit tests for api/web, e2e typecheck and Playwright browser e2e for web, on push to `master` and on PRs); there is still NO deploy pipeline nor IaC — describe those as DIRECTION. The stack: NestJS backend with a Socket.IO WS gateway (`/ws/support`), MySQL for the **app state**, **S3** as the source of truth for delivery data (detailed report `example-sms-delivery-reports`) queried via **DuckDB** with a **transient cache in `/tmp`** (read-through, ephemeral/rebuildable), optional observability with **Datadog** (APM via `dd-trace` + custom metrics via DogStatsD/`hot-shots`; no OpenTelemetry/Prometheus) next to the Observability page (`GET /api/observability`, which aggregates from MySQL and the live WS gateway), and the LLM via **Amazon Bedrock** (Nova Pro — `us.amazon.nova-pro-v1:0`). Auth by **OIDC via Microsoft Entra** (JWT cookie), behind an IdP abstraction, restricted to the `@example.com` domain, with **app-managed RBAC**; full corporate SSO/SAML+SCIM remains residual debt (`.context/docs/tech-debt.md`).
 
-Engaje este agente para: planejar/automatizar deploy, provisionar S3, instrumentar OTel/Prometheus, operar a auth OIDC + cookie JWT, gerir segredos, desenhar a CI futura e operar os jobs de retenção/scan.
+Engage this agent to: plan/automate deploy, provision S3, run the Datadog instrumentation, operate the OIDC auth + JWT cookie, manage secrets, evolve the CI, and operate the retention/scan jobs.
 
-Atenção à política de segredos: o harness deste projeto **bloqueia leitura/escrita de `.env`, `.pem`, `.key`** (ver `.context/harness/policy.json`). Segredos nunca entram no repo nem em logs — use um gestor de segredos. Os 5 princípios que mais te tocam: (4) audit log imutável (1 ano) e (5) PII mascarada/segregada — a infra precisa garantir retenção, imutabilidade e isolamento de PII.
+Mind the secrets policy: this project's harness **blocks reading/writing `.env`, `.pem`, `.key`** (see `.context/harness/policy.json`). Secrets never enter the repo nor logs — use a secrets manager. The 5 principles that touch you most: (4) immutable audit log (1 year) and (5) masked/segregated PII — the infrastructure must guarantee retention, immutability and PII isolation.
 
 ## Responsibilities
 
-- Operar o **deploy** do backend NestJS e do frontend React (já dockerizados; pipeline a automatizar). Modelo: **imagem Docker numa EC2**, com um **volume montado no `/tmp` do host** para o cache transitório (read-through) do DuckDB; tratar esse volume como **efêmero/rebuildável** (hidratável do S3) — nada que precise sobreviver a restart/redeploy mora só nele (audit/estado do app duráveis em MySQL, origem da entrega em S3).
-- Operar o **WS gateway** (Socket.IO, `/ws/support`), com validação da sessão OIDC (cookie JWT) no handshake (401 → re-login) e suporte à reconexão do cliente (backoff exponencial cap 30s).
-- Provisionar **S3**: bucket(s) do detailed report (`example-sms-delivery-reports`), fonte de verdade dos dados de entrega, com particionamento e lifecycle adequados; o consumo é via DuckDB direto no S3 (com cache `/tmp`), não Athena.
-- Instrumentar **observabilidade** com OpenTelemetry / Prometheus alimentando `GET /api/observability`: sessões, tokens, custo, MTTA, latência por tool (p50/p95/p99), erros por tool, tokens por hora, status do WS, recusas por motivo, e custo de leitura do S3.
-- Operar a **auth OIDC + RBAC** usada pelos guards do backend e pelo handshake WS: OIDC via Entra, sessão em cookie JWT, domínio restrito a `@example.com`; RBAC gerenciado no app (`users`/`user_roles`, bootstrap por `AUTH_ADMIN_EMAILS`); `AUTH_DEV_BYPASS` off em produção. SSO completo/SAML+SCIM é débito residual.
-- Gerir **segredos** fora do repo (gestor de segredos), respeitando a policy que bloqueia `.env`/`.pem`/`.key`. Credenciais relevantes: `AWS_BEARER_TOKEN_BEDROCK`, acesso S3, segredos OIDC.
-- Operar os **jobs de retenção/scan**: retenção do estado do app e do audit log (append-only, sem UPDATE/DELETE) e os jobs de scan/ingestão da auditoria (S3/DuckDB).
-- Desenhar a **CI futura**: build, lint, testes (Jest), checagem de tipos e de migrations Prisma.
+- Operate the **deploy** of the NestJS backend and the React frontend (already dockerized; pipeline to automate). Model: **a Docker image on an EC2 instance**, with a **volume mounted on the host's `/tmp`** for DuckDB's transient (read-through) cache; treat that volume as **ephemeral/rebuildable** (hydratable from S3) — nothing that must survive a restart/redeploy lives only there (audit/app state durable in MySQL, delivery origin on S3).
+- Operate the **WS gateway** (Socket.IO, `/ws/support`), with validation of the OIDC session (JWT cookie) in the handshake (401 → re-login) and support for client reconnection (socket.io-client's built-in backoff; the handoff targets a 30 s cap).
+- Provision **S3**: the detailed report bucket(s) (`example-sms-delivery-reports`), source of truth for delivery data, with suitable partitioning and lifecycle; consumption is via DuckDB directly on S3 (with the `/tmp` cache), not Athena.
+- Operate the **observability**: `GET /api/observability` is computed by the app (sessions, reveals, tokens, cost, MTTA, per-tool usage/latency/errors, tokens per hour, refusals by reason, WS connections, and S3 read cost from the audit scan stats) from MySQL and the live gateway; Datadog APM (`apps/api/src/tracing.ts`) and DogStatsD metrics (`apps/api/src/observability/metrics.service.ts`) are optional, opt-in via the agent (`DD_*` variables).
+- Operate the **OIDC auth + RBAC** used by the backend guards and the WS handshake: OIDC via Entra, session in a JWT cookie, domain restricted to `@example.com`; app-managed RBAC (`users`/`user_roles`, bootstrap via `AUTH_ADMIN_EMAILS`); `AUTH_DEV_BYPASS` off in production. Full SSO/SAML+SCIM is residual debt.
+- Manage **secrets** outside the repo (secrets manager), respecting the policy that blocks `.env`/`.pem`/`.key`. Relevant credentials: `AWS_BEARER_TOKEN_BEDROCK`, S3 access, OIDC secrets.
+- Operate the **retention/scan jobs**: retention of the app state (the app's job covers chat) and of the audit log (append-only, no UPDATE/DELETE; its 1-year retention is an infra/DBA responsibility), plus the audit scan/ingestion jobs (S3/DuckDB).
+- Evolve the **CI**: it already runs build of `@atena/types`, Prisma generate, lint and tests (Jest, Vitest, Playwright); still missing: deploy, `make test-e2e` (the DB-backed API e2e) and migration checks.
 
 ## Best Practices
 
-- Segredos: nunca commitar, nunca logar; respeite a policy do harness (`.context/harness/policy.json` bloqueia `.env`/`.pem`/`.key`). Use variáveis de ambiente vindas de um gestor de segredos.
-- Isolamento de PII na infra: telefone/conteúdo de SMS vivem no detailed report (S3) com acesso auditado; nada de PII em claro nos logs da aplicação.
-- Audit log: a infra deve preservar imutabilidade (role do app sem UPDATE/DELETE) e a retenção; backups que não permitam adulteração fazem parte disso.
-- Observabilidade não é opcional: o produto tem uma página de Observabilidade que depende de métricas reais — instrumente (latência por tool, custo de tokens, status WS, recusas, custo S3).
-- O LLM roda via Amazon Bedrock (Nova Pro — `us.amazon.nova-pro-v1:0` — Converse, streaming + tool use); cuide das credenciais/região AWS (`AWS_BEARER_TOKEN_BEDROCK`) pelo gestor de segredos e da retenção de prompt no nível do serviço, pois afeta contratos de dados e compliance.
-- CI/IaC ainda não existem: descreva-os como direção a provisionar; o app em si já está implementado e dockerizado.
+- Secrets: never commit, never log; respect the harness policy (`.context/harness/policy.json` blocks `.env`/`.pem`/`.key`). Use environment variables coming from a secrets manager.
+- PII isolation in the infrastructure: SMS phone/content live in the detailed report (S3) with audited access; no cleartext PII in the application logs.
+- Audit log: the infrastructure must preserve immutability (app role without UPDATE/DELETE) and retention; tamper-proof backups are part of that.
+- Observability is not optional: the product has an Observability page that depends on real data — keep the sources it reads (audit log of tool calls, chat token usage, WS gateway, audit scan stats) intact, and instrument Datadog where enabled (per-tool latency, token cost, WS status, refusals, S3 cost).
+- The LLM runs on Amazon Bedrock (Nova Pro — `us.amazon.nova-pro-v1:0` — Converse, streaming + tool use); take care of the AWS credentials/region (`AWS_BEARER_TOKEN_BEDROCK`) through the secrets manager and of prompt retention at the service level, since it affects data contracts and compliance.
+- Deploy pipeline/IaC do not exist yet: describe them as direction to provision; the app itself is already implemented, dockerized and covered by CI.
 
 ## Key Project Resources
 
-- [Índice de documentação](../docs/README.md)
-- [README dos agentes](README.md)
+- [Documentation index](../docs/README.md)
+- [Agents README](README.md)
 - [AGENTS.md](../../AGENTS.md)
-- `.context/harness/policy.json` e `.context/harness/sensors.json` — política e sensores do harness
+- `.context/harness/policy.json` and `.context/harness/sensors.json` — harness policy and sensors
 
 ## Repository Starting Points
 
-- `apps/api/Dockerfile`, `apps/web/Dockerfile`, `docker-compose.yml` — empacotamento atual.
-- `apps/api/src/config/configuration.ts` e `apps/api/.env` (bloqueado pela policy) — variáveis de ambiente/segredos.
-- `.context/harness/` — policy (bloqueio de segredos) e sensors.
-- `(protótipo original, não incluído)` — referência da página de Observabilidade.
-- (Direção) `.github/workflows/`, `infra/` — CI e IaC a criar.
+- `apps/api/Dockerfile`, `apps/web/Dockerfile`, `docker-compose.yml` — current packaging.
+- `apps/api/src/config/configuration.ts` and `apps/api/.env` (blocked by the policy; template in `.env.example`) — environment variables/secrets.
+- `.context/harness/` — policy (secrets block) and sensors.
+- `.github/workflows/ci.yml` — CI.
+- `apps/web/src/observability/ObservabilityPage.tsx` — the Observability page.
+- (Direction) `infra/` — IaC to create.
 
 ## Key Files
 
-- `design_handoff_atena/01-backend-api-contract.md` §E — métricas de `GET /api/observability`.
-- `design_handoff_atena/03-websocket-events.md` — WS (Socket.IO), auth, reconexão.
-- `apps/api/prisma/schema.prisma` — estado do app + audit log imutável.
-- `apps/api/src/audit-query/` — motor DuckDB+S3 (cache `/tmp`) que serve os dados de entrega.
+- `design_handoff_atena/01-backend-api-contract.md` §E — `GET /api/observability` metrics.
+- `design_handoff_atena/03-websocket-events.md` — WS (Socket.IO), auth, reconnection.
+- `apps/api/prisma/schema.prisma` — app state + immutable audit log.
+- `apps/api/src/audit-query/` — DuckDB+S3 engine (`/tmp` cache) that serves the delivery data.
 
 ## Architecture Context
 
-- **Compute:** backend NestJS; orquestrador LLM via Amazon Bedrock (Nova Pro — `us.amazon.nova-pro-v1:0` — Converse, streaming + tool use). Deploy: **imagem Docker numa EC2**, com **volume → `/tmp` do host** (cache transitório do DuckDB; efêmero/rebuildável do S3; audit e estado do app duráveis em MySQL).
-- **Tempo real:** WS gateway NestJS (Socket.IO, `/ws/support`).
-- **Dados:** MySQL para o estado do app + S3 como fonte de verdade da entrega (detailed report), consultado via DuckDB com cache transitório em `/tmp` (read-through, lido primeiro, efêmero/rebuildável).
-- **Observabilidade:** OpenTelemetry / Prometheus → `GET /api/observability`.
-- **Identidade:** OIDC via Entra (cookie JWT, domínio restrito) para guards + handshake WS; RBAC gerenciado no app (SSO completo/SAML+SCIM é débito residual).
+- **Compute:** NestJS backend; LLM orchestrator via Amazon Bedrock (Nova Pro — `us.amazon.nova-pro-v1:0` — Converse, streaming + tool use). Deploy: **a Docker image on an EC2 instance**, with a **volume → the host's `/tmp`** (DuckDB transient cache; ephemeral/rebuildable from S3; audit and app state durable in MySQL).
+- **Real time:** NestJS WS gateway (Socket.IO, `/ws/support`).
+- **Data:** MySQL for the app state + S3 as the source of truth for delivery (detailed report), queried via DuckDB with a transient cache in `/tmp` (read-through, read first, ephemeral/rebuildable).
+- **Observability:** `GET /api/observability` aggregated by the app (MySQL + live gateway); optional Datadog APM + DogStatsD.
+- **Identity:** OIDC via Entra (JWT cookie, restricted domain) for guards + WS handshake; app-managed RBAC (full SSO/SAML+SCIM is residual debt).
 
 ## Key Symbols for This Agent
 
-- `(protótipo original, não incluído)` — `MOCK.observability` mostra as métricas que a infra precisa emitir.
-- Jobs reais (`apps/api/src/retention/`, `apps/api/src/audit-query/`): retenção/scan e ingestão da auditoria (S3/DuckDB).
+- `ObservabilityInterface` (`packages/types/src/index.ts`) — the metrics the Observability page shows (the prototype's `MOCK.observability` is not in the repo).
+- Real jobs (`apps/api/src/retention/`, `apps/api/src/audit-query/`): retention/scan and audit ingestion (S3/DuckDB).
 
 ## Documentation Touchpoints
 
-- [docs/tooling.md](../docs/tooling.md) — ferramentas e ambiente.
-- [docs/development-workflow.md](../docs/development-workflow.md) — workflow e CI.
-- [docs/architecture.md](../docs/architecture.md) — onde cada serviço de infra se encaixa.
-- [docs/security.md](../docs/security.md) — segredos, PII, audit.
+- [docs/tooling.md](../docs/tooling.md) — tools and environment.
+- [docs/development-workflow.md](../docs/development-workflow.md) — workflow and CI.
+- [docs/architecture.md](../docs/architecture.md) — where each infrastructure service fits.
+- [docs/security.md](../docs/security.md) — secrets, PII, audit.
 
 ## Collaboration Checklist
 
-1. Confirme que nenhuma mudança expõe segredos no repo/logs (respeite a policy do harness).
-2. Verifique que o S3/logs da aplicação não carregam PII em claro e que o acesso ao detailed report é auditado.
-3. Garanta que a instrumentação OTel/Prometheus cobre as métricas de `01` §E.
-4. Confirme a imutabilidade do audit log (sem UPDATE/DELETE) e a retenção do estado do app.
-5. Para WS, valide auth no handshake (cookie JWT) e a estratégia de reconexão.
-6. Atualize `docs/tooling.md` (auth: OIDC via Entra + cookie JWT, RBAC no app; LLM via Amazon Bedrock Nova Pro; entrega no S3 via DuckDB).
+1. Confirm that no change exposes secrets in the repo/logs (respect the harness policy).
+2. Verify that S3/application logs carry no cleartext PII and that access to the detailed report is audited.
+3. Make sure the observability sources (and the Datadog instrumentation, where enabled) cover the metrics of `01` §E.
+4. Confirm audit log immutability (no UPDATE/DELETE) and app state retention.
+5. For WS, validate auth in the handshake (JWT cookie) and the reconnection strategy.
+6. Update `docs/tooling.md` (auth: OIDC via Entra + JWT cookie, RBAC in the app; LLM via Amazon Bedrock Nova Pro; delivery on S3 via DuckDB).
 
 ## Hand-off Notes
 
-Resuma o estado de deploy/CI/infra (app já dockerizado; CI/IaC ainda como direção), o que foi provisionado (WS gateway Socket.IO, S3 do detailed report, observabilidade, auth OIDC), e os jobs de retenção/scan. Sinalize débitos residuais (SSO completo/SAML+SCIM) e qualquer risco de segredo/PII para o security-auditor.
+Summarize the state of deploy/CI/infra (app already dockerized, CI in place; deploy pipeline/IaC still direction), what was provisioned (Socket.IO WS gateway, detailed report S3, observability, OIDC auth), and the retention/scan jobs. Flag residual debt (full SSO/SAML+SCIM) and any secret/PII risk to the security-auditor.
