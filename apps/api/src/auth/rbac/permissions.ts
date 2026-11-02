@@ -88,7 +88,10 @@ export function permissionsFor(roles: RoleType[]): PermissionType[] {
   const granted = new Set<PermissionType>();
 
   for (const role of roles) {
-    for (const permission of ROLE_PERMISSIONS[role]) {
+    // Roles come from the database: one this build does not know grants nothing instead of throwing.
+    const permissions: PermissionType[] | undefined = ROLE_PERMISSIONS[role];
+
+    for (const permission of permissions ?? []) {
       granted.add(permission);
     }
   }
