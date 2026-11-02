@@ -87,8 +87,8 @@ The model in [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md
 
 ## 14. Dependency advisories below the audit gate
 - **Context (2026-11-01):** CI fails on production advisories of severity **high** or above (`npm audit --omit=dev --audit-level=high`). The high ones found when the gate was introduced were fixed (lockfile updates, `dd-trace` ≥ 5.134, `multer` 2.5.0 through `overrides`, because `@nestjs/platform-express` 11 pins 2.4.0).
-- **Open:** two **moderate** advisories in `react-router` 6 (open redirect via backslash in `<Link>`/`useNavigate`; constructor injection in SSR hydration, which this SPA does not use). The fix is react-router 7, a major upgrade.
-- **What closes it:** migrate `react-router-dom` 6 → 7 (route definitions and data APIs), then drop the `multer` override once `@nestjs/platform-express` ships a fixed version.
+- **Open:** none at moderate or above since react-router 7 (#32, 2026-11-02): `npm audit --omit=dev --audit-level=moderate` reports 0.
+- **What closes it:** drop the `multer` override once `@nestjs/platform-express` ships a fixed version.
 
 ## 15. Code comments still in Portuguese
 - **Context:** the standards require everything in English. The context base, the tooling and every comment written since 2026-11-01 are in English; most older code comments (TSDoc of the API and web modules, inline comments), the `Makefile` help texts, `docs/` (handoff, cost notes) and some identifiers of pages (`UsuariosPage`, `RelatoriosPage`, route `/admin/usuarios`) are still in Portuguese. User-facing UI strings stay in Portuguese by design.
@@ -98,5 +98,5 @@ The model in [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md
 - **Incident detection-window fallbacks:** the schema says the window columns are `NOT NULL`, but the service still falls back when they are missing (a spec relies on it). Decide whether the fallback should exist.
 
 ## 17. Dependabot holds the majors that are migrations
-- **Context (2026-11-02):** these majors break the build when bumped alone: NestJS 12 (#25), React 19 with react-router 7 (#32) and Prisma 7 (#44). The `@types/node` and TypeScript majors wait for the Node 22 runtime and for typescript-eslint. `.github/dependabot.yml` ignores their semver-major updates so the weekly PRs do not reopen.
+- **Context (2026-11-02):** these majors break the build when bumped alone: NestJS 12 (#25) and Prisma 7 (#44). The `@types/node` and TypeScript majors wait for the Node 22 runtime and for typescript-eslint. `.github/dependabot.yml` ignores their semver-major updates so the weekly PRs do not reopen.
 - **What closes it:** each migration removes its own `ignore` entries; `@types/node` moves with the runtime and TypeScript with typescript-eslint.
