@@ -32,6 +32,8 @@ COPY --from=build /app/packages/types/package.json ./packages/types/package.json
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build /app/apps/api/prisma ./apps/api/prisma
+# Prisma 7 reads the migration URL from here (the entrypoint runs `prisma migrate deploy`).
+COPY --from=build /app/apps/api/prisma.config.ts ./apps/api/prisma.config.ts
 COPY apps/api/docker-entrypoint.sh /usr/local/bin/atena-entrypoint
 RUN chmod +x /usr/local/bin/atena-entrypoint
 EXPOSE 3000

@@ -3,9 +3,12 @@
  * O dado de ENTREGA (mensagens) NÃO é mais semeado: vem do S3 sob demanda via AuditQueryService.
  * NÃO usar em produção. Rode com: `npm run seed` (ou `prisma db seed`).
  */
+import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '@prisma/client';
+import { poolConfigFrom } from '../src/prisma/prisma.service';
 
-const prisma = new PrismaClient();
+// Prisma 7 connects through a driver adapter; the same one PrismaService uses.
+const prisma = new PrismaClient({ adapter: new PrismaMariaDb(poolConfigFrom(process.env.DATABASE_URL ?? '')) });
 
 // Rule ids referenced by the rules and by the seeded incidents.
 const RULE_DELIVERY_DROP_CUSTOMER = 'r-delivery-drop-customer';
