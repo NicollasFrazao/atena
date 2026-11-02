@@ -1,5 +1,9 @@
-/** Jest (ts-jest) do backend da Atena. Compila os testes como CommonJS
- * (override do `nodenext` do tsconfig base, que o Jest/CJS não consome direto). */
+/**
+ * Jest (ts-jest) of the API. Tests are compiled as CommonJS (overriding the base tsconfig's
+ * `nodenext`, which Jest's CommonJS runtime does not consume directly).
+ */
+const COVERAGE_THRESHOLD = 80;
+
 module.exports = {
   testEnvironment: 'node',
   moduleFileExtensions: [
@@ -24,6 +28,29 @@ module.exports = {
         },
       },
     ],
+  },
+  // `npm run test:coverage` measures every source file, not only those a test imports.
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/**/*.spec.ts',
+    '!src/**/*.e2e-spec.ts',
+    // Entry points only wire tested parts together: the Nest bootstrap and the APM preload.
+    '!src/main.ts',
+    '!src/tracing.ts',
+  ],
+  coverageReporters: [
+    'text-summary',
+    'text',
+    'lcov',
+    'json-summary',
+  ],
+  coverageThreshold: {
+    global: {
+      statements: COVERAGE_THRESHOLD,
+      branches: COVERAGE_THRESHOLD,
+      functions: COVERAGE_THRESHOLD,
+      lines: COVERAGE_THRESHOLD,
+    },
   },
   moduleNameMapper: {
     '^@atena/types$': '<rootDir>/../../packages/types/src/index.ts',

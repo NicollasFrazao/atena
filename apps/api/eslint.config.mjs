@@ -1,15 +1,29 @@
-// ESLint (flat config) do backend da Atena. As regras vêm da base compartilhada (../../eslint.shared.mjs):
-// typescript-eslint recommended + sonarjs/recommended + bloco estrito (code-style.md).
+// ESLint flat config of the API. The rules come from the shared base (../../eslint.shared.mjs).
 import tseslint from 'typescript-eslint';
-import { sharedConfigs } from '../../eslint.shared.mjs';
+import { sharedConfigs, testOverrides } from '../../eslint.shared.mjs';
 
 export default tseslint.config(
   {
     ignores: [
       'dist/**',
       'node_modules/**',
+      'coverage/**',
       'prisma/migrations/**',
     ],
   },
-  ...sharedConfigs,
+  ...sharedConfigs({
+    tsconfigRootDir: import.meta.dirname,
+    allowDefaultProject: [
+      'test-setup.ts',
+      'prisma/seed.ts',
+    ],
+  }),
+  {
+    files: [
+      '**/*.spec.ts',
+      '**/*.e2e-spec.ts',
+      'test-setup.ts',
+    ],
+    ...testOverrides,
+  },
 );

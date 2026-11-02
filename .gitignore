@@ -1,4 +1,8 @@
-# dotcontext runtime state
+# dotcontext local state: harness, config, caches, sessions and plans. Only
+# .context/docs, .context/agents and .context/skills are versioned.
+.context/config.json
+.context/config/
+.context/harness/
 .context/plans/
 .context/runtime/
 .context/cache/semantic/
@@ -12,12 +16,12 @@
 .context/harness/datasets/
 .context/**/archive/
 
-# secrets / variáveis de ambiente
+# secrets and environment variables
 .env
 .env.*
 !.env.example
 
-# artefatos de validação do Playwright MCP (snapshots/screenshots) — não versionar
+# Playwright MCP validation artifacts (snapshots, screenshots)
 .playwright-mcp/
 report-card.png
 
@@ -28,12 +32,12 @@ build/
 *.tsbuildinfo
 coverage/
 
-# Playwright (e2e do web): relatórios/artefatos e cache do browser — não versionar
+# Playwright (web e2e): reports, artifacts and the browser cache
 apps/web/playwright-report/
 apps/web/test-results/
 apps/web/blob-report/
 .cache/ms-playwright/
-# saída compilada nunca deve cair ao lado do source dos pacotes
+# compiled output must never land next to the package sources
 packages/*/src/**/*.js
 packages/*/src/**/*.js.map
 packages/*/src/**/*.d.ts

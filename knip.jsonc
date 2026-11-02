@@ -1,0 +1,45 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/*.mjs"
+      ],
+      "project": [
+        "eslint-rules/**/*.mjs",
+        "scripts/**/*.mjs",
+        "*.mjs"
+      ]
+    },
+    "apps/api": {
+      "entry": [
+        "src/main.ts",
+        // Integration suite run by jest-e2e.config.js (`make test-e2e`), which knip's Jest plugin
+        // does not read.
+        "src/**/*.e2e-spec.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "prisma/**/*.ts"
+      ],
+      // Named in nest-cli.json as the `nest generate` collection; installed with @nestjs/cli.
+      "ignoreDependencies": [
+        "@nestjs/schematics"
+      ]
+    },
+    "apps/web": {
+      "entry": [
+        "e2e/**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx}",
+        "e2e/**/*.ts"
+      ]
+    },
+    "packages/types": {
+      "project": [
+        "src/**/*.ts"
+      ]
+    }
+  }
+}

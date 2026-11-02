@@ -1,15 +1,25 @@
-// ESLint (flat config) do app web (React + TS). Herda a base compartilhada da Atena
-// (../../eslint.shared.mjs: typescript-eslint + sonarjs/recommended + bloco estrito de code-style)
-// e acrescenta só o específico de frontend: hooks, react-refresh e globals do browser.
+// ESLint flat config of the web app (React + TypeScript). It inherits the shared base
+// (../../eslint.shared.mjs) and adds only what is specific to the frontend: hooks, react-refresh
+// and browser globals.
 import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
-import { sharedConfigs } from '../../eslint.shared.mjs';
+import { sharedConfigs, testOverrides } from '../../eslint.shared.mjs';
 
 export default tseslint.config(
-  { ignores: ['dist'] },
-  ...sharedConfigs,
+  {
+    ignores: [
+      'dist/**',
+      'coverage/**',
+      'playwright-report/**',
+      'test-results/**',
+    ],
+  },
+  ...sharedConfigs({
+    tsconfigRootDir: import.meta.dirname,
+    allowDefaultProject: ['playwright.config.ts'],
+  }),
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
@@ -23,9 +33,16 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': [
-        'warn',
+        'error',
         { allowConstantExport: true },
       ],
     },
+  },
+  {
+    files: [
+      '**/*.spec.{ts,tsx}',
+      'e2e/**/*.ts',
+    ],
+    ...testOverrides,
   },
 );

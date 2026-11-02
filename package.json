@@ -2,23 +2,49 @@
   "name": "atena",
   "version": "0.0.0",
   "private": true,
-  "description": "Atena — assistente conversacional de IA da Acme (monorepo)",
+  "description": "Atena — Acme's conversational AI assistant for customer support (monorepo)",
   "workspaces": [
     "packages/*",
     "apps/*"
   ],
   "overrides": {
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "multer": "2.5.0"
   },
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "dev": "npm run start:dev --workspace apps/api",
-    "lint": "npm run lint --workspaces --if-present",
+    "lint": "eslint --max-warnings 0 . && npm run lint --workspaces --if-present",
+    "lint:fix": "eslint --fix . && npm run lint:fix --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "test:coverage": "npm run test:coverage --workspaces --if-present",
+    "test:tooling": "vitest run --config vitest.config.mjs",
+    "check:architecture": "depcruise apps/api/src apps/web/src apps/web/e2e packages/types/src --config .dependency-cruiser.cjs",
+    "check:unused": "knip",
+    "check:context": "node scripts/check-context-surfaces.mjs",
+    "export:context": "node scripts/check-context-surfaces.mjs --write",
     "prisma:generate": "npm run prisma:generate --workspace apps/api",
-    "prisma:migrate": "npm run prisma:migrate --workspace apps/api"
+    "prisma:migrate": "npm run prisma:migrate --workspace apps/api",
+    "prepare": "husky"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@eslint/js": "^9.39.4",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "dependency-cruiser": "^18.7.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-jsdoc": "^65.4.2",
+    "eslint-plugin-sonarjs": "^4.2.2",
+    "globals": "^17.14.0",
+    "husky": "^9.1.7",
+    "knip": "^6.44.1",
+    "lint-staged": "^17.6.0",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^2.1.9"
   }
 }

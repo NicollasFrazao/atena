@@ -1,6 +1,8 @@
-/** Jest (ts-jest) — suíte e2e de INTEGRAÇÃO da Atena (MySQL real).
+/**
+ * Jest (ts-jest) — suíte e2e de INTEGRAÇÃO da Atena (MySQL real).
  * Casa só `*.e2e-spec.ts` (fora do `make test`); rode via `make test-e2e`,
- * que sobe o banco, migra, semeia e exporta DATABASE_URL. */
+ * que sobe o banco, migra, semeia e exporta DATABASE_URL.
+ */
 module.exports = {
   testEnvironment: 'node',
   moduleFileExtensions: [
