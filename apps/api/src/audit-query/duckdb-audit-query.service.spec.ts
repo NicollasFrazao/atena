@@ -344,9 +344,9 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
       pending: 1, // C3
     });
 
-    const provider-c = report.byProvider.find((row) => row.name === 'provider-c');
-    expect(provider-c?.sent).toBe(3); // C1, C2, C4
-    expect(provider-c?.delivered).toBe(1); // C1
+    const providerC = report.byProvider.find((row) => row.name === 'provider-c');
+    expect(providerC?.sent).toBe(3); // C1, C2, C4
+    expect(providerC?.delivered).toBe(1); // C1
 
     const zapsms = report.byProvider.find((row) => row.name === 'zapsms');
     expect(zapsms?.sent).toBe(1); // C5 (sms_flash)
