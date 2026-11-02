@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Issuer, custom, type Client, type TokenSet } from 'openid-client';
+import * as oidc from 'openid-client';
 import {
   type AuthenticatedIdentityInterface,
   type AuthorizationChallengeInterface,
@@ -9,11 +9,14 @@ import {
 } from './identity-provider.interface';
 
 /**
- * Timeout (ms) das requisições HTTP do `openid-client` (discovery + token exchange). O default
- * (3500ms) era curto demais para o `login.microsoftonline.com` a partir do container, causando
- * `RPError: outgoing request timed out` (500 no `/auth/login`).
+ * Timeout (seconds) of the `openid-client` HTTP requests (discovery and token exchange). openid-client
+ * 5 defaulted to 3.5 s, too short for `login.microsoftonline.com` from the container (500 on
+ * `/auth/login`); 6 defaults to 30 s. 10 s keeps a slow IdP from holding the login for long.
  */
-const OIDC_HTTP_TIMEOUT_MS = 10_000;
+const OIDC_HTTP_TIMEOUT_SECONDS = 10;
+
+/** Token response of the code exchange, with the helpers that read the ID Token claims. */
+type TokenResponse = Awaited<ReturnType<typeof oidc.authorizationCodeGrant>>;
 
 /**
  * Implementação do {@link IdentityProviderInterface} para login social institucional
@@ -30,8 +33,8 @@ const OIDC_HTTP_TIMEOUT_MS = 10_000;
  */
 @Injectable()
 export class MicrosoftEntraProvider implements IdentityProviderInterface {
-  /** Client OIDC inicializado via discovery (lazy, cacheado após o 1º uso). */
-  private client?: Client;
+  /** OIDC configuration from discovery (lazy, cached after the first use). */
+  private config?: oidc.Configuration;
 
   /**
    * @param configService - Acesso à configuração OIDC
@@ -54,19 +57,24 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
    *   `openid profile email` e `response_mode=query`.
    */
   async getAuthorizationUrl(challenge: AuthorizationChallengeInterface): Promise<string> {
-    const client = await this.getClient();
+    const config = await this.getConfig();
+    const redirectUri = this.configService.get<string>('auth.oidc.redirectUri') ?? '';
 
-    return client.authorizationUrl({
-      scope: 'openid profile email',
-      state: challenge.state,
-      nonce: challenge.nonce,
-      code_challenge: challenge.codeChallenge,
-      code_challenge_method: 'S256',
-      // Sempre oferecer o seletor de conta (permite trocar de conta no login).
-      prompt: 'select_account',
-      // `response_mode: 'query'` mantém o callback simples (GET com query params).
-      response_mode: 'query',
-    });
+    return oidc.buildAuthorizationUrl(
+      config,
+      {
+        redirect_uri: redirectUri,
+        scope: 'openid profile email',
+        state: challenge.state,
+        nonce: challenge.nonce,
+        code_challenge: challenge.codeChallenge,
+        code_challenge_method: 'S256',
+        // Sempre oferecer o seletor de conta (permite trocar de conta no login).
+        prompt: 'select_account',
+        // `response_mode: 'query'` mantém o callback simples (GET com query params).
+        response_mode: 'query',
+      },
+    ).href;
   }
 
   /**
@@ -85,24 +93,30 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
     params: Record<string, string>,
     challenge: CallbackChallengeInterface,
   ): Promise<AuthenticatedIdentityInterface> {
-    const client = await this.getClient();
+    const config = await this.getConfig();
     const redirectUri = this.configService.get<string>('auth.oidc.redirectUri') ?? '';
 
-    const tokenSet = await this.exchangeCode(
-      client,
+    const tokens = await this.exchangeCode(
+      config,
       redirectUri,
       params,
       challenge,
     );
 
-    const claims = tokenSet.claims();
-    const email = claims.email ?? claims.preferred_username ?? '';
+    // `expectedNonce` makes an ID Token mandatory, so the claims are always there.
+    const claims = tokens.claims();
+
+    if (!claims) {
+      throw new UnauthorizedException('The identity provider returned no ID Token.');
+    }
+
+    const email = stringClaim(claims.email) ?? stringClaim(claims.preferred_username) ?? '';
     this.assertAllowedDomain(email);
 
     return {
       sub: claims.sub,
       email,
-      name: claims.name ?? '',
+      name: stringClaim(claims.name) ?? '',
     };
   }
 
@@ -111,7 +125,7 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
    * container até o Entra às vezes dá hiccup). Se o `code` já tiver sido consumido na 1ª tentativa,
    * o retry falha com `invalid_grant` — erro claro, não pior que não tentar.
    *
-   * @param client - Client OIDC.
+   * @param config - OIDC configuration.
    * @param redirectUri - Redirect URI registrado.
    * @param params - Query params do callback.
    * @param challenge - Desafio (state/nonce/codeVerifier).
@@ -119,21 +133,34 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
    * @returns Tokens validados.
    */
   private async exchangeCode(
-    client: Client,
+    config: oidc.Configuration,
     redirectUri: string,
     params: Record<string, string>,
     challenge: CallbackChallengeInterface,
-  ): Promise<TokenSet> {
-    const checks = {
-      state: challenge.state,
-      nonce: challenge.nonce,
-      code_verifier: challenge.codeVerifier,
+  ): Promise<TokenResponse> {
+    // openid-client 6 reads the authorization response from the callback URL itself.
+    const callbackUrl = new URL(redirectUri);
+
+    for (const [
+      name,
+      value,
+    ] of Object.entries(params)) {
+      callbackUrl.searchParams.set(
+        name,
+        value,
+      );
+    }
+
+    const checks: oidc.AuthorizationCodeGrantChecks = {
+      expectedState: challenge.state,
+      expectedNonce: challenge.nonce,
+      pkceCodeVerifier: challenge.codeVerifier,
     };
 
     try {
-      return await client.callback(
-        redirectUri,
-        params,
+      return await oidc.authorizationCodeGrant(
+        config,
+        callbackUrl,
         checks,
       );
     } catch (err) {
@@ -141,9 +168,9 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
         throw err;
       }
 
-      return client.callback(
-        redirectUri,
-        params,
+      return oidc.authorizationCodeGrant(
+        config,
+        callbackUrl,
         checks,
       );
     }
@@ -161,39 +188,36 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
       ? err.message
       : String(err);
 
-    return /timed out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|socket hang up|network/i.test(message);
+    // `timeout`: openid-client 6 aborts with a TimeoutError; `fetch failed`: undici's network error.
+    return /timed out|timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|socket hang up|fetch failed|network/i.test(message);
   }
 
   /**
-   * Inicializa (uma única vez) o Client OIDC a partir do issuer configurado,
-   * via discovery, e o cacheia para chamadas subsequentes.
+   * Discovers the configured issuer once (Entra ID `.../v2.0/.well-known/openid-configuration`) and
+   * caches the OIDC configuration for later calls.
    *
-   * @returns Client OIDC pronto para uso.
+   * @returns OIDC configuration ready for use.
    */
-  private async getClient(): Promise<Client> {
-    if (this.client) {
-      return this.client;
+  private async getConfig(): Promise<oidc.Configuration> {
+    if (this.config) {
+      return this.config;
     }
 
     const issuerUrl = this.configService.get<string>('auth.oidc.issuerUrl') ?? '';
     const clientId = this.configService.get<string>('auth.oidc.clientId') ?? '';
     const clientSecret = this.configService.get<string>('auth.oidc.clientSecret') ?? '';
-    const redirectUri = this.configService.get<string>('auth.oidc.redirectUri') ?? '';
 
-    // Timeout HTTP mais folgado p/ discovery + token exchange (default 3500ms estourava).
-    custom.setHttpOptionsDefaults({ timeout: OIDC_HTTP_TIMEOUT_MS });
+    // client_secret_basic, the openid-client 5 default; the timeout also applies to the token
+    // exchange of the resulting configuration.
+    this.config = await oidc.discovery(
+      new URL(issuerUrl),
+      clientId,
+      undefined,
+      oidc.ClientSecretBasic(clientSecret),
+      { timeout: OIDC_HTTP_TIMEOUT_SECONDS },
+    );
 
-    // Discovery do issuer do Entra ID (.../v2.0/.well-known/openid-configuration).
-    const issuer = await Issuer.discover(issuerUrl);
-
-    this.client = new issuer.Client({
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uris: [redirectUri],
-      response_types: ['code'],
-    });
-
-    return this.client;
+    return this.config;
   }
 
   /**
@@ -219,4 +243,17 @@ export class MicrosoftEntraProvider implements IdentityProviderInterface {
       );
     }
   }
+}
+
+/**
+ * Reads an ID Token claim that should be a string; anything else counts as absent.
+ *
+ * @param value - Claim value.
+ *
+ * @returns The string, or `undefined`.
+ */
+function stringClaim(value: unknown): string | undefined {
+  return typeof value === 'string'
+    ? value
+    : undefined;
 }
