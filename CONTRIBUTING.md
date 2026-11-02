@@ -93,8 +93,6 @@ On GitHub:
 
 - **Branch ruleset on `master`**: require a pull request; require the status checks `lint`,
   `typecheck`, `architecture`, `unused`, `test-api`, `test-web`, `e2e-web`, `tooling`, `audit`,
-  `context`, `commitlint` and `CodeQL`; block force pushes; require linear history. Then remove the
-  two transition jobs (`API · lint + testes`, `Web · lint + unit + e2e (Playwright)`) from
-  `.github/workflows/ci.yml`.
+  `context`, `commitlint` and `CodeQL`; block force pushes; require linear history.
 - **Code security**: enable secret scanning, push protection, Dependabot alerts and private
   vulnerability reporting (used by [SECURITY.md](SECURITY.md)).

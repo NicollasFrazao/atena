@@ -111,5 +111,3 @@ Workspace scripts: `lint`, `lint:fix`, `typecheck`, `test`, `test:coverage` in e
 ### CI jobs (`.github/workflows/ci.yml`)
 
 `lint`, `typecheck`, `architecture`, `unused`, `test-api` (Jest, 80% gate, coverage artifact), `test-web` (Vitest, coverage floor, artifact), `e2e-web` (Playwright, report artifact), `tooling`, `audit` (`npm audit --omit=dev --audit-level=high`), `context`, `commitlint` (pull requests only, every commit of the PR); `CodeQL` in `codeql.yml`.
-
-Two transition jobs keep the check names the branch ruleset required before this layout — `API · lint + testes` (passes when `lint`, `typecheck` and `test-api` passed) and `Web · lint + unit + e2e (Playwright)` (passes when `lint`, `typecheck`, `test-web` and `e2e-web` passed). Remove them once the ruleset requires the jobs above.
