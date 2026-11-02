@@ -89,7 +89,7 @@ export function HistoryPage(): JSX.Element {
       session.title,
     );
 
-    navigate('/');
+    void navigate('/');
   };
 
   // Fixa/desafixa e recarrega a lista (otimismo via invalidação da query de sessões).

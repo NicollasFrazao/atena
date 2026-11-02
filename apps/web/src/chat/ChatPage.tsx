@@ -217,7 +217,7 @@ function SessionHeader(): JSX.Element {
         <span style={{ flex: 1 }} />
         <SessionCount
           count={openCount}
-          onClick={() => { navigate('/historico'); }}
+          onClick={() => { void navigate('/historico'); }}
         />
       </div>
     </div>

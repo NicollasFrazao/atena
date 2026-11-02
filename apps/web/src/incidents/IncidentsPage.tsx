@@ -216,7 +216,7 @@ export function IncidentsPage(): JSX.Element {
   };
 
   const onInvestigate = (incident: IncidentInterface): void => {
-    navigate(investigateHref(incident));
+    void navigate(investigateHref(incident));
   };
 
   const onResolveFromDetail = (incident: IncidentInterface): void => {

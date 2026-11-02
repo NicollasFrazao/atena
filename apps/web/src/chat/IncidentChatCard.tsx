@@ -247,7 +247,7 @@ export function IncidentChatCard({ incident }: Readonly<{ incident: IncidentInte
               )}
             <button
               type="button"
-              onClick={() => { navigate(`/incidentes?detalhe=${incident.id}`); }}
+              onClick={() => { void navigate(`/incidentes?detalhe=${incident.id}`); }}
               style={{
                 ...ACTION_BUTTON,
                 border: 'none',

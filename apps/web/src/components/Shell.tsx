@@ -108,7 +108,7 @@ export function Shell({ children }: Readonly<ShellProps>): JSX.Element {
   // "Nova sessão": limpa a conversa (estado compartilhado) e leva ao assistente.
   const onNewSession = (): void => {
     reset();
-    navigate('/');
+    void navigate('/');
   };
 
   return (
@@ -659,7 +659,7 @@ function PopoverAction({
 
 /** Fecha um popover/menu ao clicar fora do `ref`. */
 function useClickOutside(
-  ref: React.RefObject<HTMLElement>,
+  ref: React.RefObject<HTMLElement | null>,
   onOutside: () => void,
 ): void {
   useEffect(

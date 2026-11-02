@@ -243,7 +243,7 @@ function IncidentBar({
         )}
       <button
         type="button"
-        onClick={() => { navigate(`/incidentes?detalhe=${incident.id}`); }}
+        onClick={() => { void navigate(`/incidentes?detalhe=${incident.id}`); }}
         style={{
           ...ACTION_BUTTON,
           border: cssVar.borderLine,
