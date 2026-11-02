@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a new tool, screen, rule or capability.
+title: 'feat: '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What an analyst or lead cannot do today, or which question the assistant cannot answer.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The behaviour you want. For a new tool, say its arguments, its REST mirror, the permission it needs and what it returns masked.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: It keeps the five non-negotiable principles (.context/docs/development-conventions.md)
+          required: true
+        - label: I checked the technical debt in .context/docs/tech-debt.md
+          required: true

@@ -136,13 +136,15 @@ Roles are assigned by an admin on the `/admin/usuarios` screen and stored in the
 ## Documentation
 
 - **Current HTTP contract:** [`docs/openapi.yaml`](docs/openapi.yaml).
-- **Context base (`.context/docs/`, in Portuguese):** [architecture](.context/docs/architecture.md) · [data flow](.context/docs/data-flow.md) · [security](.context/docs/security.md) · [tooling](.context/docs/tooling.md) · [anomaly scenarios](.context/docs/anomaly-scenarios.md) · [technical debt](.context/docs/tech-debt.md)
+- **Context base for people and coding agents:** start at [`.context/docs/README.md`](.context/docs/README.md) — [development conventions](.context/docs/development-conventions.md) (normative) · [architecture](.context/docs/architecture.md) · [data flow](.context/docs/data-flow.md) · [security](.context/docs/security.md) · [tooling](.context/docs/tooling.md) · [anomaly scenarios](.context/docs/anomaly-scenarios.md) · [technical debt](.context/docs/tech-debt.md)
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Security:** [SECURITY.md](SECURITY.md)
 - **Design handoff (original / historical):** [README](docs/design_handoff_atena/README.md).
 
 ---
 
 ## Conventions
 
-- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat(api): ...`, `chore(db): ...`).
+- **Quality gate:** type-aware ESLint with the Sonar and TSDoc rules (no warnings allowed), `tsc`, layer rules (dependency-cruiser), unused code (knip), tests with coverage gates, Playwright, and the context check — one CI job per check. The commands are in [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/) in English (e.g. `feat(api): ...`, `chore(db): ...`), checked by commitlint.
 - **Secrets:** never in git. `.env` is generated at runtime and is in `.gitignore`.
 - **PII:** never log it in clear; use masked phone numbers or IDs and `severity: pii` in the audit log.
