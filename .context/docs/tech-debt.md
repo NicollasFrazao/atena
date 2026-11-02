@@ -98,7 +98,3 @@ The model in [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md
 - **`audit-query/duckdb-audit-query.service.ts`, `fetchObjectToLocal`:** when an S3 response has no `Body`, it writes an empty file; DuckDB then fails the whole query with "Input is not a GZIP stream", so this fallback never helps. Decide whether to skip the partition or fail with a clear error.
 - **`cache/s3-tmp-content-cache.ts`, `get()`:** `parseRef(ref)` runs before the `try`, so a malformed ref (e.g. `s3://bucket-only`) throws, although the interface documents `null` on failure. The spec asserts the current behaviour.
 - **Incident detection-window fallbacks:** the schema says the window columns are `NOT NULL`, but the service still falls back when they are missing (a spec relies on it). Decide whether the fallback should exist.
-
-## 17. Branch ruleset still requires the previous CI job names
-- **Context (2026-11-01):** CI now has one job per check. The ruleset on `master` required `API · lint + testes` and `Web · lint + unit + e2e (Playwright)`; both names are kept alive as transition jobs that pass only when the jobs doing their work passed.
-- **What closes it:** require `lint`, `typecheck`, `architecture`, `unused`, `test-api`, `test-web`, `e2e-web`, `tooling`, `audit`, `context`, `commitlint` and `CodeQL` in the ruleset, then delete the two transition jobs from `ci.yml`.
