@@ -66,8 +66,8 @@ describe('DB e2e (MySQL real + seed, sem mocks)', () => {
     expect(res.status).toBe(200);
 
     expect(res.body).toEqual(expect.arrayContaining([
-      'Twilio',
-      'Sinch',
+      'Provider D',
+      'Provider C',
     ]));
   });
 

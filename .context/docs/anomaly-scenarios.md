@@ -38,7 +38,7 @@ status: filled
   | `7746` | 67 | 0.0% | invalid_number 56 |
 
 - **Volatility:** delivery swings from **1.1%** (blasts of 80k–105k events) to **64%** across 10-min windows — the peaks coincide with mass campaigns from `1001`.
-- **SMS provider:** only **Sinch** appears (115k `[SinchSmsStatus]` tags). Voice uses VoiceCarrier. → the `provider` dimension is weak for SMS today; prioritize `customer` and `global`.
+- **SMS provider:** only **Provider C** appears (115k `[ProviderSmsStatus]` tags). Voice uses Provider E. → the `provider` dimension is weak for SMS today; prioritize `customer` and `global`.
 - **Dominant warn:** "Phone number … is marked as bounced and cannot receive messages" (27,192).
 
 ## Top-3 prioritized scenarios
@@ -53,7 +53,7 @@ The failures are distinct and diagnostic:
 - sustained `generic_error` → **broken integration** (e.g. `8200` at 100% generic_error and 0% delivery).
 
 ### 3. Status callback silence — `webhook_silence`, dim. `provider`/`global` (critical)
-`status-webhook-receiver` processes a high, steady flow (~291k/2h). If the callbacks (Sinch) **stop** for X min, we go blind on delivery (provider down / our receiver down). Related per-customer case: "No webhook URL configured for the given app ID" (153) = the customer does not receive its own callbacks.
+`status-webhook-receiver` processes a high, steady flow (~291k/2h). If the callbacks (Provider C) **stop** for X min, we go blind on delivery (provider down / our receiver down). Related per-customer case: "No webhook URL configured for the given app ID" (153) = the customer does not receive its own callbacks.
 
 ## Proposed default thresholds (`anomaly_rules`)
 
@@ -65,7 +65,7 @@ The `name` values are the rule names shown in the product UI, kept verbatim in P
 | `r-policy-block-spike` | Spike de bloqueio por política (Policy block spike) | `consistent_error` | `customer` | `warning` | 30 | `%` | 15 |
 | `r-invalid-number-spike` | Spike de número inválido (Invalid number spike) | `consistent_error` | `customer` | `warning` | 25 | `%` | 30 |
 | `r-integration-error` | Erro de integração (generic_error) (Integration error) | `failure_spike` | `customer` | `critical` | 5 | `%` | 10 |
-| `r-webhook-silence-sinch` | Silêncio de callbacks (Sinch) (Callback silence) | `webhook_silence` | `provider` | `critical` | 15 | `min` | 15 |
+| `r-webhook-silence-provider` | Silêncio de callbacks (Provider C) (Callback silence) | `webhook_silence` | `provider` | `critical` | 15 | `min` | 15 |
 
 **Calibration notes**
 - `delivery_rate_drop`: use **σ vs a rolling per-customer baseline** (not an absolute floor — baselines range from 4.6% to 68%). Alternative: relative drop ≥ 20 p.p. Minimum volume guard ≥ 500 terminal events.

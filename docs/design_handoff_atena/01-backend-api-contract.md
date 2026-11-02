@@ -36,12 +36,12 @@ event: refusal  data: { "reason": "fora_de_escopo", "explanation": "...", "canDo
 ```json
 {
   "id": "sess-2026-05-28-002",
-  "title": "Investigação INC-2401 — Twilio insufficient balance",
+  "title": "Investigação INC-2401 — Provider D insufficient balance",
   "startedAt": "Hoje, 14:02",
   "messageCount": 12,
   "toolCount": 4,
   "pinned": true,
-  "tags": ["inc-2401", "twilio", "creditbank"],
+  "tags": ["inc-2401", "provider-d", "acmebank"],
   "preview": "Você: Tenho um cliente reclamando…",
   "duration": "8 min",
   "hasIncident": true
@@ -89,8 +89,8 @@ O LLM só pode invocar estas tools. Cada tool tem um endpoint REST espelhado (us
   "phoneMasked": "+55 11 9****-1234",
   "phoneFull": "+55 11 98765-1234",     // só retornar se o usuário tiver permissão + reveal (gera audit)
   "status": "failed",                    // delivered | failed | pending | unknown
-  "provider": "Twilio",
-  "customer": "CreditBank",
+  "provider": "Provider D",
+  "customer": "AcmeBank",
   "requestedAt": "há 12 min",            // backend pode mandar ISO; UI formata relativo
   "errorHint": "INSUFFICIENT_BALANCE"    // null se sem erro
 }
@@ -101,16 +101,16 @@ Envelope paginado: `{ rows: [...], page, totalPages, total, latencyMs }`.
 ```json
 {
   "messageId": "4f3a2b1c-1111",
-  "customer": "CreditBank",
-  "provider": "Twilio",
+  "customer": "AcmeBank",
+  "provider": "Provider D",
   "phoneMasked": "+55 11 9****-1234",
   "finalStatus": "failed",
   "contentRef": "s3://at-msg-content/2026/05/28/4f3a2b1c-1111.txt",
   "contentPreview": "…",                 // só após reveal (audit). Mascarado por padrão.
   "events": [
     { "type": "api_request",      "label": "Requisição API recebida", "at": "14:02:18.421", "detail": "POST /v2/messages — 320 B — auth OK" },
-    { "type": "routing",          "label": "Roteamento → Twilio",      "at": "14:02:18.498", "detail": "..." },
-    { "type": "provider_attempt", "label": "Tentativa 1 — Twilio",     "at": "14:02:18.612", "detail": "HTTP 402 ..." },
+    { "type": "routing",          "label": "Roteamento → Provider D",      "at": "14:02:18.498", "detail": "..." },
+    { "type": "provider_attempt", "label": "Tentativa 1 — Provider D",     "at": "14:02:18.612", "detail": "HTTP 402 ..." },
     { "type": "webhook_status",   "label": "Webhook status: failed",   "at": "14:02:24.107", "detail": "..." },
     { "type": "final",            "label": "Status final: failed",     "at": "14:02:24.198", "detail": "..." }
   ]
@@ -136,9 +136,9 @@ Envelope paginado: `{ rows: [...], page, totalPages, total, latencyMs }`.
 {
   "window": "Últimas 24h",
   "totals": { "sent": 184320, "delivered": 173812, "failed": 9214, "pending": 1294 },
-  "byProvider": [ { "name": "Twilio", "sent": 92340, "delivered": 84120, "rate": 91.1 } ],
+  "byProvider": [ { "name": "Provider D", "sent": 92340, "delivered": 84120, "rate": 91.1 } ],
   "hourly": [97.4, 97.6, ...],           // taxa de entrega % por hora (24 buckets)
-  "topErrors": [ { "code": "INSUFFICIENT_BALANCE", "count": 4812, "provider": "Twilio" } ],
+  "topErrors": [ { "code": "INSUFFICIENT_BALANCE", "count": 4812, "provider": "Provider D" } ],
   "csvUrl": "/api/reports/{id}/export.csv"
 }
 ```
@@ -147,11 +147,11 @@ Envelope paginado: `{ rows: [...], page, totalPages, total, latencyMs }`.
 ```json
 {
   "id": "INC-2401",
-  "rule": "Queda de taxa de entrega — Twilio",
+  "rule": "Queda de taxa de entrega — Provider D",
   "severity": "critical",                // info | warning | critical
   "status": "detected",                  // detected | acknowledged | resolved | auto_resolved
   "dimensionType": "provider",           // provider | customer | route | global
-  "dimensionValue": "Twilio",
+  "dimensionValue": "Provider D",
   "detectedAt": "há 4 min",
   "window": "14:02 → agora (4 min)",
   "summary": "Taxa de entrega caiu de 97% para 87%…",
@@ -166,12 +166,12 @@ Envelope paginado: `{ rows: [...], page, totalPages, total, latencyMs }`.
 {
   "id": "INC-2395",
   "severity": "warning",
-  "rule": "Spike de falhas — CreditBank",
+  "rule": "Spike de falhas — AcmeBank",
   "resolvedAt": "há 4h",
   "action": "provider_escalated",        // ver enum action_category em 02-data-model
   "analyst": "Joana M.",
   "duration": "38m",
-  "escalatedTo": "Twilio (suporte) — ticket #91188"
+  "escalatedTo": "Provider D (suporte) — ticket #91188"
 }
 ```
 
@@ -183,10 +183,10 @@ Request:
 ```json
 {
   "actionCategory": "provider_escalated",
-  "actionDescription": "Contatei a Twilio pelo canal comercial…",   // mín. 20 chars
-  "escalatedTo": "Twilio Support — ticket #91234",                   // obrigatório se category é *_escalated
+  "actionDescription": "Contatei a Provider D pelo canal comercial…",   // mín. 20 chars
+  "escalatedTo": "Provider D Support — ticket #91234",                   // obrigatório se category é *_escalated
   "relatedMessageIds": ["4f3a2b1c-1111", "7c8d9e0f-2222"],
-  "tags": ["fornecedor-twilio", "cliente-creditbank"]
+  "tags": ["fornecedor-provider-d", "cliente-acmebank"]
 }
 ```
 **Validação server-side (não confiar na UI):**

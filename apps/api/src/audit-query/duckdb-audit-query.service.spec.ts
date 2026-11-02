@@ -91,13 +91,13 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
     );
 
     const lines = [
-      // C1 (req-1, sinch): queued -> sent -> delivered => delivered
+      // C1 (req-1, provider-c): queued -> sent -> delivered => delivered
       detailedRecord({
         campaign_id: 'req-1',
         status: 'queued',
         phone: '+5511900000001',
         client_id: '1001',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-17T15:00:00Z',
       }),
       detailedRecord({
@@ -105,7 +105,7 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
         status: 'sent',
         phone: '+5511900000001',
         client_id: '1001',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-17T15:00:30Z',
       }),
       detailedRecord({
@@ -113,16 +113,16 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
         status: 'delivered',
         phone: '+5511900000001',
         client_id: '1001',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-17T15:02:00Z',
       }),
-      // C2 (req-2, sinch): queued -> bounce => failed (error_hint 'bounce')
+      // C2 (req-2, provider-c): queued -> bounce => failed (error_hint 'bounce')
       detailedRecord({
         campaign_id: 'req-2',
         status: 'queued',
         phone: '+5511900000002',
         client_id: '1001',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-17T15:00:00Z',
       }),
       detailedRecord({
@@ -130,30 +130,30 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
         status: 'bounce',
         phone: '+5511900000002',
         client_id: '1001',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         provider_code: '21211',
         error: {
           name: 'SmsStatusError',
-          message: "[sinch] SMS reported as 'bounce'",
+          message: "[provider-c] SMS reported as 'bounce'",
         },
         processed_at: '2026-06-17T15:05:00Z',
       }),
-      // C3 (req-3, twilio): só queued => pending
+      // C3 (req-3, provider-d): só queued => pending
       detailedRecord({
         campaign_id: 'req-3',
         status: 'queued',
         phone: '+5511900000003',
         client_id: '9001',
-        provider_name: 'twilio',
+        provider_name: 'provider-d',
         processed_at: '2026-06-17T15:03:00Z',
       }),
-      // C4 (req-4, sinch): queued -> request_error => failed (error_hint 'request_error')
+      // C4 (req-4, provider-c): queued -> request_error => failed (error_hint 'request_error')
       detailedRecord({
         campaign_id: 'req-4',
         status: 'queued',
         phone: '+5511900000004',
         client_id: '9001',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-17T15:00:00Z',
       }),
       detailedRecord({
@@ -161,7 +161,7 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
         status: 'request_error',
         phone: '+5511900000004',
         client_id: '9001',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         provider_code: '403',
         error: {
           name: 'SmsProcessingError',
@@ -344,9 +344,9 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
       pending: 1, // C3
     });
 
-    const sinch = report.byProvider.find((row) => row.name === 'sinch');
-    expect(sinch?.sent).toBe(3); // C1, C2, C4
-    expect(sinch?.delivered).toBe(1); // C1
+    const providerC = report.byProvider.find((row) => row.name === 'provider-c');
+    expect(providerC?.sent).toBe(3); // C1, C2, C4
+    expect(providerC?.delivered).toBe(1); // C1
 
     const zapsms = report.byProvider.find((row) => row.name === 'zapsms');
     expect(zapsms?.sent).toBe(1); // C5 (sms_flash)
@@ -361,8 +361,8 @@ describe('DuckDbAuditQueryService (fixture local — detailed report)', () => {
     const providers = await service.distinctProviders(WINDOW);
 
     expect(providers).toEqual([
-      'sinch',
-      'twilio',
+      'provider-c',
+      'provider-d',
       'zapsms', // C5 (sms_flash) agora entra
     ]);
   });
@@ -504,7 +504,7 @@ describe('DuckDbAuditQueryService — send-based através da meia-noite (buffer 
         status: 'queued',
         phone: '+5511900000010',
         client_id: '1001',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-16T20:00:00Z', // +3h → 16/06 23:00 UTC (véspera do dia 17)
       })],
     );
@@ -517,7 +517,7 @@ describe('DuckDbAuditQueryService — send-based através da meia-noite (buffer 
           status: 'bounce',
           phone: '+5511900000010',
           client_id: '1001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           provider_code: '21211',
           processed_at: '2026-06-17T12:00:00Z', // +3h → 17/06 15:00 UTC (desfecho no dia 17)
         }),
@@ -526,7 +526,7 @@ describe('DuckDbAuditQueryService — send-based através da meia-noite (buffer 
           status: 'queued',
           phone: '+5511900000011',
           client_id: '1001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: '2026-06-17T12:00:00Z', // +3h → 17/06 15:00 UTC
         }),
         detailedRecord({
@@ -534,7 +534,7 @@ describe('DuckDbAuditQueryService — send-based através da meia-noite (buffer 
           status: 'delivered',
           phone: '+5511900000011',
           client_id: '1001',
-          provider_name: 'sinch',
+          provider_name: 'provider-c',
           processed_at: '2026-06-17T12:01:00Z', // +3h → 17/06 15:01 UTC
         }),
       ],
@@ -707,7 +707,7 @@ describe('DuckDbAuditQueryService — send-based estrito + reconciliação de ca
         status: 'queued',
         phone: '+5511900000010',
         client_id: '7000',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-10T12:00:00Z',
       }),
       detailedRecord({
@@ -715,7 +715,7 @@ describe('DuckDbAuditQueryService — send-based estrito + reconciliação de ca
         status: 'delivered',
         phone: '+5511900000010',
         client_id: '7000',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-10T12:05:00Z',
       }),
       // R2: SÓ delivered (sem queued) → requested_at NULL → fora da busca send-based.
@@ -724,7 +724,7 @@ describe('DuckDbAuditQueryService — send-based estrito + reconciliação de ca
         status: 'delivered',
         phone: '+5511900000011',
         client_id: '7000',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-10T12:10:00Z',
       }),
       // Rprec: queued -> delivered -> bounce TARDIO → finalized_at deve ser o do DELIVERED, não o do bounce.
@@ -733,7 +733,7 @@ describe('DuckDbAuditQueryService — send-based estrito + reconciliação de ca
         status: 'queued',
         phone: '+5511900000012',
         client_id: '7000',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-10T12:00:00Z',
       }),
       detailedRecord({
@@ -741,7 +741,7 @@ describe('DuckDbAuditQueryService — send-based estrito + reconciliação de ca
         status: 'delivered',
         phone: '+5511900000012',
         client_id: '7000',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-10T12:05:00Z',
       }),
       detailedRecord({
@@ -749,7 +749,7 @@ describe('DuckDbAuditQueryService — send-based estrito + reconciliação de ca
         status: 'bounce',
         phone: '+5511900000012',
         client_id: '7000',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         provider_code: '21211',
         error: {
           name: 'SmsStatusError',
@@ -841,7 +841,7 @@ describe('DuckDbAuditQueryService — send-based estrito + reconciliação de ca
         status: 'queued',
         phone: '+5511900000013',
         client_id: '7000',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-10T12:30:00Z',
       }),
       detailedRecord({
@@ -849,7 +849,7 @@ describe('DuckDbAuditQueryService — send-based estrito + reconciliação de ca
         status: 'delivered',
         phone: '+5511900000013',
         client_id: '7000',
-        provider_name: 'sinch',
+        provider_name: 'provider-c',
         processed_at: '2026-06-10T12:35:00Z',
       }),
     ];
@@ -969,7 +969,7 @@ describe('DuckDbAuditQueryService — cache incremental (manifesto + shards + co
       status: 'queued',
       phone,
       client_id: '9000',
-      provider_name: 'sinch',
+      provider_name: 'provider-c',
       processed_at: '2026-06-10T12:00:00Z',
     }),
     detailedRecord({
@@ -977,7 +977,7 @@ describe('DuckDbAuditQueryService — cache incremental (manifesto + shards + co
       status: 'delivered',
       phone,
       client_id: '9000',
-      provider_name: 'sinch',
+      provider_name: 'provider-c',
       processed_at: '2026-06-10T12:05:00Z',
     }),
   ];
@@ -1125,7 +1125,7 @@ describe('DuckDbAuditQueryService — DDI inconsistente entre queued e desfecho 
     );
 
     // MESMO envio: a fonte manda o `queued` COM DDI (13 díg.) e o `delivered` SEM (11 díg.) — o bug
-    // real do localsms. Sem canonizar, viram 2 destinatários (1 pending + 1 delivered órfão) e a
+    // real do provider-a. Sem canonizar, viram 2 destinatários (1 pending + 1 delivered órfão) e a
     // taxa de entrega dá 0%. Com o phone canônico, colapsam no mesmo destinatário → ENTREGUE.
     const lines = [
       detailedRecord({
@@ -1133,7 +1133,7 @@ describe('DuckDbAuditQueryService — DDI inconsistente entre queued e desfecho 
         status: 'queued',
         phone: '+5511900000055',
         client_id: '1001',
-        provider_name: 'localsms',
+        provider_name: 'provider-a',
         processed_at: '2026-06-20T15:00:00Z',
       }),
       detailedRecord({
@@ -1141,7 +1141,7 @@ describe('DuckDbAuditQueryService — DDI inconsistente entre queued e desfecho 
         status: 'delivered',
         phone: '11900000055',
         client_id: '1001',
-        provider_name: 'localsms',
+        provider_name: 'provider-a',
         processed_at: '2026-06-20T15:05:00Z',
       }),
     ];

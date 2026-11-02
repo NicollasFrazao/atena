@@ -127,7 +127,7 @@ paths:
                 type: array
                 items:
                   type: string
-                example: [twilio, sinch, localsms, voicecarrier]
+                example: [provider-d, provider-c, provider-a, provider-e]
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -194,7 +194,7 @@ paths:
         - name: provider
           in: query
           description: Nome do provider.
-          schema: { type: string, example: twilio }
+          schema: { type: string, example: provider-d }
         - name: customer_id
           in: query
           description: Id do cliente (match exato).
@@ -699,7 +699,7 @@ paths:
                 value:
                   action_category: provider_escalated
                   action_description: "Abrimos chamado P1 junto ao provedor para a quebra de integração."
-                  escalated_to: "suporte@twilio.com"
+                  escalated_to: "suporte@provider-d.example"
                   tags: [integracao, p1]
       responses:
         "200":

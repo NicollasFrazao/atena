@@ -207,13 +207,13 @@ describe('ChatService', () => {
     const result = await service.updateSession(
       's-1',
       'u1',
-      { title: 'Twilio failures' },
+      { title: 'Provider D failures' },
     );
 
-    expect(result.title).toBe('Twilio failures');
+    expect(result.title).toBe('Provider D failures');
 
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
-      data: { title: 'Twilio failures' },
+      data: { title: 'Provider D failures' },
     }));
   });
 
