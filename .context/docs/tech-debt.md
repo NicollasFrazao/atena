@@ -98,3 +98,7 @@ The model in [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md
 - **`audit-query/duckdb-audit-query.service.ts`, `fetchObjectToLocal`:** when an S3 response has no `Body`, it writes an empty file; DuckDB then fails the whole query with "Input is not a GZIP stream", so this fallback never helps. Decide whether to skip the partition or fail with a clear error.
 - **`cache/s3-tmp-content-cache.ts`, `get()`:** `parseRef(ref)` runs before the `try`, so a malformed ref (e.g. `s3://bucket-only`) throws, although the interface documents `null` on failure. The spec asserts the current behaviour.
 - **Incident detection-window fallbacks:** the schema says the window columns are `NOT NULL`, but the service still falls back when they are missing (a spec relies on it). Decide whether the fallback should exist.
+
+## 17. Dependabot holds the NestJS, Vite and Vitest majors
+- **Context (2026-11-02):** NestJS 12 (#25) and Vitest 5 with a newer Vite (#26) break the build when bumped alone; `.github/dependabot.yml` ignores their semver-major updates so the weekly PRs do not reopen.
+- **What closes it:** the two migrations, each removing its own `ignore` entry.

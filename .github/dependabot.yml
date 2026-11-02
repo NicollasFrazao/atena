@@ -8,6 +8,16 @@ updates:
     commit-message:
       prefix: build
       include: scope
+    ignore:
+      # Majors that are migrations, not bumps; each has its issue. Remove the hold when it is done.
+      - dependency-name: '@nestjs/*' # #25
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'vite' # #26
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'vitest' # #26
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@vitest/*' # #26
+        update-types: ['version-update:semver-major']
     groups:
       nest:
         patterns:
