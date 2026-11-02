@@ -1,6 +1,6 @@
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { generators } from 'openid-client';
+import * as oidc from 'openid-client';
 import { sign, verify, type JwtPayload } from 'jsonwebtoken';
 import { MINUTES_PER_HOUR, SECONDS_PER_MINUTE } from '../common/units';
 import { DEFAULT_SESSION_TTL_HOURS } from '../config/configuration';
@@ -55,10 +55,10 @@ export class AuthService {
     url: string;
     challenge: CallbackChallengeInterface;
   }> {
-    const state = generators.state();
-    const nonce = generators.nonce();
-    const codeVerifier = generators.codeVerifier();
-    const codeChallenge = generators.codeChallenge(codeVerifier);
+    const state = oidc.randomState();
+    const nonce = oidc.randomNonce();
+    const codeVerifier = oidc.randomPKCECodeVerifier();
+    const codeChallenge = await oidc.calculatePKCECodeChallenge(codeVerifier);
 
     const url = await this.identityProvider.getAuthorizationUrl({
       state,

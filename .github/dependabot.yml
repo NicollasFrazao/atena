@@ -26,8 +26,6 @@ updates:
         update-types: ['version-update:semver-major']
       - dependency-name: '@prisma/client' # #44
         update-types: ['version-update:semver-major']
-      - dependency-name: 'openid-client' # #47
-        update-types: ['version-update:semver-major']
       # The runtime is Node 22 (CI, API image) with engines >=20; the types move with it, not ahead of it.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
