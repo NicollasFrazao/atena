@@ -99,7 +99,7 @@ function formatDetectionWindow(
     },
   ).format(end);
 
-  let tzLabel = timeZone;
+  let tzLabel: string;
 
   try {
     const named = new Intl.DateTimeFormat(

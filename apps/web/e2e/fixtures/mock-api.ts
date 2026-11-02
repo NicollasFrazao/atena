@@ -83,7 +83,7 @@ export async function installMockApi(
   );
 
   await page.routeWebSocket(
-    /socket\.io/,
+    '**/socket.io/**',
     () => {
       // Sem realtime no e2e: WS interceptado e deixado mudo.
     },

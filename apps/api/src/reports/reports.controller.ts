@@ -72,6 +72,13 @@ export class ReportsController {
       'keep-alive',
     );
 
+    // The frames are JSON inside text/event-stream, never HTML; nosniff keeps a browser from
+    // guessing otherwise.
+    res.setHeader(
+      'X-Content-Type-Options',
+      'nosniff',
+    );
+
     res.flushHeaders();
 
     // Cliente desconectou (fechou a aba, trocou a janela na tela): aborta a varredura no S3 no meio,
