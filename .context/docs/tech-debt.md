@@ -81,8 +81,8 @@ The model in [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md
 - **When:** when the product wants real WS metrics (telemetry) or the refusals breakdown; **none of this blocks** current usage (the UI shows the real data that exists).
 
 ## 13. Web unit coverage below the 80% gate
-- **Context (2026-11-01):** the standards require 80% coverage on statements, branches, functions and lines. The API meets it (94.4 / 82.7 / 89.4 / 94.2). The web app does not: its Vitest suite covers the logic modules (SSE parsing, reveal, formatting, time, the chat hook, the incident banner), while pages and components are exercised only by the Playwright suite, which does not report coverage. Measured: statements 16.7%, branches 54.7%, functions 43.7%, lines 16.7% over `apps/web/src`.
-- **Decision:** the threshold was not lowered silently: `apps/web/vite.config.ts` holds a **ratchet at the measured floor** (16 / 54 / 42 / 16), so coverage cannot drop, and this item tracks the gap.
+- **Context (2026-11-01):** the standards require 80% coverage on statements, branches, functions and lines. The API meets it (94.4 / 82.7 / 89.4 / 94.2). The web app does not: its Vitest suite covers the logic modules (SSE parsing, reveal, formatting, time, the chat hook, the incident banner), while pages and components are exercised only by the Playwright suite, which does not report coverage. Measured with Vitest 5 (2026-11-02): statements 17.39%, branches 14.31%, functions 12.39%, lines 17.55% over `apps/web/src`; Vitest 2 had reported 16.7 / 54.7 / 43.7 / 16.7 for the same tests, because it counted branches and functions differently.
+- **Decision:** the threshold was not lowered silently: `apps/web/vite.config.ts` holds a **ratchet at the measured floor** (17 / 14 / 12 / 17), so coverage cannot drop, and this item tracks the gap.
 - **What closes it:** component tests with `jsdom` + Testing Library for the pages (chat, incidents, reports, rules, audit, admin, observability) with the API mocked at `apiFetch`, raising the floor in `vite.config.ts` with each batch until all four metrics reach 80% — or, alternatively, merging Playwright coverage (V8 via `page.coverage`) into the report.
 
 ## 14. Dependency advisories below the audit gate
@@ -100,5 +100,5 @@ The model in [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md
 - **Incident detection-window fallbacks:** the schema says the window columns are `NOT NULL`, but the service still falls back when they are missing (a spec relies on it). Decide whether the fallback should exist.
 
 ## 17. Dependabot holds the majors that are migrations
-- **Context (2026-11-02):** these majors break the build when bumped alone: NestJS 12 (#25), Vite 6+ with Vitest 5 and `@vitejs/plugin-react` 6 (#26), React 19 with react-router 7 (#32), Prisma 7 (#44) and openid-client 6 (#47). The `@types/node` and TypeScript majors wait for the Node 22 runtime and for typescript-eslint. `.github/dependabot.yml` ignores their semver-major updates so the weekly PRs do not reopen.
+- **Context (2026-11-02):** these majors break the build when bumped alone: NestJS 12 (#25), React 19 with react-router 7 (#32), Prisma 7 (#44) and openid-client 6 (#47). The `@types/node` and TypeScript majors wait for the Node 22 runtime and for typescript-eslint. `.github/dependabot.yml` ignores their semver-major updates so the weekly PRs do not reopen.
 - **What closes it:** each migration removes its own `ignore` entries; `@types/node` moves with the runtime and TypeScript with typescript-eslint.
