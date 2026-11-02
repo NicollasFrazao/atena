@@ -100,5 +100,5 @@ The model in [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md
 - **Incident detection-window fallbacks:** the schema says the window columns are `NOT NULL`, but the service still falls back when they are missing (a spec relies on it). Decide whether the fallback should exist.
 
 ## 17. Dependabot holds the majors that are migrations
-- **Context (2026-11-02):** NestJS 12 (#25), Vitest 5 with a newer Vite (#26) React 19 with react-router 7 (#32) the React Compiler lint rules of eslint-plugin-react-hooks 7 (#38) Prisma 7 (#44) and openid-client 6 (#47) break the build when bumped alone; `@types/node` majors wait for the Node runtime to move; `.github/dependabot.yml` ignores their semver-major updates so the weekly PRs do not reopen.
-- **What closes it:** each migration removes its own `ignore` entries; `@types/node` moves with the runtime.
+- **Context (2026-11-02):** these majors break the build when bumped alone: NestJS 12 (#25), Vite 6+ with Vitest 5 and `@vitejs/plugin-react` 6 (#26), React 19 with react-router 7 (#32), Prisma 7 (#44) and openid-client 6 (#47). The `@types/node` and TypeScript majors wait for the Node 22 runtime and for typescript-eslint. `.github/dependabot.yml` ignores their semver-major updates so the weekly PRs do not reopen.
+- **What closes it:** each migration removes its own `ignore` entries; `@types/node` moves with the runtime and TypeScript with typescript-eslint.
