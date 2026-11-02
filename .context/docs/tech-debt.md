@@ -99,6 +99,6 @@ The model in [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md
 - **`cache/s3-tmp-content-cache.ts`, `get()`:** `parseRef(ref)` runs before the `try`, so a malformed ref (e.g. `s3://bucket-only`) throws, although the interface documents `null` on failure. The spec asserts the current behaviour.
 - **Incident detection-window fallbacks:** the schema says the window columns are `NOT NULL`, but the service still falls back when they are missing (a spec relies on it). Decide whether the fallback should exist.
 
-## 17. Dependabot holds the NestJS, Vite, Vitest and React majors
-- **Context (2026-11-02):** NestJS 12 (#25), Vitest 5 with a newer Vite (#26) and React 19 with react-router 7 (#32) break the build when bumped alone; `.github/dependabot.yml` ignores their semver-major updates so the weekly PRs do not reopen.
-- **What closes it:** the three migrations, each removing its own `ignore` entries.
+## 17. Dependabot holds the NestJS, Vite, Vitest, React and react-hooks majors
+- **Context (2026-11-02):** NestJS 12 (#25), Vitest 5 with a newer Vite (#26) React 19 with react-router 7 (#32) and the React Compiler lint rules of eslint-plugin-react-hooks 7 (#38) break the build when bumped alone; `.github/dependabot.yml` ignores their semver-major updates so the weekly PRs do not reopen.
+- **What closes it:** the four migrations, each removing its own `ignore` entries.
