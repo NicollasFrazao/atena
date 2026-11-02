@@ -2650,39 +2650,45 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
     const files = new Array<string>(urls.length);
     let next = 0;
+    let failed = false;
 
     const worker = async (): Promise<void> => {
       for (;;) {
         const index = next;
         next += 1;
 
-        if (index >= urls.length) {
+        if (failed || index >= urls.length) {
           return;
         }
 
-        files[index] = await this.fetchObjectToLocal(
-          urls[index],
-          dir,
-        );
+        try {
+          files[index] = await this.fetchObjectToLocal(
+            urls[index],
+            dir,
+          );
+        } catch (error) {
+          failed = true;
+
+          throw error;
+        }
       }
     };
 
-    try {
-      await Promise.all(Array.from(
-        {
-          length: Math.min(
-            this.prefetchConcurrency,
-            urls.length,
-          ),
-        },
-        () => worker(),
-      ));
+    // Every worker settles before the cleanup: a download still in flight would otherwise
+    // recreate the batch directory after it was removed and leave a partial batch behind.
+    const results = await Promise.allSettled(Array.from(
+      {
+        length: Math.min(
+          this.prefetchConcurrency,
+          urls.length,
+        ),
+      },
+      () => worker(),
+    ));
 
-      return {
-        files,
-        dir,
-      };
-    } catch (error) {
+    const rejected = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+
+    if (rejected) {
       rmSync(
         dir,
         {
@@ -2691,8 +2697,13 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
         },
       );
 
-      throw error;
+      throw rejected.reason;
     }
+
+    return {
+      files,
+      dir,
+    };
   }
 
   /** Baixa UM objeto `s3://bucket/key` para `<dir>/<key>` (espelha o path) e devolve o path local. */
