@@ -2657,7 +2657,10 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
         const index = next;
         next += 1;
 
-        if (failed || index >= urls.length) {
+        if (
+          failed
+          || index >= urls.length
+        ) {
           return;
         }
 
