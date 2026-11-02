@@ -54,7 +54,10 @@ describe('permissionsFor', () => {
 
   it('ignores a role this build does not know instead of throwing', () => {
     // A role stored in the database by another version of the app.
-    const roles = ['viewer', 'retired_role'] as unknown as Parameters<typeof permissionsFor>[0];
+    const roles = [
+      'viewer',
+      'retired_role',
+    ] as unknown as Parameters<typeof permissionsFor>[0];
 
     expect(permissionsFor(roles)).toEqual(permissionsFor(['viewer']));
   });

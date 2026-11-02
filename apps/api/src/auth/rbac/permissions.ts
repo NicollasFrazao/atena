@@ -78,6 +78,12 @@ const ROLE_DESCRIPTIONS: Record<RoleType, string> = {
 };
 
 /**
+ * The same table, read as possibly missing an entry: roles come from the database, and one this
+ * build does not know grants nothing instead of throwing.
+ */
+const KNOWN_ROLE_PERMISSIONS: Partial<Record<RoleType, PermissionType[]>> = ROLE_PERMISSIONS;
+
+/**
  * Deriva o conjunto (deduplicado) de permissões a partir dos papéis do usuário.
  *
  * @param roles - Papéis atribuídos ao usuário.
@@ -88,10 +94,7 @@ export function permissionsFor(roles: RoleType[]): PermissionType[] {
   const granted = new Set<PermissionType>();
 
   for (const role of roles) {
-    // Roles come from the database: one this build does not know grants nothing instead of throwing.
-    const permissions: PermissionType[] | undefined = ROLE_PERMISSIONS[role];
-
-    for (const permission of permissions ?? []) {
+    for (const permission of KNOWN_ROLE_PERMISSIONS[role] ?? []) {
       granted.add(permission);
     }
   }
