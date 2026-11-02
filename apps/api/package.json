@@ -35,7 +35,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.7",
-    "dd-trace": "^5.109.0",
+    "dd-trace": "^5.131.1",
     "hot-shots": "^16.0.0",
     "jsonwebtoken": "^9.0.3",
     "openid-client": "^5.7.0",
