@@ -76,4 +76,45 @@ describe('FakeLlmProvider', () => {
       reason: 'end_turn',
     });
   });
+
+  it('describes itself as the simulated fake provider', () => {
+    expect(provider.describe()).toEqual({
+      provider: 'fake',
+      model: 'Simulado',
+    });
+  });
+
+  it('refuses when the conversation has no user message', async () => {
+    const chunks = await collect(
+      provider.converseStream({
+        messages: [{
+          role: 'assistant',
+          content: 'status do telefone +5511987651234',
+        }],
+      }),
+    );
+
+    expect(chunks.some((chunk) => chunk.type === 'tool_use')).toBe(false);
+
+    expect(chunks.at(-1)).toEqual({
+      type: 'stop',
+      reason: 'refusal',
+    });
+  });
+
+  it('reads a structured user message through its JSON serialization', async () => {
+    const chunks = await collect(
+      provider.converseStream({
+        messages: [{
+          role: 'user',
+          content: { text: 'status do telefone +5511987651234' },
+        }],
+      }),
+    );
+
+    expect(chunks.find((chunk) => chunk.type === 'tool_use')).toMatchObject({
+      type: 'tool_use',
+      name: 'search_shippings',
+    });
+  });
 });

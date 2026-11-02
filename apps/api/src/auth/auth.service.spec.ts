@@ -8,23 +8,13 @@ import type {
 } from './identity-provider.interface';
 
 function config(): ConfigService {
-  return {
-    get: jest.fn((key: string) => {
-      if (key === 'auth.sessionSecret') {
-        return 'test-secret-please-rotate';
-      }
+  const values: Partial<Record<string, unknown>> = {
+    'auth.sessionSecret': 'test-secret-please-rotate',
+    'auth.session.ttlHours': 8,
+    'auth.adminEmails': [],
+  };
 
-      if (key === 'auth.session.ttlHours') {
-        return 8;
-      }
-
-      if (key === 'auth.adminEmails') {
-        return [];
-      }
-
-      return undefined;
-    }),
-  } as unknown as ConfigService;
+  return { get: jest.fn((key: string) => values[key]) } as unknown as ConfigService;
 }
 
 function provider(overrides: Partial<IdentityProviderInterface> = {}): IdentityProviderInterface {

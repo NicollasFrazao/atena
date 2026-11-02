@@ -22,23 +22,14 @@ function reflector(isPublic: boolean): Reflector {
 }
 
 function config(devBypass: boolean): ConfigService {
-  return {
-    get: jest.fn((key: string) => {
-      if (key === 'auth.devBypass') {
-        return devBypass;
-      }
+  const values: Partial<Record<string, unknown>> = {
+    'auth.devBypass': devBypass,
+    'auth.session.cookieName': 'atena_session',
+    'auth.adminEmails': [],
+  };
 
-      if (key === 'auth.session.cookieName') {
-        return 'atena_session';
-      }
-
-      if (key === 'auth.adminEmails') {
-        return [];
-      }
-
-      return 'example.com';
-    }),
-  } as unknown as ConfigService;
+  // Any other key (e.g. `auth.allowedDomain`) reads 'example.com'.
+  return { get: jest.fn((key: string) => values[key] ?? 'example.com') } as unknown as ConfigService;
 }
 
 function authService(verifySession: jest.Mock): AuthService {
