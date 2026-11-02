@@ -95,7 +95,6 @@ The model in [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md
 - **What closes it:** translate module by module when a file is touched for other reasons; rename the page components (`UsersPage`, `ReportsPage`) in a dedicated `refactor` PR; translate `docs/` last (historical).
 
 ## 16. Behaviour found while raising coverage (not changed)
-- **`audit-query/duckdb-audit-query.service.ts`, `fetchObjectToLocal`:** when an S3 response has no `Body`, it writes an empty file; DuckDB then fails the whole query with "Input is not a GZIP stream", so this fallback never helps. Decide whether to skip the partition or fail with a clear error.
 - **Incident detection-window fallbacks:** the schema says the window columns are `NOT NULL`, but the service still falls back when they are missing (a spec relies on it). Decide whether the fallback should exist.
 
 ## 17. Dependabot holds the majors that are migrations

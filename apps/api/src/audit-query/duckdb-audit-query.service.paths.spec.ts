@@ -1475,6 +1475,28 @@ describe('DuckDbAuditQueryService — parallel prefetch of S3 objects (mocked S3
     }
   });
 
+  it('an S3 object without a body fails the query with its name and leaves no batch behind', async () => {
+    const send = jest.fn().mockResolvedValue({});
+
+    const {
+      service,
+      prefetchDir,
+    } = harness(send);
+
+    try {
+      await expect(service.search(
+        { window: WINDOW },
+        1,
+        20,
+      )).rejects.toThrow('S3 object without a body: s3://');
+
+      expect(readdirSync(prefetchDir)).toEqual([]);
+    }
+    finally {
+      service.onModuleDestroy();
+    }
+  });
+
   it('a failed download fails the query and leaves no partial batch behind', async () => {
     const send = jest.fn().mockRejectedValue(new Error('S3 unavailable'));
 

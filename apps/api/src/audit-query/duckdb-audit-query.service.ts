@@ -2744,11 +2744,15 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
     const body = response.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined;
 
+    // An empty file would only fail later inside DuckDB ("Input is not a GZIP stream"); name the
+    // object instead.
+    if (!body?.transformToByteArray) {
+      throw new Error(`S3 object without a body: ${url}`);
+    }
+
     await writeFile(
       local,
-      body?.transformToByteArray
-        ? await body.transformToByteArray()
-        : new Uint8Array(),
+      await body.transformToByteArray(),
     );
 
     return local;
