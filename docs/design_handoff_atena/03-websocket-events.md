@@ -18,11 +18,11 @@ Disparado quando o detector cria um incidente. Enviado a **todos os usuários co
   "type": "incident.created",
   "incident": {
     "id": "INC-2401",
-    "rule": "Queda de taxa de entrega — Twilio",
+    "rule": "Queda de taxa de entrega — Provider D",
     "severity": "critical",
     "status": "detected",
     "dimensionType": "provider",
-    "dimensionValue": "Twilio",
+    "dimensionValue": "Provider D",
     "detectedAt": "2026-05-28T14:02:00Z",
     "window": "14:02 → agora (4 min)",
     "summary": "Taxa de entrega caiu de 97% para 87%…",

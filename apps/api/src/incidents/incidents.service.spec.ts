@@ -13,12 +13,12 @@ const INCIDENT_ROW = {
   severity: 'critical',
   status: 'detected',
   dimensionType: 'provider',
-  dimensionValue: 'Twilio',
+  dimensionValue: 'Provider D',
   detectedAt: new Date('2026-05-28T14:02:00Z'),
   acknowledgedBy: null,
   resolvedBy: null,
   detectionPayload: {
-    rule: 'Queda de taxa de entrega — Twilio',
+    rule: 'Queda de taxa de entrega — Provider D',
     window: '14:02 → agora (4 min)',
     summary: 'Taxa caiu de 97% para 87%.',
     metrics: {
@@ -53,7 +53,7 @@ describe('IncidentsService', () => {
 
     expect(row).toMatchObject({
       id: 'INC-2401',
-      rule: 'Queda de taxa de entrega — Twilio',
+      rule: 'Queda de taxa de entrega — Provider D',
       severity: 'critical',
       dimension_type: 'provider',
       related_shippings: 184,

@@ -155,7 +155,7 @@ describe('detectDeliveryRateDrop', () => {
       ratio,
     ).map((message) => ({
       ...message,
-      provider: 'sinch',
+      provider: 'provider-c',
     }));
 
     const out = detectDeliveryRateDrop(
@@ -193,7 +193,7 @@ describe('detectDeliveryRateDrop', () => {
 
     expect(out).toHaveLength(1);
     expect(out[0].dimensionType).toBe('provider');
-    expect(out[0].dimensionValue).toBe('sinch');
+    expect(out[0].dimensionValue).toBe('provider-c');
     expect(out[0].summary).toContain('provedor');
   });
 });

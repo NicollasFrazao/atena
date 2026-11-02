@@ -381,7 +381,7 @@ export function ResolveIncidentModal({
                 <input
                   value={escalatedTo}
                   onChange={(event) => { setEscalatedTo(event.target.value); }}
-                  placeholder="Ex.: Twilio Support — ticket #91234"
+                  placeholder="Ex.: suporte do provedor — ticket #91234"
                   style={{
                     width: '100%',
                     marginTop: cssVar.space8,

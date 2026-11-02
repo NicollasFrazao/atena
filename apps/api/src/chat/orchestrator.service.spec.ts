@@ -248,7 +248,7 @@ describe('OrchestratorService', () => {
           campaign_id: 'camp-a',
           phone_masked: '+55 (65) 9****-0001',
           status: 'failed',
-          provider: 'sinch',
+          provider: 'provider-c',
           customer: '8349',
           requested_at: '2026-06-22T19:54:06.000Z',
           finalized_at: '2026-06-23T19:54:20.000Z',
@@ -259,7 +259,7 @@ describe('OrchestratorService', () => {
           campaign_id: 'camp-a',
           phone_masked: '+55 (65) 9****-0002',
           status: 'delivered',
-          provider: 'sinch',
+          provider: 'provider-c',
           customer: '8349',
           requested_at: '2026-06-22T19:55:00.000Z',
           finalized_at: '2026-06-22T19:56:00.000Z',
@@ -1249,7 +1249,7 @@ describe('OrchestratorService (scripted LLM)', () => {
           [
             {
               type: 'text_delta',
-              delta: '"Twilio failures today."',
+              delta: '"Provider D failures today."',
             },
             {
               type: 'text_delta',
@@ -1266,7 +1266,7 @@ describe('OrchestratorService (scripted LLM)', () => {
 
       const events = await collect(svc.run(
         's-1',
-        'which shippings failed on Twilio today?',
+        'which shippings failed on Provider D today?',
         'user-7',
       ));
 
@@ -1275,14 +1275,14 @@ describe('OrchestratorService (scripted LLM)', () => {
         data: {
           message_id: 'asst-9',
           refusal: null,
-          session_title: 'Twilio failures today',
+          session_title: 'Provider D failures today',
         },
       });
 
       expect(chat.updateSession).toHaveBeenCalledWith(
         's-1',
         'user-7',
-        { title: 'Twilio failures today' },
+        { title: 'Provider D failures today' },
       );
 
       // The title request is a separate, tool-less call.
@@ -1300,14 +1300,14 @@ describe('OrchestratorService (scripted LLM)', () => {
 
       await collect(svc.run(
         's-1',
-        '  which   shippings failed on Twilio for customer Acme since yesterday morning ',
+        '  which   shippings failed on Provider D for customer Acme since yesterday morning ',
         'user-7',
       ));
 
       expect(chat.updateSession).toHaveBeenCalledWith(
         's-1',
         'user-7',
-        { title: 'Which shippings failed on Twilio for customer Acme' },
+        { title: 'Which shippings failed on Provider D for customer Acme' },
       );
     });
 
@@ -1652,8 +1652,8 @@ describe('OrchestratorService (scripted LLM)', () => {
       } = buildScripted([]);
 
       catalog.listProviders.mockResolvedValue([
-        'Twilio',
-        'Sinch',
+        'Provider D',
+        'Provider C',
       ]);
 
       catalog.listCustomers.mockResolvedValue({
@@ -1667,8 +1667,8 @@ describe('OrchestratorService (scripted LLM)', () => {
       )).resolves.toEqual({
         window: 'últimas 24h',
         providers: [
-          'Twilio',
-          'Sinch',
+          'Provider D',
+          'Provider C',
         ],
       });
 

@@ -19,9 +19,9 @@ describe('ShippingsService', () => {
         rows: [
           {
             id: 'm1',
-            customerId: 'CreditBank',
+            customerId: 'AcmeBank',
             phoneE164: '+5511987651234',
-            provider: 'Twilio',
+            provider: 'Provider D',
             finalStatus: 'failed',
             requestedAt: new Date('2026-05-28T14:02:00Z'),
             finalizedAt: null,

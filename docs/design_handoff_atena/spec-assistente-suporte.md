@@ -322,7 +322,7 @@ CREATE TABLE incidents (
     severity            VARCHAR(16) NOT NULL,        -- info | warning | critical
     status              VARCHAR(16) NOT NULL,        -- detected | acknowledged | resolved | auto_resolved
     dimension_type      VARCHAR(32) NOT NULL,        -- provider | customer | route | global
-    dimension_value     VARCHAR(128),                -- ex.: 'twilio', 'customer_xyz'
+    dimension_value     VARCHAR(128),                -- ex.: 'provider-d', 'customer_xyz'
     detection_window    TSTZRANGE NOT NULL,          -- janela em que a anomalia foi detectada
     detection_payload   JSONB NOT NULL,              -- métricas que dispararam (taxa, threshold, etc.)
     detected_at         TIMESTAMPTZ NOT NULL,

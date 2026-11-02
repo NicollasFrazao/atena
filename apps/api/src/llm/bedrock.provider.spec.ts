@@ -285,8 +285,8 @@ describe('buildConverseInput', () => {
               id: 'tu-1',
               name: 'list_providers',
               result: [
-                'sinch',
-                'voicecarrier',
+                'provider-c',
+                'provider-e',
               ],
             },
           },
@@ -302,8 +302,8 @@ describe('buildConverseInput', () => {
           content: [{
             json: {
               result: [
-                'sinch',
-                'voicecarrier',
+                'provider-c',
+                'provider-e',
               ],
             },
           }],
@@ -727,7 +727,7 @@ describe('BedrockProvider', () => {
           role: 'tool',
           content: {
             id: 'tu-1',
-            result: ['Twilio'],
+            result: ['Provider D'],
           },
         },
       ],

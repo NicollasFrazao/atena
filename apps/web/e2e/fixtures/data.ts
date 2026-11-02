@@ -47,7 +47,7 @@ export const DELIVERY_REPORT = {
   },
   by_provider: [
     {
-      name: 'sinch',
+      name: 'provider-c',
       sent: 1_240_000,
       delivered: 812_500,
       failed: 390_000,
@@ -83,12 +83,12 @@ export const DELIVERY_REPORT = {
     {
       code: 'invalid_number',
       count: 18_200,
-      provider: 'sinch',
+      provider: 'provider-c',
     },
     {
       code: 'blocked',
       count: 4_100,
-      provider: 'sinch',
+      provider: 'provider-c',
     },
   ],
   csv_url: '/api/reports/delivery.csv?token=e2e',

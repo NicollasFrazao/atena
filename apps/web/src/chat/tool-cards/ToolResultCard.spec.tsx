@@ -31,7 +31,7 @@ const searchResult: SearchResultsResultInterface = {
       campaign_id: 'camp_aaa',
       phone_masked: '+55 11 9****-1234',
       status: 'delivered',
-      provider: 'Twilio',
+      provider: 'Provider D',
       customer: 'Cliente 1001',
       channel: 'sms',
       app_id: 'a1111111-0000-4000-8000-000000000001',
@@ -44,7 +44,7 @@ const searchResult: SearchResultsResultInterface = {
       campaign_id: 'camp_bbb',
       phone_masked: '+55 21 9****-5678',
       status: 'failed',
-      provider: 'Zenvia',
+      provider: 'Provider F',
       customer: 'Cliente 1001',
       channel: 'sms_flash',
       app_id: 'a2222222-0000-4000-8000-000000000002',
@@ -63,7 +63,7 @@ const trailResult: ShippingTrailInterface = {
   shipping_id: 'msg_2',
   campaign_id: 'camp_bbb',
   customer: 'Cliente 1001',
-  provider: 'Twilio',
+  provider: 'Provider D',
   phone_masked: '+55 21 9****-5678',
   channel: 'sms_flash',
   app_id: 'a2222222-0000-4000-8000-000000000002',
@@ -113,7 +113,7 @@ const reportResult: DeliveryReportInterface = {
   },
   by_provider: [
     {
-      name: 'Twilio',
+      name: 'Provider D',
       sent: 90000,
       delivered: 89000,
       failed: 1000,
@@ -122,7 +122,7 @@ const reportResult: DeliveryReportInterface = {
       rate: 98.9,
     },
     {
-      name: 'Zenvia',
+      name: 'Provider F',
       sent: 94320,
       delivered: 91000,
       failed: 3000,
@@ -161,7 +161,7 @@ const reportResult: DeliveryReportInterface = {
     {
       code: 'BLOCKED_30007',
       count: 1800,
-      provider: 'Zenvia',
+      provider: 'Provider F',
     },
   ],
   csv_url: 'https://example.test/report.csv',

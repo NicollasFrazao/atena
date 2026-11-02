@@ -20,7 +20,7 @@ describe('eventToNotice', () => {
     const created = incident(
       'critical',
       'Queda de entrega',
-      'sinch',
+      'provider-c',
     );
 
     const notice = eventToNotice({
