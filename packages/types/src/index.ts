@@ -1,5 +1,5 @@
 /**
- * @atena/types — contrato compartilhado entre backend e frontend.
+ * `@atena/types` — contrato compartilhado entre backend e frontend.
  *
  * Os objetos de entrada/saída da API são **snake_case** (ver .context/docs/code-style.md).
  * O banco também é snake_case; o Prisma Client (camelCase) é mapeado na borda da API.
@@ -54,61 +54,53 @@ export type UserStatusType = 'active' | 'disabled';
  * Usuário autenticado da sessão, devolvido por `GET /auth/me`. É o contrato de identidade +
  * autorização consumido pelo frontend (saudação/topbar + gate de acesso + UI condicional).
  * Os papéis/permissões são resolvidos do banco a cada requisição (não ficam no cookie JWT).
- *
- * @property {string} sub - Identificador estável do usuário no IdP (claim `sub`).
- * @property {string} email - E-mail institucional (dentro do domínio permitido).
- * @property {string} name - Nome de exibição.
- * @property {RoleType[]} roles - Papéis atribuídos (vazio = acesso pendente).
- * @property {PermissionType[]} permissions - Permissões derivadas dos papéis.
- * @property {UserStatusType} status - `active` | `disabled`.
- * @property {boolean} is_super_admin - Super admin (definido só pelo `AUTH_ADMIN_EMAILS`/env):
- *   acesso total + gerencia admins; imutável pela tela.
  */
 export interface SessionUserInterface {
+  /** Identificador estável do usuário no IdP (claim `sub`). */
   sub: string;
+  /** E-mail institucional (dentro do domínio permitido). */
   email: string;
+  /** Nome de exibição. */
   name: string;
+  /** Papéis atribuídos (vazio = acesso pendente). */
   roles: RoleType[];
+  /** Permissões derivadas dos papéis. */
   permissions: PermissionType[];
+  /** `active` | `disabled`. */
   status: UserStatusType;
+  /** Super admin (definido só pelo `AUTH_ADMIN_EMAILS`/env): acesso total + gerencia admins; imutável pela tela. */
   is_super_admin: boolean;
 }
 
-/**
- * Item da lista de usuários da tela de admin (`GET /admin/users`).
- *
- * @property {string} sub - Id do usuário (= claim `sub`).
- * @property {string} email - E-mail institucional.
- * @property {string} name - Nome de exibição.
- * @property {UserStatusType} status - `active` | `disabled`.
- * @property {RoleType[]} roles - Papéis atribuídos.
- * @property {boolean} is_super_admin - Super admin (via env): imutável pela tela.
- * @property {string | null} last_login_at - Último login (ISO) ou `null`.
- * @property {string} created_at - Criação (ISO).
- */
+/** Item da lista de usuários da tela de admin (`GET /admin/users`). */
 export interface AdminUserInterface {
+  /** Id do usuário (= claim `sub`). */
   sub: string;
+  /** E-mail institucional. */
   email: string;
+  /** Nome de exibição. */
   name: string;
+  /** `active` | `disabled`. */
   status: UserStatusType;
+  /** Papéis atribuídos. */
   roles: RoleType[];
+  /** Super admin (via env): imutável pela tela. */
   is_super_admin: boolean;
+  /** Último login (ISO) ou `null`. */
   last_login_at: string | null;
+  /** Criação (ISO). */
   created_at: string;
 }
 
-/**
- * Item do catálogo de papéis (`GET /admin/roles`) — alimenta a tela de admin.
- *
- * @property {RoleType} role - Chave do papel.
- * @property {string} label - Rótulo legível.
- * @property {string} description - O que o papel permite (para a UI explicar cada papel).
- * @property {PermissionType[]} permissions - Permissões que o papel concede.
- */
+/** Item do catálogo de papéis (`GET /admin/roles`) — alimenta a tela de admin. */
 export interface RoleCatalogItemInterface {
+  /** Chave do papel. */
   role: RoleType;
+  /** Rótulo legível. */
   label: string;
+  /** O que o papel permite (para a UI explicar cada papel). */
   description: string;
+  /** Permissões que o papel concede. */
   permissions: PermissionType[];
 }
 
@@ -258,54 +250,47 @@ export type AuditSeverityType = 'info' | 'warning' | 'pii' | 'config';
 /**
  * Registro do audit log (append-only), na borda da API (snake_case). Sem PII em claro —
  * `detail`/`metadata` carregam só referências (IDs/hashes).
- *
- * @property {string} id - Id do registro.
- * @property {string} occurred_at - Instante do evento (ISO 8601 UTC).
- * @property {string | null} user_id - Subject do usuário; `null` se sem autenticação.
- * @property {AuditActionType} action - Ação auditada.
- * @property {string} resource - Recurso afetado (ex.: rota, `orchestrator:tool`).
- * @property {string | null} detail - Detalhe livre (só referências); `null` se ausente.
- * @property {AuditSeverityType} severity - Severidade/categoria.
- * @property {string | null} ip_address - IP de origem; `null` se indisponível.
- * @property {Record<string, unknown> | null} metadata - Metadados estruturados (só referências).
  */
 export interface AuditLogEntryInterface {
+  /** Id do registro. */
   id: string;
+  /** Instante do evento (ISO 8601 UTC). */
   occurred_at: string;
+  /** Subject do usuário; `null` se sem autenticação. */
   user_id: string | null;
   /** Nome de exibição do usuário (resolvido do `user_id`/sub); `null` se desconhecido (mostra o id). */
   user_name: string | null;
+  /** Ação auditada. */
   action: AuditActionType;
+  /** Recurso afetado (ex.: rota, `orchestrator:tool`). */
   resource: string;
+  /** Detalhe livre (só referências); `null` se ausente. */
   detail: string | null;
+  /** Severidade/categoria. */
   severity: AuditSeverityType;
+  /** IP de origem; `null` se indisponível. */
   ip_address: string | null;
+  /** Metadados estruturados (só referências). */
   metadata: Record<string, unknown> | null;
 }
 
-/**
- * Opção do filtro de usuário do Audit log: o `id` (sub) + o nome de exibição resolvido.
- *
- * @property {string} id - Subject (`sub`) do usuário, usado como valor do filtro.
- * @property {string | null} name - Nome de exibição (ou `null` → a tela mostra o `id`).
- */
+/** Opção do filtro de usuário do Audit log: o `id` (sub) + o nome de exibição resolvido. */
 export interface AuditUserOptionInterface {
+  /** Subject (`sub`) do usuário, usado como valor do filtro. */
   id: string;
+  /** Nome de exibição (ou `null` → a tela mostra o `id`). */
   name: string | null;
 }
 
-/**
- * Contadores do topo da tela de Audit log.
- *
- * @property {number} today - Eventos de hoje (UTC).
- * @property {number} pii - Acessos a PII (severity `pii`).
- * @property {number} rule_changes - Mudanças de regra (`rule_update`).
- * @property {number} total - Total de registros no log.
- */
+/** Contadores do topo da tela de Audit log. */
 export interface AuditSummaryInterface {
+  /** Eventos de hoje (UTC). */
   today: number;
+  /** Acessos a PII (severity `pii`). */
   pii: number;
+  /** Mudanças de regra (`rule_update`). */
   rule_changes: number;
+  /** Total de registros no log. */
   total: number;
 }
 
@@ -345,12 +330,9 @@ export type ToolNameType = (typeof TOOL_NAMES)[number];
 // Envelopes / utilitários (API: snake_case)
 // ---------------------------------------------------------------------------
 
-/**
- * Shape único de resposta de erro da API (produzido pelo `AllExceptionsFilter`).
- *
- * @property {{ code: string; message: string }} error - Erro de domínio: `code` estável (chave de tradução/contrato) e `message` legível.
- */
+/** Shape único de resposta de erro da API (produzido pelo `AllExceptionsFilter`). */
 export interface ApiErrorInterface {
+  /** Erro de domínio: `code` estável (chave de tradução/contrato) e `message` legível. */
   error: {
     code: string;
     message: string
@@ -361,17 +343,17 @@ export interface ApiErrorInterface {
  * Envelope padrão de respostas paginadas da API (snake_case na borda).
  *
  * @template {T} Tipo de cada linha em `rows`.
- * @property {T[]} rows - Itens da página atual.
- * @property {number} page - Página atual (base do contrato; ver §C).
- * @property {number} total_pages - Total de páginas disponíveis.
- * @property {number} total - Total de itens em todas as páginas.
- * @property {number} latency_ms - Tempo de processamento da consulta, em ms.
  */
 export interface PaginatedEnvelopeInterface<T> {
+  /** Itens da página atual. */
   rows: T[];
+  /** Página atual (base do contrato; ver §C). */
   page: number;
+  /** Total de páginas disponíveis. */
   total_pages: number;
+  /** Total de itens em todas as páginas. */
   total: number;
+  /** Tempo de processamento da consulta, em ms. */
   latency_ms: number;
 }
 
@@ -379,132 +361,120 @@ export interface PaginatedEnvelopeInterface<T> {
 // Tool results (§C do contrato) — snake_case
 // ---------------------------------------------------------------------------
 
-/**
- * Linha de resultado da tool `search_shippings` (§C do contrato).
- *
- * @property {string} id - Identificador do envio.
- * @property {string | null} campaign_id - Id da campanha (id da requisição); 1 campanha → N destinatários. Alias externo do `correlation_id` interno.
- * @property {string} phone_masked - Telefone mascarado; exibido por padrão.
- * @property {string} [phone_full] - PII: telefone completo, só com permissão + reveal auditado.
- * @property {ShippingStatusType} status - Status de entrega do envio.
- * @property {string} provider - Provedor responsável pelo envio.
- * @property {string} customer - Cliente dono do envio.
- * @property {string} requested_at - Instante do pedido de ENVIO (ISO 8601 UTC). A janela da busca filtra
- *   por ESTE instante (envios feitos na janela), nunca pela finalização — ver `finalized_at`.
- * @property {string | null} finalized_at - Instante em que o envio chegou ao status final (ISO 8601
- *   UTC); pode ser de um dia POSTERIOR ao envio. `null` enquanto não finalizou (`pending`).
- * @property {string | null} error_hint - Dica de erro quando houve falha; `null` caso contrário.
- */
+/** Linha de resultado da tool `search_shippings` (§C do contrato). */
 export interface SearchResultRowInterface {
+  /** Identificador do envio. */
   id: string;
+  /** Id da campanha (id da requisição); 1 campanha → N destinatários. Alias externo do `correlation_id` interno. */
   campaign_id: string | null;
+  /** Telefone mascarado; exibido por padrão. */
   phone_masked: string;
+  /** PII: telefone completo, só com permissão + reveal auditado. */
   phone_full?: string; // só com permissão + reveal (gera audit)
+  /** Status de entrega do envio. */
   status: ShippingStatusType;
+  /** Provedor responsável pelo envio. */
   provider: string;
+  /** Cliente dono do envio. */
   customer: string;
   /** Canal do envio: `sms` (SMS Short) ou `sms_flash` (SMS Flash). */
   channel: string | null;
   /** Aplicação que originou o envio (atribuição); UUID. */
   app_id: string | null;
+  /**
+   * Instante do pedido de ENVIO (ISO 8601 UTC). A janela da busca filtra
+   * por ESTE instante (envios feitos na janela), nunca pela finalização — ver `finalized_at`.
+   */
   requested_at: string;
+  /**
+   * Instante em que o envio chegou ao status final (ISO 8601
+   * UTC); pode ser de um dia POSTERIOR ao envio. `null` enquanto não finalizou (`pending`).
+   */
   finalized_at: string | null;
+  /** Dica de erro quando houve falha; `null` caso contrário. */
   error_hint: string | null;
 }
 
-/**
- * Evento individual na trilha (timeline) de um envio.
- *
- * @property {ShippingEventType} type - Tipo/etapa do evento no lifecycle.
- * @property {string} label - Rótulo curto para exibição.
- * @property {string} at - Instante do evento. ISO 8601 UTC (com `Z`) na fonte; na borda do chat vem
- *   como datetime naive (sem `Z`) no fuso do operador, p/ o assistente citar a hora local correta.
- *   O formatador da UI aceita as duas formas (naive = relógio de parede já no fuso; com `Z` = absoluto).
- * @property {string} detail - Detalhe legível do que ocorreu.
- */
+/** Evento individual na trilha (timeline) de um envio. */
 export interface ShippingTrailEvent {
+  /** Tipo/etapa do evento no lifecycle. */
   type: ShippingEventType;
+  /** Rótulo curto para exibição. */
   label: string;
+  /**
+   * Instante do evento. ISO 8601 UTC (com `Z`) na fonte; na borda do chat vem
+   * como datetime naive (sem `Z`) no fuso do operador, p/ o assistente citar a hora local correta.
+   * O formatador da UI aceita as duas formas (naive = relógio de parede já no fuso; com `Z` = absoluto).
+   */
   at: string;
+  /** Detalhe legível do que ocorreu. */
   detail: string;
 }
 
-/**
- * Trilha completa de um envio (resultado de `get_shipping_trail`, §C).
- *
- * @property {string} shipping_id - Identificador do envio rastreado.
- * @property {string | null} campaign_id - Id da campanha (id da requisição). Alias externo do `correlation_id` interno.
- * @property {string} customer - Cliente dono do envio.
- * @property {string} provider - Provedor responsável pelo envio.
- * @property {string} phone_masked - Telefone mascarado; exibido por padrão.
- * @property {ShippingStatusType} final_status - Status consolidado (do evento `final`).
- * @property {string} content_ref - Referência opaca ao conteúdo (não é a PII em si).
- * @property {boolean} content_available - Se há texto do SMS para revelar nesta fonte; quando `false`,
- *   a UI mostra "conteúdo não disponível" em vez de oferecer o reveal.
- * @property {string} [content_preview] - PII: prévia do conteúdo, só após reveal auditado; mascarado por padrão.
- * @property {ShippingTrailEvent[]} events - Eventos do lifecycle, em ordem cronológica.
- */
+/** Trilha completa de um envio (resultado de `get_shipping_trail`, §C). */
 export interface ShippingTrailInterface {
+  /** Identificador do envio rastreado. */
   shipping_id: string;
+  /** Id da campanha (id da requisição). Alias externo do `correlation_id` interno. */
   campaign_id: string | null;
+  /** Cliente dono do envio. */
   customer: string;
+  /** Provedor responsável pelo envio. */
   provider: string;
+  /** Telefone mascarado; exibido por padrão. */
   phone_masked: string;
   /** Canal do envio: `sms` (SMS Short) ou `sms_flash` (SMS Flash). */
   channel: string | null;
   /** Aplicação que originou o envio (atribuição); UUID. */
   app_id: string | null;
+  /** Status consolidado (do evento `final`). */
   final_status: ShippingStatusType;
+  /** Referência opaca ao conteúdo (não é a PII em si). */
   content_ref: string;
+  /**
+   * Se há texto do SMS para revelar nesta fonte; quando `false`,
+   * a UI mostra "conteúdo não disponível" em vez de oferecer o reveal.
+   */
   content_available: boolean;
+  /** PII: prévia do conteúdo, só após reveal auditado; mascarado por padrão. */
   content_preview?: string; // só após reveal (audit); mascarado por padrão
+  /** Eventos do lifecycle, em ordem cronológica. */
   events: ShippingTrailEvent[];
 }
 
-/**
- * Categoria de risco detectada na análise de conteúdo, com sua intensidade.
- *
- * @property {string} name - Nome da categoria de risco.
- * @property {number} strength - Intensidade da categoria (peso/score relativo).
- */
+/** Categoria de risco detectada na análise de conteúdo, com sua intensidade. */
 export interface RiskCategoryInterface {
+  /** Nome da categoria de risco. */
   name: string;
+  /** Intensidade da categoria (peso/score relativo). */
   strength: number;
 }
 
-/**
- * Resultado da tool `analyze_shipping_content` (§C): risco do conteúdo.
- *
- * @property {number} score - Score agregado de risco.
- * @property {RiskVerdictType} verdict - Veredito derivado do score.
- * @property {RiskCategoryInterface[]} categories - Categorias que compõem o risco.
- * @property {string} explanation - Justificativa legível do veredito.
- */
+/** Resultado da tool `analyze_shipping_content` (§C): risco do conteúdo. */
 export interface RiskAnalysisInterface {
+  /** Score agregado de risco. */
   score: number;
+  /** Veredito derivado do score. */
   verdict: RiskVerdictType;
+  /** Categorias que compõem o risco. */
   categories: RiskCategoryInterface[];
+  /** Justificativa legível do veredito. */
   explanation: string;
 }
 
-/**
- * Relatório de entregabilidade (resultado de `generate_delivery_report`, §C).
- *
- * @property {string} window - Janela temporal do relatório (ex.: "24h", intervalo).
- * @property {{ sent: number; delivered: number; failed: number; blocked: number; pending: number }} totals - Totais por status. `blocked` = bloqueado pelo controle de entrega (bounce); NÃO conta como falha.
- * @property {Array<{ name: string; sent: number; delivered: number; rate: number }>} by_provider - Quebra por provedor; `rate` = taxa de entrega = entregues/(entregues+falhas) (bloqueados/pendentes fora do denominador).
- * @property {Array<{ at: string; rate: number }>} hourly - Taxa de entrega por hora, em buckets CRONOLÓGICOS; `at` é o início do bucket (ISO 8601 UTC, ex.: "2026-06-18T21:00:00Z"). Cobre os dias da janela (não colapsa por hora-do-dia).
- * @property {Array<{ code: string; count: number; provider: string }>} top_errors - Principais erros: código, contagem e provedor.
- * @property {string} csv_url - URL para download do relatório em CSV.
- * @property {{ customer_id?: string; provider?: string; status?: ShippingStatusType }} [filters] - Filtros aplicados (eco do recorte); ausente/`{}` = todos os clientes e provedores. Mostrado no card para identificar o escopo.
- */
+/** Relatório de entregabilidade (resultado de `generate_delivery_report`, §C). */
 export interface DeliveryReportInterface {
+  /** Janela temporal do relatório (ex.: "24h", intervalo). */
   window: string;
+  /**
+   * Filtros aplicados (eco do recorte); ausente/`{}` = todos os clientes e provedores. Mostrado no card para identificar o escopo.
+   */
   filters?: {
     customer_id?: string;
     provider?: string;
     status?: ShippingStatusType
   };
+  /** Totais por status. `blocked` = bloqueado pelo controle de entrega (bounce); NÃO conta como falha. */
   totals: {
     sent: number;
     delivered: number;
@@ -512,7 +482,10 @@ export interface DeliveryReportInterface {
     blocked: number;
     pending: number
   };
-  by_provider: Array<{
+  /**
+   * Quebra por provedor; `rate` = taxa de entrega = entregues/(entregues+falhas) (bloqueados/pendentes fora do denominador).
+   */
+  by_provider: {
     name: string;
     sent: number;
     delivered: number;
@@ -520,16 +493,21 @@ export interface DeliveryReportInterface {
     blocked: number;
     pending: number;
     rate: number
-  }>;
-  hourly: Array<{
+  }[];
+  /**
+   * Taxa de entrega por hora, em buckets CRONOLÓGICOS; `at` é o início do bucket (ISO 8601 UTC, ex.: "2026-06-18T21:00:00Z"). Cobre os dias da janela (não colapsa por hora-do-dia).
+   */
+  hourly: {
     at: string;
     rate: number
-  }>;
-  top_errors: Array<{
+  }[];
+  /** Principais erros: código, contagem e provedor. */
+  top_errors: {
     code: string;
     count: number;
     provider: string
-  }>;
+  }[];
+  /** URL para download do relatório em CSV. */
   csv_url: string;
 }
 
@@ -542,12 +520,11 @@ export interface DeliveryReportInterface {
  *
  * PII: só é retornado após reveal autorizado e auditado (`reveal_phone`); por
  * padrão o telefone sai mascarado (`phone_masked`).
- *
- * @property {string} shipping_id - Id do envio revelado.
- * @property {string} phone_full - Telefone completo em E.164 (NÃO mascarado).
  */
 export interface RevealedPhoneInterface {
+  /** Id do envio revelado. */
   shipping_id: string;
+  /** Telefone completo em E.164 (NÃO mascarado). */
   phone_full: string;
 }
 
@@ -556,12 +533,11 @@ export interface RevealedPhoneInterface {
  *
  * PII: conteúdo bruto hidratado do S3 via `content_ref` (cache `/tmp`↔S3); só
  * após reveal autorizado e auditado (`reveal_content`).
- *
- * @property {string} shipping_id - Id do envio revelado.
- * @property {string} content_preview - Conteúdo textual do envio (NÃO mascarado).
  */
 export interface RevealedContentInterface {
+  /** Id do envio revelado. */
   shipping_id: string;
+  /** Conteúdo textual do envio (NÃO mascarado). */
   content_preview: string;
 }
 
@@ -569,29 +545,21 @@ export interface RevealedContentInterface {
 // Incidentes — snake_case
 // ---------------------------------------------------------------------------
 
-/**
- * Incidente detectado por uma regra de anomalia (snake_case na borda da API).
- *
- * @property {string} id - Identificador do incidente.
- * @property {string} rule - Regra que originou o incidente (ver {@link RuleType}).
- * @property {IncidentSeverityType} severity - Severidade/impacto.
- * @property {IncidentStatusType} status - Estado atual no ciclo de vida.
- * @property {DimensionType} dimension_type - Tipo de dimensão afetada.
- * @property {string} dimension_value - Valor da dimensão (ex.: nome do provedor/cliente).
- * @property {string} detected_at - Instante da detecção (ISO 8601 UTC).
- * @property {string} window - Janela temporal analisada.
- * @property {string} summary - Resumo legível do incidente.
- * @property {{ baseline: string; current: string; threshold: string; sample: string }} metrics - Métricas de suporte: baseline, valor atual, limiar e tamanho da amostra.
- * @property {number} related_shippings - Quantidade de envios relacionados.
- * @property {string | null} assignee - Responsável atribuído; `null` se não atribuído.
- */
+/** Incidente detectado por uma regra de anomalia (snake_case na borda da API). */
 export interface IncidentInterface {
+  /** Identificador do incidente. */
   id: string;
+  /** Regra que originou o incidente (ver {@link RuleType}). */
   rule: string;
+  /** Severidade/impacto. */
   severity: IncidentSeverityType;
+  /** Estado atual no ciclo de vida. */
   status: IncidentStatusType;
+  /** Tipo de dimensão afetada. */
   dimension_type: DimensionType;
+  /** Valor da dimensão (ex.: nome do provedor/cliente). */
   dimension_value: string;
+  /** Instante da detecção (ISO 8601 UTC). */
   detected_at: string;
   /** Rótulo legível da janela de detecção, no fuso de exibição (ex.: `23/06 16:40 → 16:55 GMT-3 (15 min)`). */
   window: string;
@@ -599,14 +567,18 @@ export interface IncidentInterface {
   window_from: string | null;
   /** Fim da janela de detecção em ISO 8601 UTC (com `Z`) — use direto como `date_to` de relatório. */
   window_to: string | null;
+  /** Resumo legível do incidente. */
   summary: string;
+  /** Métricas de suporte: baseline, valor atual, limiar e tamanho da amostra. */
   metrics: {
     baseline: string;
     current: string;
     threshold: string;
     sample: string
   };
+  /** Quantidade de envios relacionados. */
   related_shippings: number;
+  /** Responsável atribuído; `null` se não atribuído. */
   assignee: string | null;
   shadow: boolean;
 }
@@ -617,122 +589,112 @@ export interface IncidentInterface {
  * Busca real escopada pela dimensão do incidente (provider/customer) + janela em torno do
  * `detected_at`. Para dimensões sem filtro de busca direto (global/route), `available` é `false`
  * e a UI cai no modo contagem (`IncidentInterface.related_shippings`).
- *
- * @property {boolean} available - Se foi possível buscar amostra real para a dimensão do incidente.
- * @property {SearchResultRowInterface[]} rows - Amostra de envios (mesma forma do `search_shippings`); base do CSV.
- * @property {number} total - Total de envios que casam a dimensão+janela (não só a amostra retornada).
- * @property {Array<{ campaign_id: string; count: number }>} top_campaigns - Códigos de envio (campaign_id)
- *   com mais ocorrências na amostra, em ordem decrescente (poucos; resumo do detalhe do incidente).
  */
 export interface IncidentShippingsInterface {
+  /** Se foi possível buscar amostra real para a dimensão do incidente. */
   available: boolean;
+  /** Amostra de envios (mesma forma do `search_shippings`); base do CSV. */
   rows: SearchResultRowInterface[];
+  /** Total de envios que casam a dimensão+janela (não só a amostra retornada). */
   total: number;
-  top_campaigns: Array<{
+  /**
+   * Códigos de envio (campaign_id)
+   * com mais ocorrências na amostra, em ordem decrescente (poucos; resumo do detalhe do incidente).
+   */
+  top_campaigns: {
     campaign_id: string;
     count: number
-  }>;
+  }[];
 }
 
 /**
  * Payload para resolver um incidente manualmente (UI + validação server-side;
  * resolver não é tool do LLM).
- *
- * @property {ActionCategoryType} action_category - Categoria da ação tomada.
- * @property {string} action_description - Descrição da ação; ≥ 20 chars (≥ 10 em `auto_resolved`), validado server-side.
- * @property {string} [escalated_to] - Destino do escalonamento; obrigatório se `action_category` ∈ {`provider_escalated`, `internal_escalated`}.
- * @property {string[]} [related_shipping_ids] - IDs de envios relacionados ao incidente.
- * @property {string[]} [tags] - Tags livres para categorização/auditoria.
  */
 export interface ResolveIncidentPayload {
+  /** Categoria da ação tomada. */
   action_category: ActionCategoryType;
+  /** Descrição da ação; ≥ 20 chars (≥ 10 em `auto_resolved`), validado server-side. */
   action_description: string; // ≥ 20 chars (≥ 10 no auto_resolved) — validado server-side
+  /** Destino do escalonamento; obrigatório se `action_category` ∈ {`provider_escalated`, `internal_escalated`}. */
   escalated_to?: string; // obrigatório se action_category ∈ {provider_escalated, internal_escalated}
+  /** IDs de envios relacionados ao incidente. */
   related_shipping_ids?: string[];
+  /** Tags livres para categorização/auditoria. */
   tags?: string[];
 }
 
-/**
- * Atividade no ciclo de vida de um incidente (comentário, mudança de estado, tool).
- *
- * @property {string} id - Id da atividade.
- * @property {string} [user_id] - Usuário que a gerou, quando houver.
- * @property {'comment' | 'status_change' | 'tool_call'} type - Tipo da atividade.
- * @property {string} at - Instante (ISO 8601 UTC).
- * @property {Record<string, unknown>} payload - Detalhe estruturado (ex.: novo status, texto do comentário).
- */
+/** Atividade no ciclo de vida de um incidente (comentário, mudança de estado, tool). */
 export interface IncidentActivityInterface {
+  /** Id da atividade. */
   id: string;
+  /** Usuário que a gerou, quando houver. */
   user_id?: string;
+  /** Tipo da atividade. */
   type: 'comment' | 'status_change' | 'tool_call';
+  /** Instante (ISO 8601 UTC). */
   at: string;
+  /** Detalhe estruturado (ex.: novo status, texto do comentário). */
   payload: Record<string, unknown>;
 }
 
-/**
- * Incidente já resolvido, como aparece no relatório de incidentes (§C.6).
- *
- * @property {string} id - Id do incidente.
- * @property {IncidentSeverityType} severity - Severidade.
- * @property {string} rule - Regra que originou.
- * @property {string} resolved_at - Instante de resolução (ISO 8601 UTC).
- * @property {ActionCategoryType} action - Categoria da ação tomada na resolução.
- * @property {string | null} analyst - Analista que resolveu; `null` se automático.
- * @property {string} duration - Duração detecção→resolução (legível).
- * @property {string | null} escalated_to - Destino do escalonamento, quando houve.
- */
+/** Incidente já resolvido, como aparece no relatório de incidentes (§C.6). */
 export interface ResolvedIncidentInterface {
+  /** Id do incidente. */
   id: string;
+  /** Severidade. */
   severity: IncidentSeverityType;
+  /** Regra que originou. */
   rule: string;
+  /** Instante de resolução (ISO 8601 UTC). */
   resolved_at: string;
+  /** Categoria da ação tomada na resolução. */
   action: ActionCategoryType;
+  /** Analista que resolveu; `null` se automático. */
   analyst: string | null;
+  /** Duração detecção→resolução (legível). */
   duration: string;
+  /** Destino do escalonamento, quando houve. */
   escalated_to: string | null;
   shadow: boolean;
 }
 
-/**
- * Dimensão (fornecedor/cliente/rota) mais afetada por incidentes resolvidos na janela.
- *
- * @property {DimensionType} dimension - Tipo da dimensão (`provider`/`customer`/`route`/`global`).
- * @property {string} value - Valor da dimensão (ex.: nome do fornecedor/cliente).
- * @property {number} count - Quantidade de incidentes resolvidos atribuídos à dimensão.
- * @property {IncidentSeverityType} severity - Pior severidade observada no grupo (realce do ponto).
- */
+/** Dimensão (fornecedor/cliente/rota) mais afetada por incidentes resolvidos na janela. */
 export interface AffectedDimensionInterface {
+  /** Tipo da dimensão (`provider`/`customer`/`route`/`global`). */
   dimension: DimensionType;
+  /** Valor da dimensão (ex.: nome do fornecedor/cliente). */
   value: string;
+  /** Quantidade de incidentes resolvidos atribuídos à dimensão. */
   count: number;
+  /** Pior severidade observada no grupo (realce do ponto). */
   severity: IncidentSeverityType;
 }
 
 /**
  * Resultado da tool `generate_incident_report` (§C.6): métricas agregadas + lista
  * de incidentes resolvidos na janela.
- *
- * @property {string} window - Janela temporal do relatório (rótulo legível).
- * @property {number} total - Total de incidentes resolvidos na janela.
- * @property {{ critical: number; warning: number; info: number }} by_severity - Contagem por severidade.
- * @property {number | null} mtta_seconds - MTTA médio (detecção→acknowledge) em segundos; `null` sem amostra.
- * @property {number | null} mttr_seconds - MTTR médio (detecção→resolução) em segundos; `null` sem amostra.
- * @property {number | null} delta_vs_previous - Variação do total vs o período anterior de mesmo tamanho; `null` quando a janela é "todo o período".
- * @property {AffectedDimensionInterface[]} affected_dimensions - Top dimensões afetadas (desc. por contagem).
- * @property {ResolvedIncidentInterface[]} resolved - Incidentes resolvidos na janela.
  */
 export interface IncidentReportInterface {
+  /** Janela temporal do relatório (rótulo legível). */
   window: string;
+  /** Total de incidentes resolvidos na janela. */
   total: number;
+  /** Contagem por severidade. */
   by_severity: {
     critical: number;
     warning: number;
     info: number
   };
+  /** MTTA médio (detecção→acknowledge) em segundos; `null` sem amostra. */
   mtta_seconds: number | null;
+  /** MTTR médio (detecção→resolução) em segundos; `null` sem amostra. */
   mttr_seconds: number | null;
+  /** Variação do total vs o período anterior de mesmo tamanho; `null` quando a janela é "todo o período". */
   delta_vs_previous: number | null;
+  /** Top dimensões afetadas (desc. por contagem). */
   affected_dimensions: AffectedDimensionInterface[];
+  /** Incidentes resolvidos na janela. */
   resolved: ResolvedIncidentInterface[];
 }
 
@@ -740,58 +702,58 @@ export interface IncidentReportInterface {
 // Regras de anomalia (tela de Regras) — snake_case
 // ---------------------------------------------------------------------------
 
-/**
- * Regra de detecção de anomalia (tabela `anomaly_rules`; tela de Regras).
- *
- * @property {string} id - Id estável da regra (ex.: `r-delivery-rate-drop`).
- * @property {string} name - Nome legível da regra.
- * @property {RuleType} rule_type - Tipo da regra (imutável na UI).
- * @property {DimensionType} dimension - Dimensão de agregação.
- * @property {boolean} enabled - Se a regra está ativa.
- * @property {IncidentSeverityType} severity - Severidade do incidente gerado.
- * @property {number} threshold - Valor do limiar.
- * @property {ThresholdUnitType} threshold_unit - Unidade do limiar (`%`/`σ`/`min`).
- * @property {number} window_minutes - Janela de avaliação, em minutos.
- * @property {string | null} category - Categoria de erro alvo (só `consistent_error`, ex.: `invalid_number`); read-only, usada na descrição. `null` para os demais tipos.
- * @property {boolean} shadow_mode - Regra em observação silenciosa: detecta e registra o incidente, mas não notifica (sem WebSocket/banner) — para calibrar thresholds antes de ligar o alerta.
- * @property {string | null} updated_by - Último editor; `null` se nunca editada.
- * @property {string} updated_at - Última atualização (ISO 8601 UTC).
- */
+/** Regra de detecção de anomalia (tabela `anomaly_rules`; tela de Regras). */
 export interface AnomalyRuleInterface {
+  /** Id estável da regra (ex.: `r-delivery-rate-drop`). */
   id: string;
+  /** Nome legível da regra. */
   name: string;
+  /** Tipo da regra (imutável na UI). */
   rule_type: RuleType;
+  /** Dimensão de agregação. */
   dimension: DimensionType;
+  /** Se a regra está ativa. */
   enabled: boolean;
+  /** Severidade do incidente gerado. */
   severity: IncidentSeverityType;
+  /** Valor do limiar. */
   threshold: number;
+  /** Unidade do limiar (`%`/`σ`/`min`). */
   threshold_unit: ThresholdUnitType;
+  /** Janela de avaliação, em minutos. */
   window_minutes: number;
+  /**
+   * Categoria de erro alvo (só `consistent_error`, ex.: `invalid_number`); read-only, usada na descrição. `null` para os demais tipos.
+   */
   category: string | null;
+  /**
+   * Regra em observação silenciosa: detecta e registra o incidente, mas não notifica (sem WebSocket/banner) — para calibrar thresholds antes de ligar o alerta.
+   */
   shadow_mode: boolean;
+  /** Último editor; `null` se nunca editada. */
   updated_by: string | null;
+  /** Última atualização (ISO 8601 UTC). */
   updated_at: string;
 }
 
 /**
  * Payload de `PUT /api/rules/{id}` — campos editáveis da regra. `rule_type` é
  * imutável (não aparece aqui). Validado server-side; toda alteração é auditada.
- *
- * @property {string} [name] - Novo nome de exibição da regra (`rule_type`/`id` continuam imutáveis).
- * @property {number} [threshold] - Novo limiar.
- * @property {DimensionType} [dimension] - Nova dimensão de agregação.
- * @property {number} [window_minutes] - Nova janela (minutos).
- * @property {IncidentSeverityType} [severity] - Nova severidade.
- * @property {boolean} [enabled] - Ativa/desativa a regra.
- * @property {boolean} [shadow_mode] - Liga/desliga o modo observação silenciosa (detecta sem notificar).
  */
 export interface UpdateRulePayload {
+  /** Novo nome de exibição da regra (`rule_type`/`id` continuam imutáveis). */
   name?: string;
+  /** Novo limiar. */
   threshold?: number;
+  /** Nova dimensão de agregação. */
   dimension?: DimensionType;
+  /** Nova janela (minutos). */
   window_minutes?: number;
+  /** Nova severidade. */
   severity?: IncidentSeverityType;
+  /** Ativa/desativa a regra. */
   enabled?: boolean;
+  /** Liga/desliga o modo observação silenciosa (detecta sem notificar). */
   shadow_mode?: boolean;
 }
 
@@ -799,45 +761,39 @@ export interface UpdateRulePayload {
 // Chat / streaming (SSE) — snake_case
 // ---------------------------------------------------------------------------
 
-/**
- * Item da listagem de sessões de chat (resumo para a lista, snake_case).
- *
- * @property {string} id - Identificador da sessão.
- * @property {string} title - Título da sessão.
- * @property {string} started_at - Instante de início (ISO 8601 UTC).
- * @property {number} message_count - Total de mensagens trocadas.
- * @property {number} tool_count - Total de tools invocadas na sessão.
- * @property {boolean} pinned - Indica se a sessão está fixada pelo usuário.
- * @property {string[]} tags - Tags associadas à sessão.
- * @property {string} preview - Prévia textual do conteúdo da sessão.
- * @property {string} duration - Duração legível da sessão.
- * @property {boolean} has_incident - Indica se a sessão derivou em incidente.
- */
+/** Item da listagem de sessões de chat (resumo para a lista, snake_case). */
 export interface ChatSessionListItemInterface {
+  /** Identificador da sessão. */
   id: string;
+  /** Título da sessão. */
   title: string;
+  /** Instante de início (ISO 8601 UTC). */
   started_at: string;
+  /** Total de mensagens trocadas. */
   message_count: number;
+  /** Total de tools invocadas na sessão. */
   tool_count: number;
+  /** Indica se a sessão está fixada pelo usuário. */
   pinned: boolean;
+  /** Tags associadas à sessão. */
   tags: string[];
+  /** Prévia textual do conteúdo da sessão. */
   preview: string;
+  /** Duração legível da sessão. */
   duration: string;
+  /** Indica se a sessão derivou em incidente. */
   has_incident: boolean;
 }
 
-/**
- * Uma invocação de tool registrada em uma mensagem de chat do assistente.
- *
- * @property {ToolNameType} name - Nome da tool executada (catálogo da Fase 1).
- * @property {Record<string, unknown>} args - Argumentos com que a tool foi chamada.
- * @property {'success' | 'error'} status - Resultado da execução server-side.
- * @property {unknown} result - Resultado da tool (shape conforme §C; depende da tool).
- */
+/** Uma invocação de tool registrada em uma mensagem de chat do assistente. */
 export interface ChatToolInvocationInterface {
+  /** Nome da tool executada (catálogo da Fase 1). */
   name: ToolNameType;
+  /** Argumentos com que a tool foi chamada. */
   args: Record<string, unknown>;
+  /** Resultado da execução server-side. */
   status: 'success' | 'error';
+  /** Resultado da tool (shape conforme §C; depende da tool). */
   result: unknown;
 }
 
@@ -845,38 +801,34 @@ export interface ChatToolInvocationInterface {
  * Conteúdo persistido de uma mensagem de chat (JSON em `chat_messages.content`).
  *
  * `user` usa apenas `text`; `assistant` pode trazer `tools` (invocações) e/ou `refusal`.
- *
- * @property {string} text - Texto da mensagem (do usuário ou a resposta final do assistente).
- * @property {ChatToolInvocationInterface[]} [tools] - Tools executadas para compor a resposta (assistant).
- * @property {{ reason: string; explanation: string; can_do: string[] } | null} [refusal] - Recusa estruturada, quando o pedido sai do escopo.
- * @property {{ input_tokens: number; output_tokens: number }} [usage] - Uso de tokens da resposta (assistant), quando o provider reporta; base de tokens/cost na observabilidade.
  */
 export interface ChatMessageContentInterface {
+  /** Texto da mensagem (do usuário ou a resposta final do assistente). */
   text: string;
+  /** Tools executadas para compor a resposta (assistant). */
   tools?: ChatToolInvocationInterface[];
+  /** Recusa estruturada, quando o pedido sai do escopo. */
   refusal?: {
     reason: string;
     explanation: string;
     can_do: string[]
   } | null;
+  /** Uso de tokens da resposta (assistant), quando o provider reporta; base de tokens/cost na observabilidade. */
   usage?: {
     input_tokens: number;
     output_tokens: number
   };
 }
 
-/**
- * Item do histórico de mensagens de uma sessão (`GET /api/chat/sessions/{id}/messages`).
- *
- * @property {string} id - Id da mensagem.
- * @property {'user' | 'assistant'} role - Autor da mensagem.
- * @property {ChatMessageContentInterface} content - Conteúdo estruturado da mensagem.
- * @property {string} created_at - Instante de criação (ISO 8601 UTC).
- */
+/** Item do histórico de mensagens de uma sessão (`GET /api/chat/sessions/{id}/messages`). */
 export interface ChatMessageInterface {
+  /** Id da mensagem. */
   id: string;
+  /** Autor da mensagem. */
   role: 'user' | 'assistant';
+  /** Conteúdo estruturado da mensagem. */
   content: ChatMessageContentInterface;
+  /** Instante de criação (ISO 8601 UTC). */
   created_at: string;
 }
 
@@ -1000,24 +952,21 @@ export type WsServerEvent =
 // Observabilidade do assistente (página admin) — snake_case
 // ---------------------------------------------------------------------------
 
-/**
- * Estatística de uso de uma tool (observabilidade).
- *
- * @property {string} name - Nome da tool.
- * @property {number} calls - Total de execuções na janela.
- * @property {number} errors - Execuções que falharam.
- * @property {number | null} avg_latency_ms - Latência média (ms); `null` se sem amostra.
- * @property {number | null} p50_ms - Latência mediana (ms); `null` se sem amostra.
- * @property {number | null} p95_ms - Latência p95 (ms); `null` se sem amostra.
- * @property {number | null} p99_ms - Latência p99 (ms); `null` se sem amostra.
- */
+/** Estatística de uso de uma tool (observabilidade). */
 export interface ToolUsageStatInterface {
+  /** Nome da tool. */
   name: string;
+  /** Total de execuções na janela. */
   calls: number;
+  /** Execuções que falharam. */
   errors: number;
+  /** Latência média (ms); `null` se sem amostra. */
   avg_latency_ms: number | null;
+  /** Latência mediana (ms); `null` se sem amostra. */
   p50_ms: number | null;
+  /** Latência p95 (ms); `null` se sem amostra. */
   p95_ms: number | null;
+  /** Latência p99 (ms); `null` se sem amostra. */
   p99_ms: number | null;
 }
 
@@ -1025,48 +974,47 @@ export interface ToolUsageStatInterface {
  * Métricas básicas do próprio assistente (`GET /api/observability`), reusando o
  * audit log e as sessões. Custo/tokens/MTTA/percentis de latência ficam pendentes
  * (OpenTelemetry/Prometheus) e vêm como `null`/vazios até então.
- *
- * @property {string} period - Janela coberta (rótulo legível).
- * @property {object} overview - Visão geral.
- * @property {number} overview.sessions - Total de sessões de chat.
- * @property {number} overview.reveals - Acessos a PII (reveal de telefone/conteúdo) auditados.
- * @property {number | null} overview.tokens - Tokens consumidos; `null` (pendente).
- * @property {number | null} overview.cost - Custo estimado; `null` (pendente).
- * @property {string | null} overview.mtta - Tempo médio até reconhecimento; `null` (pendente).
- * @property {ToolUsageStatInterface[]} tools - Uso por tool (calls/errors/latência média).
- * @property {object} refusals - Recusas do assistente.
- * @property {number} refusals.total - Total de recusas (pendente de persistência → 0).
- * @property {Array<{ reason: string; count: number }>} refusals.by_reason - Recusas por motivo.
- * @property {object} websocket - Estado do WebSocket.
- * @property {number} websocket.connected - Conexões ativas no `/ws/support`.
- * @property {number | null} websocket.peak - Pico de conexões; `null` (pendente).
  */
 export interface ObservabilityInterface {
+  /** Janela coberta (rótulo legível). */
   period: string;
+  /** Visão geral. */
   overview: {
+    /** Total de sessões de chat. */
     sessions: number;
+    /** Acessos a PII (reveal de telefone/conteúdo) auditados. */
     reveals: number;
+    /** Tokens consumidos; `null` (pendente). */
     tokens: number | null;
+    /** Custo estimado; `null` (pendente). */
     cost: number | null;
+    /** Tempo médio até reconhecimento; `null` (pendente). */
     mtta: string | null;
     /** Duração média de sessão (ms) na janela; `null` se sem sessão. */
     avg_session_ms: number | null;
   };
   /** Consumo de tokens por hora (buckets cronológicos UTC) na janela — base do gráfico. */
-  tokens_hourly: Array<{
+  tokens_hourly: {
     at: string;
     tokens: number
-  }>;
+  }[];
+  /** Uso por tool (calls/errors/latência média). */
   tools: ToolUsageStatInterface[];
+  /** Recusas do assistente. */
   refusals: {
+    /** Total de recusas (pendente de persistência → 0). */
     total: number;
-    by_reason: Array<{
+    /** Recusas por motivo. */
+    by_reason: {
       reason: string;
       count: number
-    }>;
+    }[];
   };
+  /** Estado do WebSocket. */
   websocket: {
+    /** Conexões ativas no `/ws/support`. */
     connected: number;
+    /** Pico de conexões; `null` (pendente). */
     peak: number | null;
   };
   /** Provider/modelo LLM ativo atendendo o assistente (rótulo p/ a observabilidade). */
@@ -1080,26 +1028,25 @@ export interface ObservabilityInterface {
 /**
  * Custo de leitura do S3 pelo motor de auditoria (DuckDB), acumulado desde a subida do serviço.
  * Mede quanto se lê do S3 (fonte de verdade) vs. do cache `/tmp`, para observabilidade de custo.
- *
- * @property {number} queries - Consultas que materializaram a janela (search/trail/report/detector/...).
- * @property {number} partitions_total - Partições candidatas somadas (todas as consultas).
- * @property {number} partitions_cached - Partições servidas do cache Parquet (0 leitura no S3).
- * @property {number} partitions_scanned - Partições lidas do S3 (frias sem cache + recentes/live).
- * @property {number} s3_objects - Objetos (`.json.gz`) lidos do S3.
- * @property {number} cache_hit_rate - `partitions_cached / partitions_total` (0–1).
- * @property {number} avg_materialize_ms - Tempo médio de materialização por consulta (ms).
- * @property {number} estimated_get_requests - Estimativa de GET requests ao S3 (≈ objetos; limite inferior).
- * @property {number} estimated_cost_usd - Custo estimado (GET + LIST), grosseiro, em USD.
  */
 export interface AuditScanStatsInterface {
+  /** Consultas que materializaram a janela (search/trail/report/detector/...). */
   queries: number;
+  /** Partições candidatas somadas (todas as consultas). */
   partitions_total: number;
+  /** Partições servidas do cache Parquet (0 leitura no S3). */
   partitions_cached: number;
+  /** Partições lidas do S3 (frias sem cache + recentes/live). */
   partitions_scanned: number;
+  /** Objetos (`.json.gz`) lidos do S3. */
   s3_objects: number;
+  /** `partitions_cached / partitions_total` (0–1). */
   cache_hit_rate: number;
+  /** Tempo médio de materialização por consulta (ms). */
   avg_materialize_ms: number;
+  /** Estimativa de GET requests ao S3 (≈ objetos; limite inferior). */
   estimated_get_requests: number;
+  /** Custo estimado (GET + LIST), grosseiro, em USD. */
   estimated_cost_usd: number;
 }
 
@@ -1111,59 +1058,57 @@ export interface AuditScanStatsInterface {
  * Contexto opcional de um log de ingestão — formato externo (`at-api-logs-prod` /
  * `LogInterface`), mantido como recebido. Não confundir com o logging interno da API
  * (que nunca registra PII).
- *
- * @property {string} [user_id] - Identificador do usuário associado à requisição.
- * @property {string} [app_id] - Identificador da aplicação cliente.
- * @property {string} [method] - Método HTTP da requisição.
- * @property {string} [url] - URL/rota da requisição.
- * @property {string} [user_agent] - User-Agent do cliente.
- * @property {string} [ip] - IP de origem.
- * @property {Record<string, unknown>} [payload] - Corpo/parâmetros da requisição.
- * @property {Record<string, unknown>} [response] - Corpo da resposta.
- * @property {number} [status_code] - Código de status HTTP da resposta.
- * @property {number} [response_time] - Tempo de resposta (ms).
- * @property {string} [error] - Mensagem de erro, quando houve.
- * @property {string} [stack] - Stack trace do erro, quando houve.
- * @property {Record<string, string>} [headers] - Cabeçalhos da requisição/resposta.
- * @property {string} [content_type] - Content-Type associado.
  */
 export interface LogContextInterface {
+  /** Identificador do usuário associado à requisição. */
   user_id?: string;
+  /** Identificador da aplicação cliente. */
   app_id?: string;
+  /** Método HTTP da requisição. */
   method?: string;
+  /** URL/rota da requisição. */
   url?: string;
+  /** User-Agent do cliente. */
   user_agent?: string;
+  /** IP de origem. */
   ip?: string;
+  /** Corpo/parâmetros da requisição. */
   payload?: Record<string, unknown>;
+  /** Corpo da resposta. */
   response?: Record<string, unknown>;
+  /** Código de status HTTP da resposta. */
   status_code?: number;
+  /** Tempo de resposta (ms). */
   response_time?: number;
+  /** Mensagem de erro, quando houve. */
   error?: string;
+  /** Stack trace do erro, quando houve. */
   stack?: string;
+  /** Cabeçalhos da requisição/resposta. */
   headers?: Record<string, string>;
+  /** Content-Type associado. */
   content_type?: string;
 }
 
 /**
  * Entrada de log de ingestão (uma linha do `at-api-logs-prod` / `LogInterface`).
  * Formato externo, mantido fielmente para parsing dos dados de origem.
- *
- * @property {string} timestamp - Instante do log (ISO 8601 UTC).
- * @property {'info' | 'warn' | 'error' | 'debug'} level - Nível do log.
- * @property {string} id - Identificador do registro de log.
- * @property {'development' | 'homologation' | 'production' | 'test'} environment - Ambiente de origem.
- * @property {string} service - Serviço que emitiu o log.
- * @property {string} correlation_id - ID de correlação para rastrear a requisição entre serviços.
- * @property {string} message - Mensagem principal do log.
- * @property {LogContextInterface} [context] - Contexto adicional da requisição/erro.
  */
 export interface LogEntry {
+  /** Instante do log (ISO 8601 UTC). */
   timestamp: string;
+  /** Nível do log. */
   level: 'info' | 'warn' | 'error' | 'debug';
+  /** Identificador do registro de log. */
   id: string;
+  /** Ambiente de origem. */
   environment: 'development' | 'homologation' | 'production' | 'test';
+  /** Serviço que emitiu o log. */
   service: string;
+  /** ID de correlação para rastrear a requisição entre serviços. */
   correlation_id: string;
+  /** Mensagem principal do log. */
   message: string;
+  /** Contexto adicional da requisição/erro. */
   context?: LogContextInterface;
 }

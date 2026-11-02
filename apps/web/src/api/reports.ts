@@ -13,8 +13,10 @@ const REPORT_FILENAME = 'atena-relatorio-entregabilidade.csv';
  * `csv_url` que veio no resultado da tool — gerado no servidor em stream. O telefone sai **EM CLARO**;
  * o acesso é auditado no servidor (`export_report`, severidade `pii`). Já vem com BOM + `;` (Excel pt-BR).
  *
- * @param {string} csvUrl - Caminho do export (sob `/api`) devolvido em `DeliveryReportInterface.csv_url`.
- * @returns {Promise<void>} Resolve quando o download é disparado.
+ * @param csvUrl - Caminho do export (sob `/api`) devolvido em `DeliveryReportInterface.csv_url`.
+ *
+ * @returns Resolve quando o download é disparado.
+ *
  * @throws {Error} Se a resposta não for 2xx.
  */
 export async function downloadDeliveryReport(csvUrl: string): Promise<void> {
@@ -38,35 +40,6 @@ export interface ReportWindowInterface {
     provider?: string;
     status?: string
   };
-}
-
-/**
- * Query do relatório de entregabilidade (`POST /reports/delivery`) por janela — preset ou intervalo.
- *
- * @param {ReportWindowInterface} window - Preset (`date_range`) ou intervalo (`date_from`/`date_to`).
- * @param {boolean} enabled - Só busca quando a aba de entregabilidade está ativa.
- * @returns {UseQueryResult<DeliveryReportInterface>} Estado da query.
- */
-export function useDeliveryReport(
-  window: ReportWindowInterface,
-  enabled: boolean,
-): UseQueryResult<DeliveryReportInterface> {
-  return useQuery({
-    queryKey: [
-      'report-delivery',
-      window.date_range ?? '',
-      window.date_from ?? '',
-      window.date_to ?? '',
-    ],
-    queryFn: () => apiFetch<DeliveryReportInterface>(
-      '/reports/delivery',
-      {
-        method: 'POST',
-        body: JSON.stringify(window),
-      },
-    ),
-    enabled,
-  });
 }
 
 /** Etapa de progresso da geração do relatório (espelha o `AuditProgressEventInterface` do motor). */
@@ -113,12 +86,13 @@ function parseReportFrame(frame: string): {
  * `onProgress` a cada etapa da varredura (mapping → reading X/Y → querying) e resolvendo com o
  * relatório final (evento `result`). Lança em `error` ou se o stream encerrar sem resultado.
  *
- * @param {ReportWindowInterface} window - Preset ou intervalo da janela.
- * @param {(progress: DeliveryProgressInterface) => void} onProgress - Handler de cada etapa.
- * @param {AbortSignal} [signal] - Cancela o stream (troca de janela/desmontagem).
- * @returns {Promise<DeliveryReportInterface>} O relatório agregado.
+ * @param window - Preset ou intervalo da janela.
+ * @param onProgress - Handler de cada etapa.
+ * @param [signal] - Cancela o stream (troca de janela/desmontagem).
+ *
+ * @returns O relatório agregado.
  */
-export async function streamDeliveryReport(
+async function streamDeliveryReport(
   window: ReportWindowInterface,
   onProgress: (progress: DeliveryProgressInterface) => void,
   signal?: AbortSignal,
@@ -206,9 +180,10 @@ export interface DeliveryStreamStateInterface {
  * Reexecuta quando a janela muda; aborta o stream anterior. Use no lugar do `useDeliveryReport` quando
  * quiser exibir o andamento da varredura.
  *
- * @param {ReportWindowInterface} window - Preset ou intervalo da janela.
- * @param {boolean} enabled - Só busca quando a aba de entregabilidade está ativa.
- * @returns {DeliveryStreamStateInterface} Dado + `isLoading`/`isError` + `progress`.
+ * @param window - Preset ou intervalo da janela.
+ * @param enabled - Só busca quando a aba de entregabilidade está ativa.
+ *
+ * @returns Dado + `isLoading`/`isError` + `progress`.
  */
 export function useDeliveryReportStream(
   window: ReportWindowInterface,
@@ -245,17 +220,21 @@ export function useDeliveryReportStream(
 
       streamDeliveryReport(
         JSON.parse(key) as ReportWindowInterface,
-        (progress) => setState((current) => ({
-          ...current,
-          progress,
-        })),
+        (progress) => {
+          setState((current) => ({
+            ...current,
+            progress,
+          }));
+        },
         controller.signal,
       )
-        .then((report) => setState({
-          isLoading: false,
-          isError: false,
-          data: report,
-        }))
+        .then((report) => {
+          setState({
+            isLoading: false,
+            isError: false,
+            data: report,
+          });
+        })
         .catch(() => {
           if (!controller.signal.aborted) {
             setState({
@@ -265,7 +244,9 @@ export function useDeliveryReportStream(
           }
         });
 
-      return () => controller.abort();
+      return () => {
+        controller.abort();
+      };
     },
     [
       enabled,
@@ -279,9 +260,10 @@ export function useDeliveryReportStream(
 /**
  * Query do relatório de incidentes resolvidos (`POST /reports/incidents`) por janela (`date_range`).
  *
- * @param {string} dateRange - Preset da janela (`24h`/`7d`/`30d`/`all`).
- * @param {boolean} enabled - Só busca quando a aba de incidentes está ativa.
- * @returns {UseQueryResult<IncidentReportInterface>} Estado da query.
+ * @param dateRange - Preset da janela (`24h`/`7d`/`30d`/`all`).
+ * @param enabled - Só busca quando a aba de incidentes está ativa.
+ *
+ * @returns Estado da query.
  */
 export function useIncidentReport(
   dateRange: string,

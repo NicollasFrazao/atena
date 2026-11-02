@@ -1,13 +1,15 @@
-import { Clock, Prohibit, SignOut } from '@phosphor-icons/react';
+import type { JSX } from 'react';
+import { ClockIcon as Clock, ProhibitIcon as Prohibit, SignOutIcon as SignOut } from '@phosphor-icons/react';
 import { useAuth } from './auth-context';
 import logoUrl from '../styles/design-system/assets/atena-logo.svg';
+import { cssValue, cssVar } from '../styles/tokens';
 
 /**
  * Tela de **acesso pendente / desabilitado**, exibida quando o usuário está autenticado mas ainda
  * não tem papel atribuído (pendente) ou foi desabilitado. Orienta a falar com o administrador e
  * permite sair. (O acesso só é liberado quando um admin atribuir um papel.)
  *
- * @returns {JSX.Element} A tela de acesso pendente/desabilitado.
+ * @returns A tela de acesso pendente/desabilitado.
  */
 export function AccessPending(): JSX.Element {
   const {
@@ -20,7 +22,7 @@ export function AccessPending(): JSX.Element {
   return (
     <div style={{
       height: '100vh',
-      background: 'var(--at-bg-soft)',
+      background: cssVar.bgSoft,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -47,11 +49,11 @@ export function AccessPending(): JSX.Element {
         zIndex: 1,
         width: '100%',
         maxWidth: 460,
-        background: 'var(--at-white)',
-        border: '1px solid var(--at-border)',
+        background: cssVar.white,
+        border: cssVar.borderLine,
         borderRadius: 12,
         padding: 32,
-        boxShadow: 'var(--at-shadow-lg)',
+        boxShadow: cssVar.shadowLg,
         textAlign: 'center',
       }}
       >
@@ -66,14 +68,14 @@ export function AccessPending(): JSX.Element {
         />
 
         <div style={{
-          display: 'inline-flex',
+          display: cssValue.inlineFlex,
           alignItems: 'center',
           justifyContent: 'center',
           width: 56,
           height: 56,
           borderRadius: 999,
-          background: 'var(--at-bg-soft)',
-          border: '1px solid var(--at-border)',
+          background: cssVar.bgSoft,
+          border: cssVar.borderLine,
           marginBottom: 16,
         }}
         >
@@ -81,23 +83,23 @@ export function AccessPending(): JSX.Element {
             ? (
               <Prohibit
                 size={26}
-                color="var(--at-danger-300)"
+                color={cssVar.danger300}
               />
             )
             : (
               <Clock
                 size={26}
-                color="var(--at-primary)"
+                color={cssVar.primary}
               />
             )}
         </div>
 
         <h1 style={{
           margin: 0,
-          fontFamily: 'var(--at-font-heading)',
+          fontFamily: cssVar.fontHeading,
           fontSize: 22,
           fontWeight: 600,
-          color: 'var(--at-fg)',
+          color: cssVar.fg,
         }}
         >
           {disabled
@@ -107,9 +109,9 @@ export function AccessPending(): JSX.Element {
 
         <p style={{
           margin: '10px 0 0',
-          fontFamily: 'var(--at-font-body)',
+          fontFamily: cssVar.fontBody,
           fontSize: 14,
-          color: 'var(--at-fg-muted)',
+          color: cssVar.fgMuted,
           lineHeight: 1.55,
         }}
         >
@@ -123,18 +125,18 @@ export function AccessPending(): JSX.Element {
             <div style={{
               margin: '20px 0',
               padding: 12,
-              background: 'var(--at-bg-soft)',
-              border: '1px solid var(--at-border)',
+              background: cssVar.bgSoft,
+              border: cssVar.borderLine,
               borderRadius: 6,
               fontSize: 13,
-              color: 'var(--at-fg)',
+              color: cssVar.fg,
             }}
             >
               {user.name || user.email}
               <span style={{
                 display: 'block',
                 fontSize: 12,
-                color: 'var(--at-fg-muted)',
+                color: cssVar.fgMuted,
               }}
               >
                 {user.email}
@@ -149,23 +151,23 @@ export function AccessPending(): JSX.Element {
           style={{
             width: '100%',
             height: 44,
-            background: 'var(--at-white)',
-            color: 'var(--at-fg)',
-            border: '1px solid var(--at-border)',
+            background: cssVar.white,
+            color: cssVar.fg,
+            border: cssVar.borderLine,
             borderRadius: 8,
             cursor: 'pointer',
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
             justifyContent: 'center',
             gap: 8,
-            fontFamily: 'var(--at-font-body)',
+            fontFamily: cssVar.fontBody,
             fontSize: 14,
             fontWeight: 600,
           }}
         >
           <SignOut
             size={16}
-            color="var(--at-fg-muted)"
+            color={cssVar.fgMuted}
           />
           Sair
         </button>

@@ -1,4 +1,4 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { skipToken, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type {
   IncidentActivityInterface,
   IncidentInterface,
@@ -81,10 +81,11 @@ function toQuery(query: IncidentsQueryInterface): string {
 /**
  * Lista incidentes (envelope paginado) conforme os filtros.
  *
- * @param {IncidentsQueryInterface} query - Filtros/paginação.
- * @returns {Promise<PaginatedEnvelopeInterface<IncidentInterface>>} Página de incidentes.
+ * @param query - Filtros/paginação.
+ *
+ * @returns Página de incidentes.
  */
-export function listIncidents(
+function listIncidents(
   query: IncidentsQueryInterface,
 ): Promise<PaginatedEnvelopeInterface<IncidentInterface>> {
   return apiFetch(`/incidents${toQuery(query)}`);
@@ -93,18 +94,20 @@ export function listIncidents(
 /**
  * Busca um incidente e suas atividades pelo id.
  *
- * @param {string} id - Id do incidente.
- * @returns {Promise<IncidentDetailInterface>} Incidente + atividades.
+ * @param id - Id do incidente.
+ *
+ * @returns Incidente + atividades.
  */
-export function getIncident(id: string): Promise<IncidentDetailInterface> {
+function getIncident(id: string): Promise<IncidentDetailInterface> {
   return apiFetch(`/incidents/${id}`);
 }
 
 /**
  * Query do incidente + atividades (habilitada só quando `id` é não-nulo).
  *
- * @param {string | null} id - Id do incidente (ou `null` para desabilitar).
- * @returns {UseQueryResult<IncidentDetailInterface>} Estado da query.
+ * @param id - Id do incidente (ou `null` para desabilitar).
+ *
+ * @returns Estado da query.
  */
 export function useIncidentDetail(id: string | null): UseQueryResult<IncidentDetailInterface> {
   return useQuery({
@@ -112,19 +115,21 @@ export function useIncidentDetail(id: string | null): UseQueryResult<IncidentDet
       'incident',
       id,
     ],
-    queryFn: () => getIncident(id as string),
-    enabled: id !== null,
+    queryFn: id === null
+      ? skipToken
+      : () => getIncident(id),
   });
 }
 
 /**
  * Busca a amostra REAL de envios relacionados ao incidente (`GET /incidents/:id/shippings`).
  *
- * @param {string} id - Id do incidente.
- * @param {number} [limit] - Tamanho da amostra (omitido = default do servidor; maior p/ o download CSV).
- * @returns {Promise<IncidentShippingsInterface>} Amostra (rows + total) ou `available: false`.
+ * @param id - Id do incidente.
+ * @param [limit] - Tamanho da amostra (omitido = default do servidor; maior p/ o download CSV).
+ *
+ * @returns Amostra (rows + total) ou `available: false`.
  */
-export function getIncidentShippings(
+function getIncidentShippings(
   id: string,
   limit?: number,
 ): Promise<IncidentShippingsInterface> {
@@ -141,8 +146,10 @@ export function getIncidentShippings(
  * o acesso é auditado no servidor (`export_report`, severidade `pii`). O arquivo já vem com BOM +
  * delimitador `;` (pronto para o Excel pt-BR).
  *
- * @param {string} id - Id do incidente.
- * @returns {Promise<void>} Resolve quando o download é disparado.
+ * @param id - Id do incidente.
+ *
+ * @returns Resolve quando o download é disparado.
+ *
  * @throws {Error} Se a resposta não for 2xx.
  */
 export async function downloadIncidentExport(id: string): Promise<void> {
@@ -156,8 +163,9 @@ export async function downloadIncidentExport(id: string): Promise<void> {
  * Query da amostra de envios relacionados (habilitada só com `id` não-nulo). Cache compartilhado
  * entre o detalhe do incidente e o modal de resolução (mesma queryKey).
  *
- * @param {string | null} id - Id do incidente (ou `null` para desabilitar).
- * @returns {UseQueryResult<IncidentShippingsInterface>} Estado da query.
+ * @param id - Id do incidente (ou `null` para desabilitar).
+ *
+ * @returns Estado da query.
  */
 export function useIncidentShippings(id: string | null): UseQueryResult<IncidentShippingsInterface> {
   return useQuery({
@@ -165,16 +173,18 @@ export function useIncidentShippings(id: string | null): UseQueryResult<Incident
       'incident-shippings',
       id,
     ],
-    queryFn: () => getIncidentShippings(id as string),
-    enabled: id !== null,
+    queryFn: id === null
+      ? skipToken
+      : () => getIncidentShippings(id),
   });
 }
 
 /**
  * Reconhece um incidente (`detected` → `acknowledged`): `POST /incidents/:id/acknowledge`.
  *
- * @param {string} id - Id do incidente.
- * @returns {Promise<IncidentDetailInterface>} Incidente atualizado + atividades.
+ * @param id - Id do incidente.
+ *
+ * @returns Incidente atualizado + atividades.
  */
 export function acknowledgeIncident(id: string): Promise<IncidentDetailInterface> {
   return apiFetch(
@@ -187,9 +197,10 @@ export function acknowledgeIncident(id: string): Promise<IncidentDetailInterface
  * Resolve um incidente manualmente (§D): `POST /incidents/:id/resolve`. As regras de tamanho da
  * descrição e a obrigatoriedade de `escalated_to` também são validadas no servidor.
  *
- * @param {string} id - Id do incidente.
- * @param {ResolveIncidentPayload} payload - Categoria/descrição da ação (+ escalonamento/tags).
- * @returns {Promise<IncidentDetailInterface>} Incidente resolvido + atividades.
+ * @param id - Id do incidente.
+ * @param payload - Categoria/descrição da ação (+ escalonamento/tags).
+ *
+ * @returns Incidente resolvido + atividades.
  */
 export function resolveIncident(
   id: string,
@@ -207,8 +218,9 @@ export function resolveIncident(
 /**
  * Query da listagem de incidentes (react-query), reativa aos filtros.
  *
- * @param {IncidentsQueryInterface} query - Filtros/paginação.
- * @returns {UseQueryResult<PaginatedEnvelopeInterface<IncidentInterface>>} Estado da query.
+ * @param query - Filtros/paginação.
+ *
+ * @returns Estado da query.
  */
 export function useIncidents(
   query: IncidentsQueryInterface,
@@ -226,7 +238,7 @@ export function useIncidents(
  * Contagem de incidentes ABERTOS (detected+acknowledged) para o badge da navegação. Atualiza a cada
  * 30s; o invalidate por evento WS fica a cargo de quem escuta o socket.
  *
- * @returns {UseQueryResult<number>} Total de incidentes abertos.
+ * @returns Total de incidentes abertos.
  */
 export function useOpenIncidentCount(): UseQueryResult<number> {
   return useQuery({

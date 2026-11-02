@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { DEFAULT_APP_PORT } from './config/configuration';
 
 /**
  * Sobe a aplicação NestJS da Atena.
@@ -20,7 +21,7 @@ import { AppModule } from './app.module';
  *
  * A porta vem de `app.port` (lido do `.env` único em runtime), com fallback 3000.
  *
- * @returns {Promise<void>} Resolve quando o servidor está escutando.
+ * @returns Resolve quando o servidor está escutando.
  */
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -45,7 +46,7 @@ async function bootstrap(): Promise<void> {
     credentials: true,
   });
 
-  const port = config.get<number>('app.port') ?? 3000;
+  const port = config.get<number>('app.port') ?? DEFAULT_APP_PORT;
   await app.listen(port);
 }
 

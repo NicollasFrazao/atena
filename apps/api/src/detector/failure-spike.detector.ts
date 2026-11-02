@@ -1,3 +1,4 @@
+import { HUNDRED_PERCENT, MS_PER_MINUTE } from '../common/units';
 import type {
   DetectionInterface,
   DetectorOptionsInterface,
@@ -55,7 +56,7 @@ function stddev(
 
 /** Formata uma fração como percentual legível (ex.: `0.082` → `8.2%`). */
 function pct(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
+  return `${(value * HUNDRED_PERCENT).toFixed(1)}%`;
 }
 
 /** Taxas de FALHA dos buckets de baseline (janelas anteriores com volume > 0). */
@@ -85,28 +86,40 @@ function baselineBucketRates(
   return rates;
 }
 
+/** One customer evaluated by the failure-spike rule against its own rolling baseline. */
+interface CustomerEvaluationInterface {
+  /** Rule (threshold in σ, window). */
+  rule: DetectorRuleInterface;
+  /** Customer evaluated (value of the dimension). */
+  customerId: string;
+  /** The customer's terminal samples in the lookback. */
+  terminals: ShippingSampleInterface[];
+  /** Reference instant of the evaluation. */
+  now: Date;
+  /** Calibration (minimum volume, number of windows). */
+  opts: DetectorOptionsInterface;
+}
+
 /**
  * Avalia um cliente: dispara se a taxa de FALHA na janela atual SUBIR além do limiar
  * (em σ acima do baseline rolante do próprio cliente, ou alta relativa quando o baseline
  * é plano) com volume suficiente. Baseline-relativo (não um piso absoluto) — robusto a
  * bases com falha estruturalmente alta, em que um piso fixo dispararia para todos.
  *
- * @param {DetectorRuleInterface} rule - Regra (limiar em σ, janela).
- * @param {string} customerId - Cliente avaliado (valor da dimensão).
- * @param {ShippingSampleInterface[]} terminals - Terminais do cliente no lookback.
- * @param {Date} now - Instante de referência da avaliação.
- * @param {DetectorOptionsInterface} opts - Calibração (volume mínimo, nº de janelas).
+ * @param evaluation - The rule, the customer and its terminal samples, the reference instant and the calibration.
  *
- * @returns {DetectionInterface | null} Anomalia detectada, ou `null`.
+ * @returns Anomalia detectada, ou `null`.
  */
-function evaluateCustomer(
-  rule: DetectorRuleInterface,
-  customerId: string,
-  terminals: ShippingSampleInterface[],
-  now: Date,
-  opts: DetectorOptionsInterface,
-): DetectionInterface | null {
-  const windowMs = rule.windowMinutes * 60_000;
+function evaluateCustomer(evaluation: CustomerEvaluationInterface): DetectionInterface | null {
+  const {
+    rule,
+    customerId,
+    terminals,
+    now,
+    opts,
+  } = evaluation;
+
+  const windowMs = rule.windowMinutes * MS_PER_MINUTE;
   const end = now.getTime();
   const currentStart = end - windowMs;
   const baselineStart = currentStart - opts.baselineWindows * windowMs;
@@ -175,12 +188,12 @@ function evaluateCustomer(
  * um piso fixo (ex.: "> 5%") dispararia para todos sempre; o σ vs. o próprio histórico
  * pega o cliente que DESVIOU do normal dele.
  *
- * @param {DetectorRuleInterface} rule - Regra `failure_spike` (limiar em σ).
- * @param {ShippingSampleInterface[]} messages - Mensagens do lookback (qualquer status).
- * @param {Date} now - Instante de referência.
- * @param {DetectorOptionsInterface} opts - Calibração.
+ * @param rule - Regra `failure_spike` (limiar em σ).
+ * @param messages - Mensagens do lookback (qualquer status).
+ * @param now - Instante de referência.
+ * @param opts - Calibração.
  *
- * @returns {DetectionInterface[]} Uma detecção por cliente anômalo.
+ * @returns Uma detecção por cliente anômalo.
  */
 export function detectFailureSpike(
   rule: DetectorRuleInterface,
@@ -211,13 +224,13 @@ export function detectFailureSpike(
     customerId,
     terminals,
   ] of byCustomer) {
-    const detection = evaluateCustomer(
+    const detection = evaluateCustomer({
       rule,
       customerId,
       terminals,
       now,
       opts,
-    );
+    });
 
     if (detection) {
       detections.push(detection);

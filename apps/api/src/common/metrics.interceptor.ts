@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { type Observable, tap } from 'rxjs';
+import { routePath } from './route-path';
 
 /**
  * Interceptor global de observabilidade: registra latência e desfecho (ok/erro)
@@ -22,9 +23,10 @@ export class MetricsInterceptor implements NestInterceptor {
   /**
    * Mede a duração do handler e loga o desfecho (sucesso/erro) com a rota e o tempo.
    *
-   * @param {ExecutionContext} context - Contexto de execução do NestJS (request HTTP).
-   * @param {CallHandler} next - Próximo passo da cadeia de execução.
-   * @returns {Observable<unknown>} Stream do handler, com o efeito colateral de log de métrica.
+   * @param context - Contexto de execução do NestJS (request HTTP).
+   * @param next - Próximo passo da cadeia de execução.
+   *
+   * @returns Stream do handler, com o efeito colateral de log de métrica.
    */
   intercept(
     context: ExecutionContext,
@@ -34,12 +36,12 @@ export class MetricsInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest<Request>();
     // `route.path` é o template (ex.: `/incidents/:id`); fallback p/ `request.path` (sem query
     // string — `request.url` vazaria parâmetros sensíveis para o log).
-    const route = `${request.method} ${request.route?.path ?? request.path}`;
+    const route = `${request.method} ${routePath(request)}`;
 
     return next.handle().pipe(
       tap({
-        next: () => this.logger.log(`${route} ${Date.now() - startedAt}ms`),
-        error: () => this.logger.warn(`${route} erro ${Date.now() - startedAt}ms`),
+        next: () => { this.logger.log(`${route} ${Date.now() - startedAt}ms`); },
+        error: () => { this.logger.warn(`${route} erro ${Date.now() - startedAt}ms`); },
       }),
     );
   }

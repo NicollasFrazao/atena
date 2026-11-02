@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useMemo, useRef } from 'react';
+import { type ReactNode, useCallback, useMemo, useRef, type JSX } from 'react';
 import type { WsServerEvent } from '@atena/types';
 import { useSupportEvents } from './useSupportEvents';
 import { RealtimeContext, type RealtimeContextInterface } from './realtime-context';
@@ -7,10 +7,11 @@ import { RealtimeContext, type RealtimeContextInterface } from './realtime-conte
  * Abre UMA conexão `/ws/support` e faz fan-out dos eventos para os assinantes (chat, banner, lista
  * de incidentes) — em vez de cada consumidor abrir o seu próprio socket. Montado no topo do App.
  *
- * @param {{ children: ReactNode }} props - Árvore que consome o realtime.
- * @returns {JSX.Element} O provedor.
+ * @param props - Árvore que consome o realtime.
+ *
+ * @returns O provedor.
  */
-export function RealtimeProvider({ children }: { children: ReactNode }): JSX.Element {
+export function RealtimeProvider({ children }: Readonly<{ children: ReactNode }>): JSX.Element {
   const subscribers = useRef<Set<(event: WsServerEvent) => void>>(new Set());
 
   const onEvent = useCallback(

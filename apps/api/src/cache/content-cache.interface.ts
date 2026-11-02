@@ -9,15 +9,17 @@ export interface ContentCacheInterface {
   /**
    * Lê o conteúdo bruto: tenta o `/tmp`; se faltar, hidrata do S3 e popula o `/tmp`.
    *
-   * @param {string} ref - Ponteiro de conteúdo (ex.: `s3://bucket/key` ou key no bucket de conteúdo).
-   * @returns {Promise<Buffer | null>} Conteúdo bruto, ou `null` se não encontrado/falha de hidratação.
+   * @param ref - Ponteiro de conteúdo (ex.: `s3://bucket/key` ou key no bucket de conteúdo).
+   *
+   * @returns Conteúdo bruto, ou `null` se não encontrado/falha de hidratação.
    */
   get(ref: string): Promise<Buffer | null>;
   /**
    * Conveniência: o mesmo que `get`, decodificado como UTF-8.
    *
-   * @param {string} ref - Ponteiro de conteúdo (ver `get`).
-   * @returns {Promise<string | null>} Conteúdo como texto UTF-8, ou `null` se não encontrado.
+   * @param ref - Ponteiro de conteúdo (ver `get`).
+   *
+   * @returns Conteúdo como texto UTF-8, ou `null` se não encontrado.
    */
   getText(ref: string): Promise<string | null>;
 }

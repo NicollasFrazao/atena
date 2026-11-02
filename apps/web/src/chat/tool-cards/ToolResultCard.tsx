@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import {
   type DeliveryReportInterface,
   type ShippingTrailInterface,
@@ -9,14 +10,15 @@ import { SearchResultsCard, type SearchResultsResultInterface } from './SearchRe
 import { TrailCard } from './TrailCard';
 import { RiskCard } from './RiskCard';
 import { ReportCard } from './ReportCard';
-import { CatalogListCard, type CatalogListResultInterface } from './CatalogListCard';
+import { CatalogListCard } from './CatalogListCard';
 
 /**
  * Extrai a janela temporal dos argumentos da tool (date_from/date_to do search/trilha), para escopar
  * o reveal por id — sem ela o lookup cairia na janela default (~30 dias) e poderia estourar timeout.
  *
- * @param {Record<string, unknown>} args - Argumentos com que a tool foi chamada.
- * @returns {RevealWindowInterface} Janela `{ date_from?, date_to? }` (campos não-string viram `undefined`).
+ * @param args - Argumentos com que a tool foi chamada.
+ *
+ * @returns Janela `{ date_from?, date_to? }` (campos não-string viram `undefined`).
  */
 function windowFromArgs(args: Record<string, unknown>): RevealWindowInterface {
   return {
@@ -34,10 +36,11 @@ function windowFromArgs(args: Record<string, unknown>): RevealWindowInterface {
  * passa o `tool.result` tipado. Retorna `null` para tools sem card dedicado ou
  * que não concluíram com sucesso (a pill genérica já cobre esses casos).
  *
- * @param {{ tool: DisplayToolInterface }} props - A invocação de tool a renderizar.
- * @returns {JSX.Element | null} O card adequado, ou `null`.
+ * @param props - A invocação de tool a renderizar.
+ *
+ * @returns O card adequado, ou `null`.
  */
-export function ToolResultCard({ tool }: { tool: DisplayToolInterface }): JSX.Element | null {
+export function ToolResultCard({ tool }: Readonly<{ tool: DisplayToolInterface }>): JSX.Element | null {
   if (
     tool.status !== 'success'
     || tool.result == null
@@ -68,14 +71,14 @@ export function ToolResultCard({ tool }: { tool: DisplayToolInterface }): JSX.El
     case 'list_providers':
       return (
         <CatalogListCard
-          result={tool.result as CatalogListResultInterface}
+          result={tool.result}
           kind="providers"
         />
       );
     case 'list_customers':
       return (
         <CatalogListCard
-          result={tool.result as CatalogListResultInterface}
+          result={tool.result}
           kind="customers"
         />
       );

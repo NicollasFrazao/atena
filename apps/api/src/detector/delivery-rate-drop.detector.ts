@@ -1,3 +1,4 @@
+import { HUNDRED_PERCENT, MS_PER_MINUTE } from '../common/units';
 import type {
   DetectionInterface,
   DetectorOptionsInterface,
@@ -72,7 +73,7 @@ function stddev(
 
 /** Formata uma fração como percentual legível (ex.: `0.871` → `87.1%`). */
 function pct(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
+  return `${(value * HUNDRED_PERCENT).toFixed(1)}%`;
 }
 
 /** Taxas de entrega dos buckets de baseline (janelas anteriores com volume > 0). */
@@ -102,26 +103,38 @@ function baselineBucketRates(
   return rates;
 }
 
+/** One group of the dimension (customer or provider) evaluated by the delivery-rate-drop rule. */
+interface GroupEvaluationInterface {
+  /** Rule (threshold in σ, window, dimension). */
+  rule: DetectorRuleInterface;
+  /** Value of the dimension evaluated (customer or provider). */
+  dimensionValue: string;
+  /** The group's terminal samples in the lookback. */
+  terminals: ShippingSampleInterface[];
+  /** Reference instant of the evaluation. */
+  now: Date;
+  /** Calibration (minimum volume, number of windows). */
+  opts: DetectorOptionsInterface;
+}
+
 /**
  * Avalia um grupo da dimensão (cliente ou provedor): dispara se a taxa atual cair além do
  * limiar (em σ vs. baseline, ou queda relativa quando o baseline é plano) com volume suficiente.
  *
- * @param {DetectorRuleInterface} rule - Regra (limiar em σ, janela, dimensão).
- * @param {string} dimensionValue - Valor da dimensão avaliado (cliente ou provedor).
- * @param {ShippingSampleInterface[]} terminals - Terminais do grupo no lookback.
- * @param {Date} now - Instante de referência da avaliação.
- * @param {DetectorOptionsInterface} opts - Calibração (volume mínimo, nº de janelas).
+ * @param evaluation - The rule, the group and its terminal samples, the reference instant and the calibration.
  *
- * @returns {DetectionInterface | null} Anomalia detectada, ou `null`.
+ * @returns Anomalia detectada, ou `null`.
  */
-function evaluateGroup(
-  rule: DetectorRuleInterface,
-  dimensionValue: string,
-  terminals: ShippingSampleInterface[],
-  now: Date,
-  opts: DetectorOptionsInterface,
-): DetectionInterface | null {
-  const windowMs = rule.windowMinutes * 60_000;
+function evaluateGroup(evaluation: GroupEvaluationInterface): DetectionInterface | null {
+  const {
+    rule,
+    dimensionValue,
+    terminals,
+    now,
+    opts,
+  } = evaluation;
+
+  const windowMs = rule.windowMinutes * MS_PER_MINUTE;
   const end = now.getTime();
   const currentStart = end - windowMs;
   const baselineStart = currentStart - opts.baselineWindows * windowMs;
@@ -186,12 +199,12 @@ function evaluateGroup(
  * compara a janela atual com o baseline rolante (μ/σ), com guarda de volume.
  * Função pura — recebe `now` e a calibração, sem I/O nem relógio implícito.
  *
- * @param {DetectorRuleInterface} rule - Regra `delivery_rate_drop` (dim. `customer`).
- * @param {ShippingSampleInterface[]} messages - Mensagens do lookback (qualquer status).
- * @param {Date} now - Instante de referência.
- * @param {DetectorOptionsInterface} opts - Calibração.
+ * @param rule - Regra `delivery_rate_drop` (dim. `customer`).
+ * @param messages - Mensagens do lookback (qualquer status).
+ * @param now - Instante de referência.
+ * @param opts - Calibração.
  *
- * @returns {DetectionInterface[]} Uma detecção por cliente anômalo.
+ * @returns Uma detecção por cliente anômalo.
  */
 export function detectDeliveryRateDrop(
   rule: DetectorRuleInterface,
@@ -232,13 +245,13 @@ export function detectDeliveryRateDrop(
     dimensionValue,
     terminals,
   ] of byDimension) {
-    const detection = evaluateGroup(
+    const detection = evaluateGroup({
       rule,
       dimensionValue,
       terminals,
       now,
       opts,
-    );
+    });
 
     if (detection) {
       detections.push(detection);

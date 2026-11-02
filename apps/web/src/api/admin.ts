@@ -9,7 +9,7 @@ import { apiFetch } from './client';
 /**
  * Lista todos os usuários (tela de admin): `GET /admin/users`. Exige `users:manage`.
  *
- * @returns {Promise<AdminUserInterface[]>} Usuários com papéis/status.
+ * @returns Usuários com papéis/status.
  */
 export function listUsers(): Promise<AdminUserInterface[]> {
   return apiFetch('/admin/users');
@@ -18,7 +18,7 @@ export function listUsers(): Promise<AdminUserInterface[]> {
 /**
  * Catálogo de papéis e suas permissões: `GET /admin/roles`.
  *
- * @returns {Promise<RoleCatalogItemInterface[]>} Papéis disponíveis.
+ * @returns Papéis disponíveis.
  */
 export function fetchRoleCatalog(): Promise<RoleCatalogItemInterface[]> {
   return apiFetch('/admin/roles');
@@ -27,9 +27,10 @@ export function fetchRoleCatalog(): Promise<RoleCatalogItemInterface[]> {
 /**
  * Define o conjunto de papéis de um usuário: `PUT /admin/users/:id/roles`.
  *
- * @param {string} sub - Id do usuário.
- * @param {RoleType[]} roles - Papéis a atribuir (pode ser vazio = revoga tudo).
- * @returns {Promise<AdminUserInterface>} Usuário atualizado.
+ * @param sub - Id do usuário.
+ * @param roles - Papéis a atribuir (pode ser vazio = revoga tudo).
+ *
+ * @returns Usuário atualizado.
  */
 export function setUserRoles(
   sub: string,
@@ -47,9 +48,10 @@ export function setUserRoles(
 /**
  * Habilita/desabilita um usuário: `PATCH /admin/users/:id/status`.
  *
- * @param {string} sub - Id do usuário.
- * @param {UserStatusType} status - Novo status.
- * @returns {Promise<AdminUserInterface>} Usuário atualizado.
+ * @param sub - Id do usuário.
+ * @param status - Novo status.
+ *
+ * @returns Usuário atualizado.
  */
 export function setUserStatus(
   sub: string,

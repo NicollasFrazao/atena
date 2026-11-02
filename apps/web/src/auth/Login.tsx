@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useState, type JSX } from 'react';
 import {
-  Bell,
-  Info,
-  MagnifyingGlass,
-  ShieldCheck,
-  TrendUp,
+  BellIcon as Bell,
+  InfoIcon as Info,
+  MagnifyingGlassIcon as MagnifyingGlass,
+  ShieldCheckIcon as ShieldCheck,
+  TrendUpIcon as TrendUp,
   type Icon,
 } from '@phosphor-icons/react';
 import { loginUrl } from '../api/auth';
 import logoUrl from '../styles/design-system/assets/atena-logo.svg';
+import { cssValue, cssVar } from '../styles/tokens';
 
 /** Pílulas de recurso (coluna de marketing). */
 const FEATURE_PILLS: {
@@ -38,7 +39,7 @@ const FEATURE_PILLS: {
  * apresentação + card de SSO. O botão dispara uma navegação top-level para `GET /api/auth/login`
  * (início do fluxo OIDC) — não é `fetch`, pois o navegador é redirecionado ao IdP e volta.
  *
- * @returns {JSX.Element} A tela de login.
+ * @returns A tela de login.
  */
 export function Login(): JSX.Element {
   const [
@@ -54,7 +55,7 @@ export function Login(): JSX.Element {
   return (
     <div style={{
       height: '100vh',
-      background: 'var(--at-bg-soft)',
+      background: cssVar.bgSoft,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -95,10 +96,10 @@ export function Login(): JSX.Element {
           />
           <div style={{
             marginTop: 36,
-            fontFamily: 'var(--at-font-body)',
+            fontFamily: cssVar.fontBody,
             fontSize: 13,
             fontWeight: 600,
-            color: 'var(--at-primary)',
+            color: cssVar.primary,
             textTransform: 'uppercase',
             letterSpacing: 1.5,
           }}
@@ -108,10 +109,10 @@ export function Login(): JSX.Element {
           <h1 style={{
             margin: 0,
             marginTop: 8,
-            fontFamily: 'var(--at-font-heading)',
+            fontFamily: cssVar.fontHeading,
             fontSize: 64,
             fontWeight: 700,
-            color: 'var(--at-fg)',
+            color: cssVar.fg,
             lineHeight: 1,
             letterSpacing: -1,
           }}
@@ -120,9 +121,9 @@ export function Login(): JSX.Element {
           </h1>
           <p style={{
             margin: '20px 0 0',
-            fontFamily: 'var(--at-font-body)',
+            fontFamily: cssVar.fontBody,
             fontSize: 16,
-            color: 'var(--at-fg-muted)',
+            color: cssVar.fgMuted,
             lineHeight: 1.55,
             maxWidth: 460,
           }}
@@ -145,22 +146,22 @@ export function Login(): JSX.Element {
                 <div
                   key={pill.label}
                   style={{
-                    display: 'inline-flex',
+                    display: cssValue.inlineFlex,
                     alignItems: 'center',
                     gap: 8,
                     padding: '7px 12px',
-                    background: 'var(--at-white)',
-                    border: '1px solid var(--at-border)',
+                    background: cssVar.white,
+                    border: cssVar.borderLine,
                     borderRadius: 999,
-                    fontFamily: 'var(--at-font-body)',
+                    fontFamily: cssVar.fontBody,
                     fontSize: 12,
                     fontWeight: 500,
-                    color: 'var(--at-fg)',
+                    color: cssVar.fg,
                   }}
                 >
                   <PillIcon
                     size={13}
-                    color="var(--at-primary)"
+                    color={cssVar.primary}
                   />
                   {pill.label}
                 </div>
@@ -170,28 +171,28 @@ export function Login(): JSX.Element {
         </div>
 
         <div style={{
-          background: 'var(--at-white)',
-          border: '1px solid var(--at-border)',
+          background: cssVar.white,
+          border: cssVar.borderLine,
           borderRadius: 12,
           padding: 32,
-          boxShadow: 'var(--at-shadow-lg)',
+          boxShadow: cssVar.shadowLg,
         }}
         >
           <h2 style={{
             margin: 0,
-            fontFamily: 'var(--at-font-heading)',
+            fontFamily: cssVar.fontHeading,
             fontSize: 22,
             fontWeight: 600,
-            color: 'var(--at-fg)',
+            color: cssVar.fg,
           }}
           >
             Olá, bem-vindo à Atena
           </h2>
           <p style={{
             margin: '6px 0 24px',
-            fontFamily: 'var(--at-font-body)',
+            fontFamily: cssVar.fontBody,
             fontSize: 13,
-            color: 'var(--at-fg-muted)',
+            color: cssVar.fgMuted,
             lineHeight: 1.5,
           }}
           >
@@ -206,18 +207,18 @@ export function Login(): JSX.Element {
               width: '100%',
               height: 48,
               padding: '0 16px',
-              background: 'var(--at-primary)',
-              color: 'var(--at-white)',
+              background: cssVar.primary,
+              color: cssVar.white,
               border: 'none',
               borderRadius: 8,
               cursor: loading
                 ? 'wait'
                 : 'pointer',
-              display: 'inline-flex',
+              display: cssValue.inlineFlex,
               alignItems: 'center',
               justifyContent: 'center',
               gap: 10,
-              fontFamily: 'var(--at-font-body)',
+              fontFamily: cssVar.fontBody,
               fontSize: 15,
               fontWeight: 600,
               boxShadow: '0 2px 8px rgba(7, 126, 112, 0.25)',
@@ -233,7 +234,7 @@ export function Login(): JSX.Element {
                       height: 14,
                       borderRadius: 999,
                       border: '2px solid rgba(255, 255, 255, 0.4)',
-                      borderTopColor: 'var(--at-white)',
+                      borderTopColor: cssVar.white,
                     }}
                   />
                   Entrando…
@@ -243,7 +244,7 @@ export function Login(): JSX.Element {
                 <>
                   <ShieldCheck
                     size={16}
-                    color="var(--at-white)"
+                    color={cssVar.white}
                   />
                   Entrar com SSO corporativo
                 </>
@@ -255,7 +256,7 @@ export function Login(): JSX.Element {
             alignItems: 'center',
             gap: 12,
             margin: '20px 0',
-            color: 'var(--at-fg-subtle)',
+            color: cssVar.fgSubtle,
             fontSize: 11,
             fontWeight: 500,
             letterSpacing: 0.3,
@@ -264,22 +265,22 @@ export function Login(): JSX.Element {
             <div style={{
               flex: 1,
               height: 1,
-              background: 'var(--at-border)',
+              background: cssVar.border,
             }}
             />
             ACESSO RESTRITO
             <div style={{
               flex: 1,
               height: 1,
-              background: 'var(--at-border)',
+              background: cssVar.border,
             }}
             />
           </div>
 
           <div style={{
             padding: 12,
-            background: 'var(--at-bg-soft)',
-            border: '1px solid var(--at-border)',
+            background: cssVar.bgSoft,
+            border: cssVar.borderLine,
             borderRadius: 6,
             display: 'flex',
             gap: 10,
@@ -287,7 +288,7 @@ export function Login(): JSX.Element {
           >
             <Info
               size={14}
-              color="var(--at-fg-muted)"
+              color={cssVar.fgMuted}
               style={{
                 flexShrink: 0,
                 marginTop: 2,
@@ -295,7 +296,7 @@ export function Login(): JSX.Element {
             />
             <div style={{
               fontSize: 12,
-              color: 'var(--at-fg-muted)',
+              color: cssVar.fgMuted,
               lineHeight: 1.5,
             }}
             >
@@ -312,9 +313,9 @@ export function Login(): JSX.Element {
         right: 0,
         bottom: 20,
         textAlign: 'center',
-        fontFamily: 'var(--at-font-body)',
+        fontFamily: cssVar.fontBody,
         fontSize: 11,
-        color: 'var(--at-fg-subtle)',
+        color: cssVar.fgSubtle,
       }}
       >
         Atena · Assistente Conversacional de Envios © 2026

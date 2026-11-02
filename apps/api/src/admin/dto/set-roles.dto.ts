@@ -9,12 +9,9 @@ const VALID_ROLES: RoleType[] = [
   'viewer',
 ];
 
-/**
- * Body de `PUT /api/admin/users/:id/roles` — define o conjunto de papéis do usuário.
- *
- * @property {RoleType[]} roles - Papéis a atribuir (subconjunto do catálogo; pode ser vazio = revoga tudo).
- */
+/** Body de `PUT /api/admin/users/:id/roles` — define o conjunto de papéis do usuário. */
 export class SetRolesDto {
+  /** Papéis a atribuir (subconjunto do catálogo; pode ser vazio = revoga tudo). */
   @IsArray()
   @ArrayUnique()
   @IsIn(

@@ -27,8 +27,10 @@ const EXPORT_FILENAME = 'atena-envios.csv';
  * telefone sai **EM CLARO**; o acesso é auditado no servidor (`export_report`, severidade `pii`). O
  * arquivo já vem com BOM UTF-8 + delimitador `;` (pronto para o Excel pt-BR).
  *
- * @param {SearchShippingsQuery} query - Filtros da busca (mesmos args da tool).
- * @returns {Promise<void>} Resolve quando o download é disparado.
+ * @param query - Filtros da busca (mesmos args da tool).
+ *
+ * @returns Resolve quando o download é disparado.
+ *
  * @throws {Error} Se a resposta não for 2xx.
  */
 export async function downloadSearchExport(query: SearchShippingsQuery): Promise<void> {

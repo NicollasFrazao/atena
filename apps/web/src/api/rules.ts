@@ -5,9 +5,9 @@ import { apiFetch } from './client';
 /**
  * Lista todas as regras de anomalia (`GET /rules`).
  *
- * @returns {Promise<AnomalyRuleInterface[]>} Regras (snake_case).
+ * @returns Regras (snake_case).
  */
-export function listRules(): Promise<AnomalyRuleInterface[]> {
+function listRules(): Promise<AnomalyRuleInterface[]> {
   return apiFetch('/rules');
 }
 
@@ -15,9 +15,10 @@ export function listRules(): Promise<AnomalyRuleInterface[]> {
  * Edita campos permitidos de uma regra (`PUT /rules/:id`); `rule_type` é imutável. A alteração é
  * auditada no servidor.
  *
- * @param {string} id - Id da regra.
- * @param {UpdateRulePayload} payload - Campos a atualizar (parcial).
- * @returns {Promise<AnomalyRuleInterface>} Regra atualizada.
+ * @param id - Id da regra.
+ * @param payload - Campos a atualizar (parcial).
+ *
+ * @returns Regra atualizada.
  */
 export function updateRule(
   id: string,
@@ -35,7 +36,7 @@ export function updateRule(
 /**
  * Query da lista de regras (react-query).
  *
- * @returns {UseQueryResult<AnomalyRuleInterface[]>} Estado da query.
+ * @returns Estado da query.
  */
 export function useRules(): UseQueryResult<AnomalyRuleInterface[]> {
   return useQuery({

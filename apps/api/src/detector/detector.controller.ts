@@ -21,14 +21,14 @@ import {
 @Controller('dev')
 export class DetectorController {
   /**
-   * @param {DetectorService} detector - Serviço de detecção de anomalias.
+   * @param detector - Serviço de detecção de anomalias.
    */
   constructor(private readonly detector: DetectorService) {}
 
   /**
    * `POST /dev/detect` — dispara um scan imediato e devolve as contagens.
    *
-   * @returns {Promise<DetectorRunSummaryInterface>} Resumo (detected/created/auto_resolved).
+   * @returns Resumo (detected/created/auto_resolved).
    */
   @Post('detect')
   @HttpCode(HttpStatus.OK)

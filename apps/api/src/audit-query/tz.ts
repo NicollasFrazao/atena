@@ -13,26 +13,24 @@
  * outro fuso IANA passa a funcionar corretamente sem mudar a lógica.
  */
 
+import { nonEmpty } from '../common/text.util';
+import { HOURS_PER_DAY, MS_PER_DAY, MS_PER_MINUTE } from '../common/units';
+
 /** Fuso de exibição/janela padrão (IANA). BRT não tem DST desde 2019 — bate com o `+3h` do motor. */
-export const DEFAULT_APP_TIMEZONE = 'America/Sao_Paulo';
-
-/** Milissegundos em um minuto / dia. */
-const MINUTE_MS = 60_000;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_APP_TIMEZONE = 'America/Sao_Paulo';
 
 /**
  * Fuso de exibição/janela do app (IANA), parâmetro único lido do ambiente (`APP_TIMEZONE`).
  * Default {@link DEFAULT_APP_TIMEZONE}. Fonte de verdade reusada por toda a resolução de janela.
  *
- * @returns {string} Identificador IANA do fuso (ex.: `America/Sao_Paulo`).
+ * @returns Identificador IANA do fuso (ex.: `America/Sao_Paulo`).
  */
 export function appTimeZone(): string {
-  return process.env.APP_TIMEZONE || DEFAULT_APP_TIMEZONE;
+  return nonEmpty(process.env.APP_TIMEZONE) ?? DEFAULT_APP_TIMEZONE;
 }
 
 /** Partes (ano/mês/dia/hora/min/seg) de um instante lidas NO fuso. */
-interface TzParts {
+export interface TzParts {
   year: number;
   month: number;
   day: number;
@@ -44,9 +42,10 @@ interface TzParts {
 /**
  * Lê as partes de calendário de um instante interpretado NO fuso (via `Intl`).
  *
- * @param {Date} instant - Instante (UTC interno).
- * @param {string} timeZone - Fuso IANA.
- * @returns {TzParts} Ano/mês/dia/hora/min/seg do relógio de parede no fuso.
+ * @param instant - Instante (UTC interno).
+ * @param timeZone - Fuso IANA.
+ *
+ * @returns Ano/mês/dia/hora/min/seg do relógio de parede no fuso.
  */
 function partsInTz(
   instant: Date,
@@ -75,7 +74,7 @@ function partsInTz(
   }
 
   // Em alguns runtimes a meia-noite no fuso sai como hora '24'; normaliza para 0.
-  const hour = lookup.hour === 24
+  const hour = lookup.hour === HOURS_PER_DAY
     ? 0
     : lookup.hour;
 
@@ -93,9 +92,10 @@ function partsInTz(
  * Offset do fuso (em minutos, relógio-de-parede − UTC) NAQUELE instante — resolve DST via `Intl`.
  * Ex.: BRT devolve `-180`.
  *
- * @param {Date} instant - Instante de referência.
- * @param {string} timeZone - Fuso IANA.
- * @returns {number} Offset em minutos (negativo a oeste de Greenwich).
+ * @param instant - Instante de referência.
+ * @param timeZone - Fuso IANA.
+ *
+ * @returns Offset em minutos (negativo a oeste de Greenwich).
  */
 export function tzOffsetMinutes(
   instant: Date,
@@ -115,18 +115,19 @@ export function tzOffsetMinutes(
     parts.second,
   );
 
-  return Math.round((asIfUtc - instant.getTime()) / MINUTE_MS);
+  return Math.round((asIfUtc - instant.getTime()) / MS_PER_MINUTE);
 }
 
 /**
  * Instante UTC do início (00:00) do dia-calendário (`year`/`month`/`day`) NO fuso. Refina uma vez
  * para cobrir bordas de horário de verão (quando o offset do instante ingênuo difere do real).
  *
- * @param {number} year - Ano (ex.: 2026).
- * @param {number} month - Mês 1–12.
- * @param {number} day - Dia 1–31.
- * @param {string} timeZone - Fuso IANA.
- * @returns {Date} Instante UTC correspondente a 00:00 daquele dia no fuso.
+ * @param year - Ano (ex.: 2026).
+ * @param month - Mês 1–12.
+ * @param day - Dia 1–31.
+ * @param timeZone - Fuso IANA.
+ *
+ * @returns Instante UTC correspondente a 00:00 daquele dia no fuso.
  */
 export function startOfDayInTz(
   year: number,
@@ -135,12 +136,14 @@ export function startOfDayInTz(
   timeZone: string,
 ): Date {
   return wallClockToUtc(
-    year,
-    month,
-    day,
-    0,
-    0,
-    0,
+    {
+      year,
+      month,
+      day,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    },
     timeZone,
   );
 }
@@ -150,31 +153,23 @@ export function startOfDayInTz(
  * Refina uma vez para cobrir bordas de DST (offset do instante ingênuo ≠ offset real). Base de
  * {@link startOfDayInTz} e da interpretação de datetimes sem fuso (naive) na borda.
  *
- * @param {number} year - Ano (ex.: 2026).
- * @param {number} month - Mês 1–12.
- * @param {number} day - Dia 1–31.
- * @param {number} hour - Hora 0–23 (no fuso).
- * @param {number} minute - Minuto 0–59 (no fuso).
- * @param {number} second - Segundo 0–59 (no fuso).
- * @param {string} timeZone - Fuso IANA.
- * @returns {Date} Instante UTC correspondente ao relógio-de-parede no fuso.
+ * @param wallClock - The wall clock read in the zone: year, month 1–12, day 1–31, hour 0–23, minute
+ *   0–59 and second 0–59.
+ * @param timeZone - Fuso IANA.
+ *
+ * @returns Instante UTC correspondente ao relógio-de-parede no fuso.
  */
 export function wallClockToUtc(
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
-  minute: number,
-  second: number,
+  wallClock: TzParts,
   timeZone: string,
 ): Date {
   const naiveUtc = Date.UTC(
-    year,
-    month - 1,
-    day,
-    hour,
-    minute,
-    second,
+    wallClock.year,
+    wallClock.month - 1,
+    wallClock.day,
+    wallClock.hour,
+    wallClock.minute,
+    wallClock.second,
   );
 
   const offset1 = tzOffsetMinutes(
@@ -182,7 +177,7 @@ export function wallClockToUtc(
     timeZone,
   );
 
-  let utcMs = naiveUtc - offset1 * MINUTE_MS;
+  let utcMs = naiveUtc - offset1 * MS_PER_MINUTE;
 
   const offset2 = tzOffsetMinutes(
     new Date(utcMs),
@@ -190,7 +185,7 @@ export function wallClockToUtc(
   );
 
   if (offset2 !== offset1) {
-    utcMs = naiveUtc - offset2 * MINUTE_MS;
+    utcMs = naiveUtc - offset2 * MS_PER_MINUTE;
   }
 
   return new Date(utcMs);
@@ -208,9 +203,10 @@ function pad2(value: number): string {
  * Formata um instante (ISO/Date) como `DD/MM/AAAA às HH:MM` **no fuso do operador** (via `Intl`).
  * Para exibir limites que são instantes UTC reais (ex.: `minQueryDate`) já convertidos para o fuso.
  *
- * @param {string | Date} instant - Instante (ISO 8601 ou Date).
- * @param {string} timeZone - Fuso IANA.
- * @returns {string} `DD/MM/AAAA às HH:MM` no fuso (ou o valor cru se não parseável).
+ * @param instant - Instante (ISO 8601 ou Date).
+ * @param timeZone - Fuso IANA.
+ *
+ * @returns `DD/MM/AAAA às HH:MM` no fuso (ou o valor cru se não parseável).
  */
 export function formatInstantInTz(
   instant: string | Date,
@@ -238,9 +234,10 @@ export function formatInstantInTz(
  * `date_from`/`date_to` reconstrói o MESMO instante UTC. Use para entregar limites ao LLM já no fuso
  * do operador (ele cita e repassa às tools sem reconverter), mantendo a API/o banco em UTC.
  *
- * @param {string | Date} instant - Instante (ISO 8601 ou Date).
- * @param {string} timeZone - Fuso IANA.
- * @returns {string} `YYYY-MM-DDTHH:mm:ss` no fuso (relógio de parede), sem `Z`; ou o valor cru se inválido.
+ * @param instant - Instante (ISO 8601 ou Date).
+ * @param timeZone - Fuso IANA.
+ *
+ * @returns `YYYY-MM-DDTHH:mm:ss` no fuso (relógio de parede), sem `Z`; ou o valor cru se inválido.
  */
 export function toNaiveDatetimeInTz(
   instant: string | Date,
@@ -271,12 +268,23 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
  */
 const NAIVE_DATETIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/;
 
+/** Capture-group index of each field of {@link NAIVE_DATETIME}. */
+const NAIVE_GROUP = {
+  year: 1,
+  month: 2,
+  day: 3,
+  hour: 4,
+  minute: 5,
+  second: 6,
+} as const;
+
 /**
  * Início (00:00 no fuso, em UTC) do dia de uma string `YYYY-MM-DD`.
  *
- * @param {string} dateOnly - Data só-dia (`YYYY-MM-DD`).
- * @param {string} timeZone - Fuso IANA.
- * @returns {Date} Instante UTC de 00:00 daquele dia no fuso.
+ * @param dateOnly - Data só-dia (`YYYY-MM-DD`).
+ * @param timeZone - Fuso IANA.
+ *
+ * @returns Instante UTC de 00:00 daquele dia no fuso.
  */
 export function startOfNamedDayInTz(
   dateOnly: string,
@@ -300,11 +308,12 @@ export function startOfNamedDayInTz(
  * Resolve um limite de janela vindo da borda: se for só-dia (`YYYY-MM-DD`), interpreta no fuso
  * (não em UTC); se tiver hora (ISO completo), é um instante absoluto e passa direto.
  *
- * @param {string} value - `date_from`/`date_to` da requisição.
- * @param {string} timeZone - Fuso IANA.
- * @param {boolean} endExclusive - Quando `true` e for só-dia, devolve o INÍCIO do dia seguinte
+ * @param value - `date_from`/`date_to` da requisição.
+ * @param timeZone - Fuso IANA.
+ * @param endExclusive - Quando `true` e for só-dia, devolve o INÍCIO do dia seguinte
  *   (fim exclusivo) — "até 19/06" cobre o dia 19 inteiro.
- * @returns {Date} Instante UTC do limite.
+ *
+ * @returns Instante UTC do limite.
  */
 export function resolveBoundInTz(
   value: string,
@@ -319,7 +328,7 @@ export function resolveBoundInTz(
     );
 
     return endExclusive
-      ? new Date(start.getTime() + DAY_MS)
+      ? new Date(start.getTime() + MS_PER_DAY)
       : start;
   }
 
@@ -327,13 +336,16 @@ export function resolveBoundInTz(
   const naive = NAIVE_DATETIME.exec(value);
 
   if (naive) {
+    // The seconds group is optional: `exec` leaves it undefined when the input has no seconds.
     return wallClockToUtc(
-      Number(naive[1]),
-      Number(naive[2]),
-      Number(naive[3]),
-      Number(naive[4]),
-      Number(naive[5]),
-      Number(naive[6] ?? '0'),
+      {
+        year: Number(naive[NAIVE_GROUP.year]),
+        month: Number(naive[NAIVE_GROUP.month]),
+        day: Number(naive[NAIVE_GROUP.day]),
+        hour: Number(naive[NAIVE_GROUP.hour]),
+        minute: Number(naive[NAIVE_GROUP.minute]),
+        second: Number(naive.at(NAIVE_GROUP.second) ?? '0'),
+      },
       timeZone,
     );
   }
@@ -347,10 +359,11 @@ export function resolveBoundInTz(
  * Usado por presets de "últimos N dias": `startOfRecentDays(6, …)` cobre hoje + 6 dias anteriores
  * (7 dias-calendário) a partir do começo do dia mais antigo. Calendário ancorado no fuso.
  *
- * @param {number} daysAgo - Quantos dias-calendário voltar (0 = hoje no fuso).
- * @param {string} timeZone - Fuso IANA.
- * @param {Date} reference - Instante "agora".
- * @returns {Date} Instante UTC de 00:00 (no fuso) do dia alvo.
+ * @param daysAgo - Quantos dias-calendário voltar (0 = hoje no fuso).
+ * @param timeZone - Fuso IANA.
+ * @param reference - Instante "agora".
+ *
+ * @returns Instante UTC de 00:00 (no fuso) do dia alvo.
  */
 export function startOfRecentDays(
   daysAgo: number,
@@ -367,7 +380,7 @@ export function startOfRecentDays(
     today.year,
     today.month - 1,
     today.day,
-  ) - daysAgo * DAY_MS);
+  ) - daysAgo * MS_PER_DAY);
 
   return startOfDayInTz(
     anchor.getUTCFullYear(),

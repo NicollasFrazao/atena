@@ -24,6 +24,7 @@ import {
   type Tool,
 } from '@aws-sdk/client-bedrock-runtime';
 import type { ToolNameType } from '@atena/types';
+import { DEFAULT_BEDROCK_MAX_TOKENS } from '../config/configuration';
 import type {
   LlmConverseParamsInterface,
   LlmDescriptorInterface,
@@ -75,9 +76,9 @@ interface OrchestratorContentInterface {
 /**
  * Mapeia o `stopReason` do Converse para a razão de parada do nosso contrato.
  *
- * @param {string} reason - `stopReason` nativo do Bedrock.
+ * @param reason - `stopReason` nativo do Bedrock.
  *
- * @returns {LlmStopInterface['reason']} `tool_use` | `refusal` (guardrail/filtro) | `end_turn` (resto).
+ * @returns `tool_use` | `refusal` (guardrail/filtro) | `end_turn` (resto).
  */
 function mapStopReason(reason: string): LlmStopInterface['reason'] {
   if (reason === 'tool_use') {
@@ -124,8 +125,9 @@ function parseJsonObject(json: string): Record<string, unknown> {
  * array** (ex.: `list_providers`/`list_customers`, que devolvem `string[]`) — são embrulhados em
  * `{ result }`, sempre produzindo um objeto JSON válido.
  *
- * @param {unknown} result - Resultado cru da tool (envelope, trilha, lista, `null` se não encontrado, etc.).
- * @returns {{ json: unknown }} Bloco de conteúdo com um documento JSON garantidamente objeto não-nulo.
+ * @param result - Resultado cru da tool (envelope, trilha, lista, `null` se não encontrado, etc.).
+ *
+ * @returns Bloco de conteúdo com um documento JSON garantidamente objeto não-nulo.
  */
 function toToolResultJson(result: unknown): { json: unknown } {
   if (
@@ -182,8 +184,9 @@ function toContentBlocks(message: LlmMessageInterface): ContentBlock[] {
  * ordem. O orquestrador empilha uma mensagem por tool; a fusão aqui remonta o formato que o Bedrock
  * aceita (sem ela: `ValidationException` de pareamento/ordem de `toolResult`).
  *
- * @param {LlmMessageInterface[]} messages - Histórico do orquestrador (texto + blocos de tool).
- * @returns {Message[]} Mensagens do Converse com alternância estrita e blocos agrupados por turno.
+ * @param messages - Histórico do orquestrador (texto + blocos de tool).
+ *
+ * @returns Mensagens do Converse com alternância estrita e blocos agrupados por turno.
  */
 function toConverseMessages(messages: LlmMessageInterface[]): Message[] {
   const merged: Message[] = [];
@@ -196,10 +199,7 @@ function toConverseMessages(messages: LlmMessageInterface[]): Message[] {
     const blocks = toContentBlocks(message);
     const last = merged.at(-1);
 
-    if (
-      last
-      && last.role === role
-    ) {
+    if (last?.role === role) {
       last.content?.push(...blocks);
     } else {
       merged.push({
@@ -240,8 +240,9 @@ function describeConverseMessages(messages: Message[]): string {
  * Resume o `$metadata` do SDK para o log de diagnóstico do #8: `requestId` (correlaciona com
  * CloudTrail/suporte AWS), `httpStatusCode` e nº de `attempts` (>1 sugere throttling/retry).
  *
- * @param {ConverseStreamCommandOutput['$metadata']} metadata - Metadata da resposta do Converse.
- * @returns {string} Resumo `req=… http=… tries=…`.
+ * @param metadata - Metadata da resposta do Converse.
+ *
+ * @returns Resumo `req=… http=… tries=…`.
  */
 function describeMetadata(metadata: ConverseStreamCommandOutput['$metadata']): string {
   return `req=${metadata.requestId ?? '?'} http=${metadata.httpStatusCode ?? '?'} tries=${metadata.attempts ?? 1}`;
@@ -271,11 +272,11 @@ function toToolConfig(tools?: LlmToolSpecInterface[]): { tools: Tool[] } | undef
 /**
  * Monta o input do `ConverseStreamCommand` a partir dos parâmetros da rodada. Função pura.
  *
- * @param {string} modelId - Id do modelo (inference profile).
- * @param {number} maxTokens - Limite de tokens de saída.
- * @param {LlmConverseParamsInterface} params - Sistema, histórico e tools da rodada.
+ * @param modelId - Id do modelo (inference profile).
+ * @param maxTokens - Limite de tokens de saída.
+ * @param params - Sistema, histórico e tools da rodada.
  *
- * @returns {ConverseStreamCommandInput} Input pronto para o comando.
+ * @returns Input pronto para o comando.
  */
 export function buildConverseInput(
   modelId: string,
@@ -306,9 +307,10 @@ interface ConverseToolStateInterface {
  * só acumula estado, ex.: início de tool use ou fragmento de input). Muta `state`. Extraído de
  * {@link translateConverseStream} para manter cada função sob o limite de complexidade cognitiva.
  *
- * @param {BedrockStreamEventInterface} event - Evento do Converse.
- * @param {ConverseToolStateInterface} state - Estado da tool em acumulação (mutado por referência).
- * @returns {LlmStreamChunkType | null} Chunk a emitir, ou `null` se o evento só atualiza estado.
+ * @param event - Evento do Converse.
+ * @param state - Estado da tool em acumulação (mutado por referência).
+ *
+ * @returns Chunk a emitir, ou `null` se o evento só atualiza estado.
  */
 function translateConverseEvent(
   event: BedrockStreamEventInterface,
@@ -383,9 +385,9 @@ function translateConverseEvent(
  * Traduz o stream de eventos do Bedrock ConverseStream para {@link LlmStreamChunkType}.
  * Função pura (sem I/O): acumula o input fragmentado da tool e fecha no `contentBlockStop`.
  *
- * @param {AsyncIterable<BedrockStreamEventInterface>} stream - Eventos do Converse.
+ * @param stream - Eventos do Converse.
  *
- * @returns {AsyncIterable<LlmStreamChunkType>} Chunks no contrato do provider.
+ * @returns Chunks no contrato do provider.
  */
 export async function* translateConverseStream(
   stream: AsyncIterable<BedrockStreamEventInterface>,
@@ -431,8 +433,9 @@ export async function* translateConverseStream(
  * Ex.: `us.amazon.nova-pro-v1:0` → `Amazon Nova Pro v1`. Sem casar o padrão, devolve o id cru
  * (sem prefixo de região), ou `Bedrock` se vazio.
  *
- * @param {string} modelId - Id do modelo no Bedrock (inference profile).
- * @returns {string} Rótulo amigável do modelo.
+ * @param modelId - Id do modelo no Bedrock (inference profile).
+ *
+ * @returns Rótulo amigável do modelo.
  */
 export function friendlyModelName(modelId: string): string {
   if (!modelId) {
@@ -484,7 +487,7 @@ export class BedrockProvider implements LlmProviderInterface {
   private readonly maxTokens: number;
 
   /**
-   * @param {ConfigService} config - Fonte de `aws.region`, `bedrock.{modelId,apiKey,maxTokens}`.
+   * @param config - Fonte de `aws.region`, `bedrock.{modelId,apiKey,maxTokens}`.
    */
   constructor(config: ConfigService) {
     const apiKey = config.get<string>('bedrock.apiKey');
@@ -497,13 +500,13 @@ export class BedrockProvider implements LlmProviderInterface {
     });
 
     this.modelId = config.get<string>('bedrock.modelId') ?? '';
-    this.maxTokens = config.get<number>('bedrock.maxTokens') ?? 1024;
+    this.maxTokens = config.get<number>('bedrock.maxTokens') ?? DEFAULT_BEDROCK_MAX_TOKENS;
   }
 
   /**
    * Identifica o provider/modelo ativo (Bedrock + rótulo amigável do `modelId`).
    *
-   * @returns {LlmDescriptorInterface} `{ provider: 'bedrock', model }`.
+   * @returns `{ provider: 'bedrock', model }`.
    */
   describe(): LlmDescriptorInterface {
     return {
@@ -516,9 +519,9 @@ export class BedrockProvider implements LlmProviderInterface {
    * Conduz um turno de conversa com o Nova via Bedrock (ConverseStream), traduzindo
    * cada evento do stream nativo para {@link LlmStreamChunkType}.
    *
-   * @param {LlmConverseParamsInterface} params - Sistema, histórico e catálogo de tools da rodada.
+   * @param params - Sistema, histórico e catálogo de tools da rodada.
    *
-   * @returns {AsyncIterable<LlmStreamChunkType>} Stream de eventos: deltas de texto, pedidos de tool, uso e parada.
+   * @returns Stream de eventos: deltas de texto, pedidos de tool, uso e parada.
    */
   async *converseStream(
     params: LlmConverseParamsInterface,

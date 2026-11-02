@@ -23,15 +23,16 @@ import { ListAuditDto } from './dto/list-audit.dto';
 @Controller('audit')
 export class AuditController {
   /**
-   * @param {AuditService} audit - Serviço de auditoria (leitura).
+   * @param audit - Serviço de auditoria (leitura).
    */
   constructor(private readonly audit: AuditService) {}
 
   /**
    * `GET /audit` — lista registros (mais recentes primeiro) com filtros e paginação.
    *
-   * @param {ListAuditDto} query - Filtros + paginação.
-   * @returns {Promise<PaginatedEnvelopeInterface<AuditLogEntryInterface>>} Página de registros.
+   * @param query - Filtros + paginação.
+   *
+   * @returns Página de registros.
    */
   @Get()
   list(@Query() query: ListAuditDto): Promise<PaginatedEnvelopeInterface<AuditLogEntryInterface>> {
@@ -41,7 +42,7 @@ export class AuditController {
   /**
    * `GET /audit/summary` — contadores do topo (hoje, PII, mudanças de regra, total).
    *
-   * @returns {Promise<AuditSummaryInterface>} Contadores agregados.
+   * @returns Contadores agregados.
    */
   @Get('summary')
   summary(): Promise<AuditSummaryInterface> {
@@ -51,7 +52,7 @@ export class AuditController {
   /**
    * `GET /audit/users` — usuários distintos no log (para o filtro de usuário da tela).
    *
-   * @returns {Promise<AuditUserOptionInterface[]>} Usuários distintos (id + nome de exibição).
+   * @returns Usuários distintos (id + nome de exibição).
    */
   @Get('users')
   users(): Promise<AuditUserOptionInterface[]> {
@@ -61,8 +62,9 @@ export class AuditController {
   /**
    * `GET /audit/export` — registros que casam os filtros (sem paginação), para download JSONL.
    *
-   * @param {ListAuditDto} query - Mesmos filtros da listagem.
-   * @returns {Promise<AuditLogEntryInterface[]>} Registros (até o teto de exportação).
+   * @param query - Mesmos filtros da listagem.
+   *
+   * @returns Registros (até o teto de exportação).
    */
   @Get('export')
   export(@Query() query: ListAuditDto): Promise<AuditLogEntryInterface[]> {

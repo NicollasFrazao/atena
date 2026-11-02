@@ -9,6 +9,8 @@ import { Prisma, type AnomalyRule, type Incident } from '@prisma/client';
 import type { IncidentInterface } from '@atena/types';
 import { AUDIT_QUERY, type AuditQueryServiceInterface } from '../audit-query/audit-query.interface';
 import { appTimeZone } from '../audit-query/tz';
+import { MS_PER_MINUTE, MS_PER_SECOND } from '../common/units';
+import { DEFAULT_DETECT_BASELINE_WINDOWS, DEFAULT_DETECT_MIN_TERMINAL_VOLUME } from '../config/configuration';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupportGateway } from '../realtime/support.gateway';
 import { detectDeliveryRateDrop } from './delivery-rate-drop.detector';
@@ -27,12 +29,12 @@ import type {
  * (3min): o detector compete com as buscas do usuário pela única instância DuckDB, então rodar a
  * cada 60s mantinha o motor ocupado boa parte do tempo (e atrasava o stream do chat). 3min ainda é
  * pronto o bastante p/ anomalias de janela de 15min; o trigger manual `POST /api/dev/detect` é imediato.
- * Lido do `process.env` (a env do container já está disponível na carga do módulo, antes do @Interval).
+ * Lido do `process.env` (a env do container já está disponível na carga do módulo, antes do `@Interval`).
  */
 const DETECT_INTERVAL_MS = Number.parseInt(
   process.env.DETECT_INTERVAL_SECONDS ?? '180',
   10,
-) * 1000;
+) * MS_PER_SECOND;
 
 /** Nota registrada ao auto-resolver um incidente. */
 const AUTO_RESOLVE_NOTE = 'Métrica voltou à baseline sem intervenção.';
@@ -67,9 +69,10 @@ interface DetectorSamplesInterface {
  * Exibido no card do incidente (chat), na lista e no detalhe. O instante canônico (UTC) continua nas
  * colunas estruturadas e em `window_from`/`window_to` (consumo por máquina).
  *
- * @param {Date} start - Início da janela (instante UTC).
- * @param {Date} end - Fim da janela (≈ instante da detecção, UTC).
- * @returns {string} Rótulo legível da janela no fuso de exibição.
+ * @param start - Início da janela (instante UTC).
+ * @param end - Fim da janela (≈ instante da detecção, UTC).
+ *
+ * @returns Rótulo legível da janela no fuso de exibição.
  */
 function formatDetectionWindow(
   start: Date,
@@ -114,7 +117,7 @@ function formatDetectionWindow(
 
   const minutes = Math.max(
     1,
-    Math.round((end.getTime() - start.getTime()) / 60_000),
+    Math.round((end.getTime() - start.getTime()) / MS_PER_MINUTE),
   );
 
   return `${dayMonth} ${hhmm(start)} → ${hhmm(end)} ${tzLabel} (${minutes} min)`;
@@ -136,10 +139,10 @@ export class DetectorService {
   private readonly logger = new Logger(DetectorService.name);
 
   /**
-   * @param {AuditQueryServiceInterface} audit - Amostras de entrega (terminais/envios) do S3.
-   * @param {PrismaService} prisma - Incidentes e atividades (dado da aplicação).
-   * @param {SupportGateway} realtime - Push de `incident.created`/`auto_resolved`.
-   * @param {ConfigService} config - Flags/calibração do detector (`detect.*`).
+   * @param audit - Amostras de entrega (terminais/envios) do S3.
+   * @param prisma - Incidentes e atividades (dado da aplicação).
+   * @param realtime - Push de `incident.created`/`auto_resolved`.
+   * @param config - Flags/calibração do detector (`detect.*`).
    */
   constructor(
     @Inject(AUDIT_QUERY) private readonly audit: AuditQueryServiceInterface,
@@ -151,7 +154,7 @@ export class DetectorService {
   /**
    * Scan agendado: roda o detector se `detect.enabled` estiver ligado.
    *
-   * @returns {Promise<void>} Resolve ao fim do scan (ou imediatamente se desligado).
+   * @returns Resolve ao fim do scan (ou imediatamente se desligado).
    */
   @Interval(DETECT_INTERVAL_MS)
   async scheduled(): Promise<void> {
@@ -167,9 +170,9 @@ export class DetectorService {
   /**
    * Executa o detector sobre todas as regras habilitadas e reconcilia incidentes.
    *
-   * @param {Date} now - Instante de referência (injetável p/ testes).
+   * @param now - Instante de referência (injetável p/ testes).
    *
-   * @returns {Promise<DetectorRunSummaryInterface>} Contagens da execução.
+   * @returns Contagens da execução.
    */
   async run(now: Date = new Date()): Promise<DetectorRunSummaryInterface> {
     // Só regras com detector real: um stub (detecção vazia) não pode auto-resolver incidentes.
@@ -219,8 +222,8 @@ export class DetectorService {
   /** Calibração lida da config (defaults amigáveis a dev). */
   private options(): DetectorOptionsInterface {
     return {
-      minTerminalVolume: this.config.get<number>('detect.minTerminalVolume') ?? 20,
-      baselineWindows: this.config.get<number>('detect.baselineWindows') ?? 8,
+      minTerminalVolume: this.config.get<number>('detect.minTerminalVolume') ?? DEFAULT_DETECT_MIN_TERMINAL_VOLUME,
+      baselineWindows: this.config.get<number>('detect.baselineWindows') ?? DEFAULT_DETECT_BASELINE_WINDOWS,
     };
   }
 
@@ -229,10 +232,11 @@ export class DetectorService {
    * (cada detector recorta a própria janela depois). `webhook_silence` usa ENVIOS (por provider); os
    * demais usam TERMINAIS. Colapsa N materializações/ciclo (uma por regra) em no máx. duas.
    *
-   * @param {AnomalyRule[]} rules - Regras habilitadas (já filtradas p/ tipos implementados).
-   * @param {Date} now - Instante de referência.
-   * @param {DetectorOptionsInterface} opts - Calibração (janelas de baseline).
-   * @returns {Promise<DetectorSamplesInterface>} Amostras terminais + de envio do lookback.
+   * @param rules - Regras habilitadas (já filtradas p/ tipos implementados).
+   * @param now - Instante de referência.
+   * @param opts - Calibração (janelas de baseline).
+   *
+   * @returns Amostras terminais + de envio do lookback.
    */
   private async collectSamples(
     rules: AnomalyRule[],
@@ -251,7 +255,7 @@ export class DetectorService {
         0,
       );
 
-      return new Date(now.getTime() - maxWindow * 60_000 * (opts.baselineWindows + 1));
+      return new Date(now.getTime() - maxWindow * MS_PER_MINUTE * (opts.baselineWindows + 1));
     };
 
     const terminalRules = rules.filter((rule) => rule.ruleType !== 'webhook_silence');
@@ -281,12 +285,12 @@ export class DetectorService {
    * Roda o detector PURO da regra sobre as amostras já materializadas (sem I/O). `webhook_silence`
    * usa as amostras de ENVIOS; os demais usam as TERMINAIS. Cada detector recorta a própria janela.
    *
-   * @param {AnomalyRule} rule - Regra habilitada.
-   * @param {DetectorSamplesInterface} samples - Amostras compartilhadas do ciclo.
-   * @param {Date} now - Instante de referência.
-   * @param {DetectorOptionsInterface} opts - Calibração.
+   * @param rule - Regra habilitada.
+   * @param samples - Amostras compartilhadas do ciclo.
+   * @param now - Instante de referência.
+   * @param opts - Calibração.
    *
-   * @returns {DetectionInterface[]} Anomalias detectadas pela regra.
+   * @returns Anomalias detectadas pela regra.
    */
   private runDetector(
     rule: AnomalyRule,
@@ -335,10 +339,10 @@ export class DetectorService {
    * Amostras de TERMINAIS (delivered/failed) no lookback, com `errorHint`, para o
    * `consistent_error`/`delivery_rate_drop`. Janelamento por `finalized_at` (desfecho). Vem do S3.
    *
-   * @param {Date} lookbackStart - Início do lookback.
-   * @param {Date} now - Fim do lookback (instante de referência).
+   * @param lookbackStart - Início do lookback.
+   * @param now - Fim do lookback (instante de referência).
    *
-   * @returns {Promise<ShippingSampleInterface[]>} Amostras terminais.
+   * @returns Amostras terminais.
    */
   private async terminalSamples(
     lookbackStart: Date,
@@ -354,10 +358,10 @@ export class DetectorService {
    * Amostras de ENVIOS (qualquer status) no lookback, com `provider`/`requestedAt`/`finalizedAt`
    * para o `webhook_silence`. Janelamento por `requested_at` (envio). Vem do S3.
    *
-   * @param {Date} lookbackStart - Início do lookback.
-   * @param {Date} now - Fim do lookback (instante de referência).
+   * @param lookbackStart - Início do lookback.
+   * @param now - Fim do lookback (instante de referência).
    *
-   * @returns {Promise<ShippingSampleInterface[]>} Amostras de envio.
+   * @returns Amostras de envio.
    */
   private async sendSamples(
     lookbackStart: Date,
@@ -373,11 +377,11 @@ export class DetectorService {
    * Reconcilia detecções com os incidentes abertos da regra: cria os novos (sem
    * duplicar a dimensão) e auto-resolve os que não estão mais anômalos.
    *
-   * @param {AnomalyRule} rule - Regra avaliada.
-   * @param {DetectionInterface[]} detections - Anomalias atuais da regra.
-   * @param {Date} now - Instante de referência.
+   * @param rule - Regra avaliada.
+   * @param detections - Anomalias atuais da regra.
+   * @param now - Instante de referência.
    *
-   * @returns {Promise<{ created: number; auto_resolved: number }>} Contagens da reconciliação.
+   * @returns Contagens da reconciliação.
    */
   private async reconcile(
     rule: AnomalyRule,
@@ -442,11 +446,11 @@ export class DetectorService {
    * Persiste um incidente novo (status `detected`). Empurra `incident.created` **apenas** se a regra
    * não estiver em shadow mode — em shadow, o incidente é registrado para calibração mas não notifica.
    *
-   * @param {DetectionInterface} detection - Anomalia detectada.
-   * @param {Date} now - Instante da detecção.
-   * @param {boolean} shadow - Se a regra está em observação silenciosa (registra sem notificar).
+   * @param detection - Anomalia detectada.
+   * @param now - Instante da detecção.
+   * @param shadow - Se a regra está em observação silenciosa (registra sem notificar).
    *
-   * @returns {Promise<void>} Resolve após criar e (quando não shadow) emitir.
+   * @returns Resolve após criar e (quando não shadow) emitir.
    */
   private async createIncident(
     detection: DetectionInterface,
@@ -500,10 +504,10 @@ export class DetectorService {
   /**
    * Auto-resolve um incidente cuja anomalia sumiu e empurra `incident.auto_resolved`.
    *
-   * @param {Incident} incident - Incidente aberto a fechar.
-   * @param {Date} now - Instante da resolução automática.
+   * @param incident - Incidente aberto a fechar.
+   * @param now - Instante da resolução automática.
    *
-   * @returns {Promise<void>} Resolve após persistir e emitir.
+   * @returns Resolve após persistir e emitir.
    */
   private async autoResolve(
     incident: Incident,

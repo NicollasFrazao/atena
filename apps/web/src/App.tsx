@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import {
   Navigate,
   Route,
@@ -23,7 +24,7 @@ import { UsuariosPage } from './admin/UsuariosPage';
  * 401 em qualquer chamada volta para o login. O `ChatProvider` mantém a sessão/conversa do chat
  * viva durante a navegação entre telas; o banner de incidentes vive no `Shell`.
  *
- * @returns {JSX.Element} App montado (login ou Shell, conforme a sessão).
+ * @returns App montado (login ou Shell, conforme a sessão).
  */
 export function App(): JSX.Element {
   return (

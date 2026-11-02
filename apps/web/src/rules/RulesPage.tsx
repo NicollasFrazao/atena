@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { EyeSlash } from '@phosphor-icons/react';
+import { useState, type JSX } from 'react';
+import { EyeSlashIcon as EyeSlash } from '@phosphor-icons/react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AnomalyRuleInterface } from '@atena/types';
 import { updateRule, useRules } from '../api/rules';
@@ -11,6 +11,7 @@ import {
   ruleDescription,
 } from './rule-labels';
 import { RuleEditDrawer } from './RuleEditDrawer';
+import { cssValue, cssVar } from '../styles/tokens';
 
 /** Colunas da tabela de regras. */
 const COLUMNS = [
@@ -29,7 +30,7 @@ const COLUMNS = [
  * e edição (limiar/dimensão/janela/severidade) via modal. Sem "Nova regra" — não há endpoint de
  * criação; só `GET`/`PUT`. Toda alteração é auditada no servidor.
  *
- * @returns {JSX.Element} A tela de regras.
+ * @returns A tela de regras.
  */
 export function RulesPage(): JSX.Element {
   const queryClient = useQueryClient();
@@ -65,23 +66,23 @@ export function RulesPage(): JSX.Element {
     <div style={{
       maxWidth: 1200,
       margin: '0 auto',
-      padding: 'var(--at-space-32)',
+      padding: cssVar.space32,
     }}
     >
       <h1 style={{
         margin: 0,
-        marginBottom: 'var(--at-space-4)',
-        fontSize: 'var(--at-fs-24)',
+        marginBottom: cssVar.space4,
+        fontSize: cssVar.fs24,
         fontWeight: 600,
-        color: 'var(--at-fg)',
+        color: cssVar.fg,
       }}
       >
         Regras de anomalia
       </h1>
       <div style={{
-        fontSize: 'var(--at-fs-14)',
-        color: 'var(--at-fg-muted)',
-        marginBottom: 'var(--at-space-24)',
+        fontSize: cssVar.fs14,
+        color: cssVar.fgMuted,
+        marginBottom: cssVar.space24,
       }}
       >
         {rules.isLoading
@@ -92,8 +93,8 @@ export function RulesPage(): JSX.Element {
       {rules.isError
         ? (
           <div style={{
-            fontSize: 'var(--at-fs-14)',
-            color: 'var(--at-fg-muted)',
+            fontSize: cssVar.fs14,
+            color: cssVar.fgMuted,
           }}
           >
             Não foi possível carregar as regras.
@@ -104,8 +105,8 @@ export function RulesPage(): JSX.Element {
       {list.length > 0
         ? (
           <div style={{
-            background: 'var(--at-white)',
-            border: '1px solid var(--at-border)',
+            background: cssVar.white,
+            border: cssVar.borderLine,
             borderRadius: 8,
             overflow: 'hidden',
           }}
@@ -116,19 +117,19 @@ export function RulesPage(): JSX.Element {
             }}
             >
               <thead>
-                <tr style={{ background: 'var(--at-bg-soft)' }}>
+                <tr style={{ background: cssVar.bgSoft }}>
                   {COLUMNS.map((column) => (
                     <th
                       key={column}
                       style={{
                         textAlign: 'left',
                         padding: '9px 14px',
-                        fontSize: 'var(--at-fs-12)',
+                        fontSize: cssVar.fs12,
                         fontWeight: 600,
-                        color: 'var(--at-fg-muted)',
+                        color: cssVar.fgMuted,
                         textTransform: 'uppercase',
                         letterSpacing: 0.4,
-                        borderBottom: '1px solid var(--at-border)',
+                        borderBottom: cssVar.borderLine,
                       }}
                     >
                       {column}
@@ -141,8 +142,8 @@ export function RulesPage(): JSX.Element {
                   <RuleRow
                     key={rule.id}
                     rule={rule}
-                    onToggle={() => onToggle(rule)}
-                    onEdit={() => setEditTarget(rule)}
+                    onToggle={() => { onToggle(rule); }}
+                    onEdit={() => { setEditTarget(rule); }}
                   />
                 ))}
               </tbody>
@@ -155,7 +156,7 @@ export function RulesPage(): JSX.Element {
         ? (
           <RuleEditDrawer
             rule={editTarget}
-            onClose={() => setEditTarget(null)}
+            onClose={() => { setEditTarget(null); }}
             onSaved={onSaved}
           />
         )
@@ -164,38 +165,41 @@ export function RulesPage(): JSX.Element {
   );
 }
 
+/** Opacity of the row of a disabled rule. */
+const DISABLED_RULE_OPACITY = 0.55;
+
 /** Linha da tabela de regras. */
 function RuleRow({
   rule,
   onToggle,
   onEdit,
-}: {
+}: Readonly<{
   rule: AnomalyRuleInterface;
   onToggle: () => void;
   onEdit: () => void
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <tr
       className="at-row-click"
       onClick={onEdit}
       style={{
-        borderBottom: '1px solid var(--at-border)',
+        borderBottom: cssVar.borderLine,
         opacity: rule.enabled
           ? 1
-          : 0.55,
+          : DISABLED_RULE_OPACITY,
       }}
     >
       <Cell>
         <span style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 'var(--at-space-8)',
+          gap: cssVar.space8,
         }}
         >
           <span style={{
-            fontSize: 'var(--at-fs-14)',
+            fontSize: cssVar.fs14,
             fontWeight: 600,
-            color: 'var(--at-fg)',
+            color: cssVar.fg,
           }}
           >
             {rule.name}
@@ -205,9 +209,9 @@ function RuleRow({
             : null}
         </span>
         <code style={{
-          fontFamily: 'ui-monospace, Menlo, monospace',
-          fontSize: 'var(--at-fs-12)',
-          color: 'var(--at-fg-subtle)',
+          fontFamily: cssValue.fontMono,
+          fontSize: cssVar.fs12,
+          color: cssVar.fgSubtle,
         }}
         >
           {rule.id}
@@ -215,9 +219,9 @@ function RuleRow({
         <span style={{
           display: 'block',
           maxWidth: 420,
-          marginTop: 'var(--at-space-4)',
-          fontSize: 'var(--at-fs-12)',
-          color: 'var(--at-fg-muted)',
+          marginTop: cssVar.space4,
+          fontSize: cssVar.fs12,
+          color: cssVar.fgMuted,
           lineHeight: 'var(--at-lh-18, 1.4)',
         }}
         >
@@ -233,8 +237,8 @@ function RuleRow({
       <Cell>
         <span style={{
           display: 'block',
-          fontSize: 'var(--at-fs-12)',
-          color: 'var(--at-fg)',
+          fontSize: cssVar.fs12,
+          color: cssVar.fg,
         }}
         >
           {formatRelativeTime(rule.updated_at)}
@@ -243,8 +247,8 @@ function RuleRow({
           ? (
             <span style={{
               display: 'block',
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg-subtle)',
+              fontSize: cssVar.fs12,
+              color: cssVar.fgSubtle,
             }}
             >
               por {rule.updated_by}
@@ -260,8 +264,8 @@ function RuleRow({
       </Cell>
       <Cell>
         <span style={{
-          fontSize: 'var(--at-fs-16)',
-          color: 'var(--at-fg-subtle)',
+          fontSize: cssVar.fs16,
+          color: cssVar.fgSubtle,
         }}
         >
           ›
@@ -276,25 +280,25 @@ function Cell({
   children,
   muted,
   mono,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   muted?: boolean;
   mono?: boolean
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <td style={{
       padding: '10px 14px',
       verticalAlign: 'middle',
-      fontSize: 'var(--at-fs-14)',
+      fontSize: cssVar.fs14,
       fontFamily: mono
-        ? 'ui-monospace, Menlo, monospace'
+        ? cssValue.fontMono
         : 'inherit',
       fontVariantNumeric: mono
-        ? 'tabular-nums'
+        ? cssValue.tabularNums
         : undefined,
       color: muted
-        ? 'var(--at-fg-muted)'
-        : 'var(--at-fg)',
+        ? cssVar.fgMuted
+        : cssVar.fg,
     }}
     >
       {children}
@@ -303,19 +307,19 @@ function Cell({
 }
 
 /** Chip de severidade (cor + rótulo). */
-function SeverityChip({ severity }: { severity: AnomalyRuleInterface['severity'] }): JSX.Element {
+function SeverityChip({ severity }: Readonly<{ severity: AnomalyRuleInterface['severity'] }>): JSX.Element {
   const color = SEVERITY_COLOR[severity];
 
   return (
     <span style={{
-      display: 'inline-flex',
+      display: cssValue.inlineFlex,
       alignItems: 'center',
-      gap: 'var(--at-space-4)',
+      gap: cssVar.space4,
       padding: '2px 8px',
       borderRadius: 999,
       background: `${color}1a`,
       color,
-      fontSize: 'var(--at-fs-12)',
+      fontSize: cssVar.fs12,
       fontWeight: 600,
     }}
     >
@@ -337,15 +341,15 @@ function ShadowBadge(): JSX.Element {
     <span
       title="Shadow mode: detecta e registra, mas não notifica (calibração)"
       style={{
-        display: 'inline-flex',
+        display: cssValue.inlineFlex,
         alignItems: 'center',
-        gap: 'var(--at-space-4)',
+        gap: cssVar.space4,
         padding: '2px 8px',
         borderRadius: 999,
-        background: 'var(--at-bg-soft)',
-        border: '1px solid var(--at-border)',
-        color: 'var(--at-fg-muted)',
-        fontSize: 'var(--at-fs-12)',
+        background: cssVar.bgSoft,
+        border: cssVar.borderLine,
+        color: cssVar.fgMuted,
+        fontSize: cssVar.fs12,
         fontWeight: 600,
       }}
     >
@@ -355,14 +359,17 @@ function ShadowBadge(): JSX.Element {
   );
 }
 
+/** Left offset of the toggle knob when on: track width (38) − knob (18) − inset (2). */
+const TOGGLE_KNOB_ON_LEFT_PX = 18;
+
 /** Toggle de ativação (switch). */
 function Switch({
   checked,
   onToggle,
-}: {
+}: Readonly<{
   checked: boolean;
   onToggle: () => void
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <button
       type="button"
@@ -379,8 +386,8 @@ function Switch({
         border: 'none',
         borderRadius: 999,
         background: checked
-          ? 'var(--at-primary)'
-          : 'var(--at-border)',
+          ? cssVar.primary
+          : cssVar.border,
         cursor: 'pointer',
         position: 'relative',
         transition: 'background .2s',
@@ -390,12 +397,12 @@ function Switch({
         position: 'absolute',
         top: 2,
         left: checked
-          ? 18
+          ? TOGGLE_KNOB_ON_LEFT_PX
           : 2,
         width: 18,
         height: 18,
         borderRadius: 999,
-        background: 'var(--at-white)',
+        background: cssVar.white,
         transition: 'left .2s',
         boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)',
       }}

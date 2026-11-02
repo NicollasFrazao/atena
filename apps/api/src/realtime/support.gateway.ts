@@ -43,6 +43,12 @@ interface WsUserInterface {
   roles: RoleType[];
 }
 
+/** What this gateway keeps in `socket.data` (socket.io types it as `any`). */
+interface SupportSocketDataInterface {
+  /** The user authenticated in the handshake. */
+  user?: WsUserInterface;
+}
+
 /**
  * Gateway de tempo real do suporte (`/ws/support`, socket.io).
  *
@@ -63,17 +69,18 @@ interface WsUserInterface {
   },
 })
 export class SupportGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  /** Set by Nest when the gateway starts; `undefined` until then. */
   @WebSocketServer()
-  private readonly server!: Namespace;
+  private readonly server?: Namespace;
 
   /** Pico de conexões simultâneas observado nesta instância (high-water; reseta no restart). */
   private peakConnectionCount = 0;
 
   /**
-   * @param {ConfigService} config - Fonte de `auth.devBypass` e nome do cookie de sessão.
-   * @param {AuthService} authService - Verifica o JWT do cookie de sessão no handshake.
-   * @param {UsersService} users - Resolve papéis/status do banco (recusa `disabled`).
-   * @param {MetricsService} [metrics] - Métricas custom (opcional).
+   * @param config - Fonte de `auth.devBypass` e nome do cookie de sessão.
+   * @param authService - Verifica o JWT do cookie de sessão no handshake.
+   * @param users - Resolve papéis/status do banco (recusa `disabled`).
+   * @param [metrics] - Métricas custom (opcional).
    */
   constructor(
     private readonly config: ConfigService,
@@ -85,9 +92,7 @@ export class SupportGateway implements OnGatewayConnection, OnGatewayDisconnect 
   /**
    * Autentica o handshake e confirma a conexão (`connection.status`); recusa sem identidade.
    *
-   * @param {Socket} client - Socket recém-conectado.
-   *
-   * @returns {Promise<void>}
+   * @param client - Socket recém-conectado.
    */
   async handleConnection(client: Socket): Promise<void> {
     const user = await this.resolveUser(client);
@@ -98,7 +103,7 @@ export class SupportGateway implements OnGatewayConnection, OnGatewayDisconnect 
       return;
     }
 
-    client.data.user = user;
+    (client.data as SupportSocketDataInterface).user = user;
 
     this.peakConnectionCount = Math.max(
       this.peakConnectionCount,
@@ -123,8 +128,6 @@ export class SupportGateway implements OnGatewayConnection, OnGatewayDisconnect 
    * Atualiza a gauge de conexões quando um socket desconecta. Sem isso o valor só era escrito no
    * connect e ficava stale até a próxima conexão (atrapalha a observabilidade em baixa rotatividade).
    * O socket que sai já foi removido do namespace → `connectionCount()` é acurado aqui.
-   *
-   * @returns {void}
    */
   handleDisconnect(): void {
     this.metrics?.gauge(
@@ -136,9 +139,7 @@ export class SupportGateway implements OnGatewayConnection, OnGatewayDisconnect 
   /**
    * Empurra um evento a todos os operadores conectados (MVP: sem filtro por papel).
    *
-   * @param {WsServerEvent} event - Evento servidor→cliente a emitir.
-   *
-   * @returns {void}
+   * @param event - Evento servidor→cliente a emitir.
    */
   broadcast(event: WsServerEvent): void {
     this.server?.emit(
@@ -150,16 +151,16 @@ export class SupportGateway implements OnGatewayConnection, OnGatewayDisconnect 
   /**
    * Número de conexões ativas no namespace (observabilidade).
    *
-   * @returns {number} Sockets conectados; `0` se o servidor ainda não subiu.
+   * @returns Sockets conectados; `0` se o servidor ainda não subiu.
    */
   connectionCount(): number {
-    return this.server?.sockets?.size ?? 0;
+    return this.server?.sockets.size ?? 0;
   }
 
   /**
    * Pico de conexões simultâneas observado desde o boot (high-water).
    *
-   * @returns {number} Maior nº de conexões simultâneas já visto; `0` se nunca conectou.
+   * @returns Maior nº de conexões simultâneas já visto; `0` se nunca conectou.
    */
   peakConnections(): number {
     return this.peakConnectionCount;
@@ -168,8 +169,9 @@ export class SupportGateway implements OnGatewayConnection, OnGatewayDisconnect 
   /**
    * Lê o cookie de sessão (`atena_session`) do header `Cookie` do handshake, quando presente.
    *
-   * @param {string} [header] - Valor do header `Cookie` do handshake.
-   * @returns {string | undefined} O JWT do cookie de sessão, ou `undefined`.
+   * @param [header] - Valor do header `Cookie` do handshake.
+   *
+   * @returns O JWT do cookie de sessão, ou `undefined`.
    */
   private sessionCookie(header?: string): string | undefined {
     if (!header) {
@@ -192,9 +194,9 @@ export class SupportGateway implements OnGatewayConnection, OnGatewayDisconnect 
    * Resolve a identidade do handshake: cookie de sessão (JWT verificado) + papéis/status do banco,
    * ou dev-bypass. Recusa (`null`) cookie inválido ou usuário `disabled`.
    *
-   * @param {Socket} client - Socket com os dados do handshake.
+   * @param client - Socket com os dados do handshake.
    *
-   * @returns {Promise<WsUserInterface | null>} Usuário associado, ou `null` se não autenticado.
+   * @returns Usuário associado, ou `null` se não autenticado.
    */
   private async resolveUser(client: Socket): Promise<WsUserInterface | null> {
     const token = this.sessionCookie(client.handshake.headers.cookie);

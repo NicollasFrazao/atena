@@ -8,12 +8,11 @@ import type {
  * `null` significa "sem limite naquele lado" (ex.: `from: null` = desde o início do período).
  *
  * Os instantes já vêm resolvidos (presets como `24h`/`7d` são expandidos na borda).
- *
- * @property {Date | null} from - Limite inferior inclusivo; `null` = sem limite inferior.
- * @property {Date | null} to - Limite superior exclusivo; `null` = até agora.
  */
 export interface AuditWindowInterface {
+  /** Limite inferior inclusivo; `null` = sem limite inferior. */
   from: Date | null;
+  /** Limite superior exclusivo; `null` = até agora. */
   to: Date | null;
 }
 
@@ -21,170 +20,155 @@ export interface AuditWindowInterface {
  * Registro de entrega normalizado (por destinatário), derivado dos logs do S3. Espelha o
  * que `recordsToShippings` produzia para o hot store, mas é a unidade de saída do motor de
  * consulta (camelCase interno; o telefone é PII e só sai mascarado na borda da API).
- *
- * @property {string} id - Id estável do destinatário (determinístico: `internal_identifier|phone`).
- * @property {string} customerId - Cliente dono do envio (`context.user_id`).
- * @property {string} phoneE164 - Telefone em E.164 (PII; mascarar na borda, revelar só sob auditoria).
- * @property {string | null} provider - Provedor de envio (`payload.provider`); `null` se ausente no log.
- * @property {string | null} correlationId - Id da requisição/campanha (`correlation_id`, top-level); 1-para-muitos destinatários.
- * @property {ShippingStatusType} finalStatus - Status consolidado (último evento terminal; senão último visto).
- * @property {Date} requestedAt - Instante do envio (`payload.date`/timestamp do envio).
- * @property {Date | null} finalizedAt - Instante preciso do desfecho (`status_at`/timestamp do status); `null` se sem status.
- * @property {string | null} errorHint - Motivo da falha (`failure_reason`/`error_code`/status) quando `failed`; senão `null`.
- * @property {string | null} contentRef - Ponteiro S3 do conteúdo bruto (para reveal via cache); `null` se indisponível.
- * @property {string | null} content - Texto bruto do SMS (PII), do campo `message` do detailed report; só sai
- *   sob reveal auditado na borda (mascarado por padrão); `null` se ausente no log.
  */
 export interface DeliveryRecordInterface {
+  /** Id estável do destinatário (determinístico: `internal_identifier|phone`). */
   id: string;
+  /** Cliente dono do envio (`context.user_id`). */
   customerId: string;
+  /** Telefone em E.164 (PII; mascarar na borda, revelar só sob auditoria). */
   phoneE164: string;
+  /** Provedor de envio (`payload.provider`); `null` se ausente no log. */
   provider: string | null;
+  /** Id da requisição/campanha (`correlation_id`, top-level); 1-para-muitos destinatários. */
   correlationId: string | null;
   /** Canal do envio (`campaign_type`): `sms` (SMS Short) ou `sms_flash` (SMS Flash). */
   channel: string | null;
   /** Aplicação que originou o envio (atribuição); UUID no detailed report. */
   appId: string | null;
+  /** Status consolidado (último evento terminal; senão último visto). */
   finalStatus: ShippingStatusType;
+  /** Instante do envio (`payload.date`/timestamp do envio). */
   requestedAt: Date;
+  /** Instante preciso do desfecho (`status_at`/timestamp do status); `null` se sem status. */
   finalizedAt: Date | null;
+  /** Motivo da falha (`failure_reason`/`error_code`/status) quando `failed`; senão `null`. */
   errorHint: string | null;
+  /** Ponteiro S3 do conteúdo bruto (para reveal via cache); `null` se indisponível. */
   contentRef: string | null;
+  /**
+   * Texto bruto do SMS (PII), do campo `message` do detailed report; só sai
+   * sob reveal auditado na borda (mascarado por padrão); `null` se ausente no log.
+   */
   content: string | null;
 }
 
-/**
- * Evento na trilha (lifecycle) de um envio, reconstruído dos logs de status.
- *
- * @property {ShippingEventType} type - Etapa do evento no ciclo de vida.
- * @property {string} label - Rótulo curto para exibição.
- * @property {Date} at - Instante do evento.
- * @property {string} detail - Detalhe legível do que ocorreu.
- */
+/** Evento na trilha (lifecycle) de um envio, reconstruído dos logs de status. */
 export interface DeliveryTrailEventInterface {
+  /** Etapa do evento no ciclo de vida. */
   type: ShippingEventType;
+  /** Rótulo curto para exibição. */
   label: string;
+  /** Instante do evento. */
   at: Date;
+  /** Detalhe legível do que ocorreu. */
   detail: string;
 }
 
-/**
- * Trilha completa de um envio: o registro consolidado + a linha do tempo de eventos.
- *
- * @property {DeliveryRecordInterface} record - Registro consolidado do destinatário.
- * @property {DeliveryTrailEventInterface[]} events - Eventos do lifecycle, em ordem cronológica.
- */
+/** Trilha completa de um envio: o registro consolidado + a linha do tempo de eventos. */
 export interface DeliveryTrailInterface {
+  /** Registro consolidado do destinatário. */
   record: DeliveryRecordInterface;
+  /** Eventos do lifecycle, em ordem cronológica. */
   events: DeliveryTrailEventInterface[];
 }
 
-/**
- * Filtros de busca/relatório sobre os registros de entrega. Todos opcionais, exceto a janela.
- *
- * @property {AuditWindowInterface} [window] - Janela temporal; ausente → o motor usa a janela default.
- * @property {string} [phone] - Telefone E.164 (match exato).
- * @property {ShippingStatusType} [status] - Status final para filtrar.
- * @property {string} [provider] - Provedor de envio.
- * @property {string} [channel] - Canal do envio (`campaign_type`): `sms` (SMS Short) ou `sms_flash` (SMS Flash).
- * @property {string} [errorHint] - Categoria da falha terminal (`error_hint`): `invalid_number`, `unreachable`,
- *   `generic_error`, `request_error`, etc. Só casa envios `failed` (o `error_hint` é `null` para delivered/blocked/pending).
- * @property {string} [customerId] - Cliente (match exato).
- * @property {string} [correlationId] - Id da requisição/campanha (`correlation_id`) — devolve os destinatários daquela requisição.
- */
+/** Filtros de busca/relatório sobre os registros de entrega. Todos opcionais, exceto a janela. */
 export interface AuditSearchFilterInterface {
+  /** Janela temporal; ausente → o motor usa a janela default. */
   window?: AuditWindowInterface;
+  /** Telefone E.164 (match exato). */
   phone?: string;
+  /** Status final para filtrar. */
   status?: ShippingStatusType;
+  /** Provedor de envio. */
   provider?: string;
+  /** Canal do envio (`campaign_type`): `sms` (SMS Short) ou `sms_flash` (SMS Flash). */
   channel?: string;
+  /**
+   * Categoria da falha terminal (`error_hint`): `invalid_number`, `unreachable`,
+   * `generic_error`, `request_error`, etc. Só casa envios `failed` (o `error_hint` é `null` para delivered/blocked/pending).
+   */
   errorHint?: string;
+  /** Cliente (match exato). */
   customerId?: string;
+  /** Id da requisição/campanha (`correlation_id`) — devolve os destinatários daquela requisição. */
   correlationId?: string;
 }
 
-/**
- * Totais por status de um relatório de entregabilidade.
- *
- * @property {number} sent - Total de envios na janela.
- * @property {number} delivered - Entregues.
- * @property {number} failed - Falhas (desfecho negativo do fornecedor).
- * @property {number} blocked - Bloqueados pelo controle de entrega (bounce: blacklist/throttling); NÃO é falha.
- * @property {number} pending - Em trânsito/sem desfecho.
- */
-export interface DeliveryTotalsInterface {
+/** Totais por status de um relatório de entregabilidade. */
+interface DeliveryTotalsInterface {
+  /** Total de envios na janela. */
   sent: number;
+  /** Entregues. */
   delivered: number;
+  /** Falhas (desfecho negativo do fornecedor). */
   failed: number;
+  /** Bloqueados pelo controle de entrega (bounce: blacklist/throttling); NÃO é falha. */
   blocked: number;
+  /** Em trânsito/sem desfecho. */
   pending: number;
 }
 
-/**
- * Quebra de entregabilidade por provedor.
- *
- * @property {string} name - Nome do provedor.
- * @property {number} sent - Envios do provedor na janela.
- * @property {number} delivered - Entregues do provedor.
- * @property {number} rate - Taxa de entrega (%) com uma casa decimal.
- */
-export interface ProviderBreakdownInterface {
+/** Quebra de entregabilidade por provedor. */
+interface ProviderBreakdownInterface {
+  /** Nome do provedor. */
   name: string;
+  /** Envios do provedor na janela. */
   sent: number;
+  /** Entregues do provedor. */
   delivered: number;
   failed: number;
   blocked: number;
   pending: number;
+  /** Taxa de entrega (%) com uma casa decimal. */
   rate: number;
 }
 
-/**
- * Erro recorrente no relatório, com o provedor dominante do código.
- *
- * @property {string} code - Código/motivo do erro (`errorHint`).
- * @property {number} count - Ocorrências na janela.
- * @property {string} provider - Provedor dominante do código (`mix` se indefinido).
- */
-export interface TopErrorInterface {
+/** Erro recorrente no relatório, com o provedor dominante do código. */
+interface TopErrorInterface {
+  /** Código/motivo do erro (`errorHint`). */
   code: string;
+  /** Ocorrências na janela. */
   count: number;
+  /** Provedor dominante do código (`mix` se indefinido). */
   provider: string;
 }
 
 /**
  * Agregado do relatório de entregabilidade computado pelo motor (em SQL). A borda
  * (`ReportsService`) acrescenta `window` (rótulo) e `csv_url`.
- *
- * @property {DeliveryTotalsInterface} totals - Totais por status.
- * @property {ProviderBreakdownInterface[]} byProvider - Quebra por provedor (taxa de entrega).
- * @property {Array<{ at: string; rate: number }>} hourly - Taxa de entrega por hora em buckets
- *   CRONOLÓGICOS; `at` = início do bucket (ISO 8601 UTC). Cobre os dias da janela.
- * @property {TopErrorInterface[]} topErrors - Top-5 erros por contagem.
  */
 export interface DeliveryReportAggregateInterface {
+  /** Totais por status. */
   totals: DeliveryTotalsInterface;
+  /** Quebra por provedor (taxa de entrega). */
   byProvider: ProviderBreakdownInterface[];
-  hourly: Array<{
+  /**
+   * Taxa de entrega por hora em buckets
+   * CRONOLÓGICOS; `at` = início do bucket (ISO 8601 UTC). Cobre os dias da janela.
+   */
+  hourly: {
     at: string;
     rate: number
-  }>;
+  }[];
+  /** Top-5 erros por contagem. */
   topErrors: TopErrorInterface[];
 }
 
-/**
- * Página de resultados da busca: linhas + total de itens (para paginação na borda).
- *
- * @property {DeliveryRecordInterface[]} rows - Registros da página atual.
- * @property {number} total - Total de itens que casam o filtro (todas as páginas).
- * @property {AuditWindowInterface} [window] - Janela EFETIVA que o motor consultou (resolvida/default).
- *   A borda a usa para congelar o export: o download pelo `window` exato bate com o `total` exibido,
- *   em vez de reabrir o preset relativo (`24h`) num instante posterior (que desliza).
- */
+/** Página de resultados da busca: linhas + total de itens (para paginação na borda). */
 export interface DeliveryPageInterface {
+  /** Registros da página atual. */
   rows: DeliveryRecordInterface[];
+  /** Total de itens que casam o filtro (todas as páginas). */
   total: number;
+  /**
+   * Janela EFETIVA que o motor consultou (resolvida/default).
+   * A borda a usa para congelar o export: o download pelo `window` exato bate com o `total` exibido,
+   * em vez de reabrir o preset relativo (`24h`) num instante posterior (que desliza).
+   */
   window?: AuditWindowInterface;
-  /** Quebra por status final de TODO o conjunto que casa o filtro (não só a página). */
+  /** Breakdown by final status of the whole set that matches the filter (not just the page). */
   breakdown?: {
     delivered: number;
     failed: number;
@@ -201,23 +185,20 @@ export interface DeliveryPageInterface {
  * - `reading` — lendo do S3 uma partição ainda fria (write-through pro cache `/tmp`); a etapa cara;
  * - `querying` — partições prontas (cache quente ou recém-lidas), rodando as queries locais.
  */
-export type AuditProgressPhaseType =
+type AuditProgressPhaseType =
   | 'mapping'
   | 'reading'
   | 'querying';
 
-/**
- * Evento de andamento da materialização de uma consulta, emitido pelo motor para a borda (SSE).
- *
- * @property {AuditProgressPhaseType} phase - Etapa atual do motor.
- * @property {string} label - Rótulo legível (PT-BR) para exibição na UI.
- * @property {number} [current] - Partição atual (base 1) na etapa `reading`; para barra de progresso.
- * @property {number} [total] - Total de partições da janela; para barra de progresso.
- */
+/** Evento de andamento da materialização de uma consulta, emitido pelo motor para a borda (SSE). */
 export interface AuditProgressEventInterface {
+  /** Etapa atual do motor. */
   phase: AuditProgressPhaseType;
+  /** Rótulo legível (PT-BR) para exibição na UI. */
   label: string;
+  /** Partição atual (base 1) na etapa `reading`; para barra de progresso. */
   current?: number;
+  /** Total de partições da janela; para barra de progresso. */
   total?: number;
 }
 

@@ -14,7 +14,7 @@ import {
 } from './data';
 
 /** Cenário de sessão que o mock de `/auth/me` encena. */
-export type AuthScenario = 'authenticated' | 'unauthenticated' | 'pending';
+type AuthScenario = 'authenticated' | 'unauthenticated' | 'pending';
 
 /** Opções do mock da API. */
 interface MockOptions {
@@ -67,9 +67,8 @@ const TABLE: Record<string, unknown> = {
  * aborta o handshake do socket.io (sem realtime no e2e). Deve ser chamado ANTES do `page.goto`,
  * pois o `AuthProvider` consulta `/auth/me` já no boot.
  *
- * @param {Page} page - Página do Playwright.
- * @param {MockOptions} [options] - Cenário de sessão (default: `authenticated`).
- * @returns {Promise<void>}
+ * @param page - Página do Playwright.
+ * @param [options] - Cenário de sessão (default: `authenticated`).
  */
 export async function installMockApi(
   page: Page,

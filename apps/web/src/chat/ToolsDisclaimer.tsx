@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
-import { Wrench } from '@phosphor-icons/react';
+import { useEffect, useRef, useState, type JSX } from 'react';
+import { WrenchIcon as Wrench } from '@phosphor-icons/react';
 import { TOOLS_CATALOG } from './tools-catalog';
+import { cssValue, cssVar } from '../styles/tokens';
 
 /**
  * Disclaimer das ferramentas disponíveis ao assistente: um chip "N ferramentas disponíveis" no rodapé
  * do composer que, ao clicar, abre um popover (acima) listando nome e descrição de cada tool. Deixa
  * explícito o que o assistente consegue fazer (transparência).
  *
- * @returns {JSX.Element} O chip + popover.
+ * @returns O chip + popover.
  */
 export function ToolsDisclaimer(): JSX.Element {
   const [
@@ -37,10 +38,12 @@ export function ToolsDisclaimer(): JSX.Element {
         onDown,
       );
 
-      return () => document.removeEventListener(
-        'mousedown',
-        onDown,
-      );
+      return () => {
+        document.removeEventListener(
+          'mousedown',
+          onDown,
+        );
+      };
     },
     [open],
   );
@@ -52,20 +55,20 @@ export function ToolsDisclaimer(): JSX.Element {
     >
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => { setOpen((value) => !value); }}
         aria-expanded={open}
         style={{
-          display: 'inline-flex',
+          display: cssValue.inlineFlex,
           alignItems: 'center',
-          gap: 'var(--at-space-4)',
+          gap: cssVar.space4,
           padding: '2px 8px',
           borderRadius: 999,
-          border: '1px solid var(--at-border)',
+          border: cssVar.borderLine,
           background: open
-            ? 'var(--at-bg-soft)'
-            : 'var(--at-white)',
-          color: 'var(--at-fg-muted)',
-          fontSize: 'var(--at-fs-12)',
+            ? cssVar.bgSoft
+            : cssVar.white,
+          color: cssVar.fgMuted,
+          fontSize: cssVar.fs12,
           fontWeight: 600,
           cursor: 'pointer',
         }}
@@ -83,8 +86,8 @@ export function ToolsDisclaimer(): JSX.Element {
             width: 360,
             maxHeight: 360,
             overflowY: 'auto',
-            background: 'var(--at-white)',
-            border: '1px solid var(--at-border)',
+            background: cssVar.white,
+            border: cssVar.borderLine,
             borderRadius: 8,
             boxShadow: '0 16px 40px rgba(0, 0, 0, 0.16)',
             zIndex: 60,
@@ -92,10 +95,10 @@ export function ToolsDisclaimer(): JSX.Element {
           >
             <div style={{
               padding: '10px 14px',
-              borderBottom: '1px solid var(--at-border)',
-              fontSize: 'var(--at-fs-10)',
+              borderBottom: cssVar.borderLine,
+              fontSize: cssVar.fs10,
               fontWeight: 600,
-              color: 'var(--at-fg-subtle)',
+              color: cssVar.fgSubtle,
               textTransform: 'uppercase',
               letterSpacing: 0.5,
             }}
@@ -104,7 +107,7 @@ export function ToolsDisclaimer(): JSX.Element {
             </div>
             <ul style={{
               margin: 0,
-              padding: 'var(--at-space-4)',
+              padding: cssVar.space4,
               listStyle: 'none',
             }}
             >
@@ -116,30 +119,30 @@ export function ToolsDisclaimer(): JSX.Element {
                   <div style={{
                     display: 'flex',
                     alignItems: 'baseline',
-                    gap: 'var(--at-space-8)',
+                    gap: cssVar.space8,
                   }}
                   >
                     <span style={{
-                      fontSize: 'var(--at-fs-12)',
+                      fontSize: cssVar.fs12,
                       fontWeight: 600,
-                      color: 'var(--at-fg)',
+                      color: cssVar.fg,
                     }}
                     >
                       {tool.label}
                     </span>
                     <code style={{
-                      fontFamily: 'ui-monospace, Menlo, monospace',
-                      fontSize: 'var(--at-fs-10)',
-                      color: 'var(--at-fg-subtle)',
+                      fontFamily: cssValue.fontMono,
+                      fontSize: cssVar.fs10,
+                      color: cssVar.fgSubtle,
                     }}
                     >
                       {tool.name}
                     </code>
                   </div>
                   <div style={{
-                    fontSize: 'var(--at-fs-12)',
-                    color: 'var(--at-fg-muted)',
-                    lineHeight: 'var(--at-lh-22)',
+                    fontSize: cssVar.fs12,
+                    color: cssVar.fgMuted,
+                    lineHeight: cssVar.lh22,
                     marginTop: 2,
                   }}
                   >

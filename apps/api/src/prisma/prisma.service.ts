@@ -14,7 +14,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   /**
    * Abre a conexão com o banco quando o módulo é inicializado.
    *
-   * @returns {Promise<void>} Resolve após `$connect()`.
+   * @returns Resolve após `$connect()`.
    */
   async onModuleInit(): Promise<void> {
     await this.$connect();
@@ -23,7 +23,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   /**
    * Encerra a conexão com o banco no shutdown do módulo.
    *
-   * @returns {Promise<void>} Resolve após `$disconnect()`.
+   * @returns Resolve após `$disconnect()`.
    */
   async onModuleDestroy(): Promise<void> {
     await this.$disconnect();

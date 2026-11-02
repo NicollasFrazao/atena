@@ -17,15 +17,16 @@ import { ObservabilityService } from './observability.service';
 @Controller('observability')
 export class ObservabilityController {
   /**
-   * @param {ObservabilityService} observability - Serviço de métricas do assistente.
+   * @param observability - Serviço de métricas do assistente.
    */
   constructor(private readonly observability: ObservabilityService) {}
 
   /**
    * `GET /observability` — snapshot de métricas básicas do assistente, por janela temporal.
    *
-   * @param {string} [window] - Janela (`24h`/`7d`/`30d`/`all`; default `all`).
-   * @returns {Promise<ObservabilityInterface>} Métricas agregadas (§E, básica).
+   * @param [window] - Janela (`24h`/`7d`/`30d`/`all`; default `all`).
+   *
+   * @returns Métricas agregadas (§E, básica).
    */
   @Get()
   snapshot(@Query('window') window?: string): Promise<ObservabilityInterface> {

@@ -20,8 +20,9 @@ export interface IncidentNoticeInterface {
  * Mapeia um evento do `/ws/support` em uma notificação de banner — ou `null` quando não há nada a
  * mostrar (`incident.updated` e `connection.status` não viram banner; a conexão vira a faixa).
  *
- * @param {WsServerEvent} event - Evento empurrado pelo servidor.
- * @returns {IncidentNoticeInterface | null} A notificação, ou `null` se o evento não gera banner.
+ * @param event - Evento empurrado pelo servidor.
+ *
+ * @returns A notificação, ou `null` se o evento não gera banner.
  */
 export function eventToNotice(event: WsServerEvent): IncidentNoticeInterface | null {
   if (event.type === 'incident.created') {
@@ -48,10 +49,12 @@ export function eventToNotice(event: WsServerEvent): IncidentNoticeInterface | n
  * crítica (persistente) nunca é evictada por uma warning/info que chegou depois. Se mesmo só com
  * persistentes ainda exceder `max`, mantém todas (melhor mostrar todos os críticos).
  *
+ * @param list - Pilha atual (ordem de chegada).
+ * @param max - Teto desejado.
+ *
+ * @returns A pilha recortada.
+ *
  * @template T
- * @param {T[]} list - Pilha atual (ordem de chegada).
- * @param {number} max - Teto desejado.
- * @returns {T[]} A pilha recortada.
  */
 export function capNotices<T extends { persist: boolean }>(
   list: T[],

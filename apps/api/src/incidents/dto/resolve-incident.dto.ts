@@ -23,29 +23,28 @@ const ACTION_CATEGORIES: ActionCategoryType[] = [
  * As regras de negócio que dependem do estado atual (tamanho mínimo de
  * `action_description` e obrigatoriedade de `escalated_to`) são validadas no
  * serviço, não aqui — este DTO valida só a forma.
- *
- * @property {ActionCategoryType} action_category - Categoria da ação tomada.
- * @property {string} action_description - Descrição da ação (regra de tamanho no serviço).
- * @property {string} [escalated_to] - Destino do escalonamento (obrigatório se `*_escalated`).
- * @property {string[]} [related_shipping_ids] - IDs de envios relacionados.
- * @property {string[]} [tags] - Tags livres para categorização/auditoria.
  */
 export class ResolveIncidentDto {
+  /** Categoria da ação tomada. */
   @IsIn(ACTION_CATEGORIES)
   action_category!: ActionCategoryType;
 
+  /** Descrição da ação (regra de tamanho no serviço). */
   @IsString()
   action_description!: string;
 
+  /** Destino do escalonamento (obrigatório se `*_escalated`). */
   @IsOptional()
   @IsString()
   escalated_to?: string;
 
+  /** IDs de envios relacionados. */
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   related_shipping_ids?: string[];
 
+  /** Tags livres para categorização/auditoria. */
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

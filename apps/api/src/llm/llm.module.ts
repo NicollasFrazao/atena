@@ -10,7 +10,6 @@
  * Consumidores injetam o token `LLM_PROVIDER`, nunca a implementação concreta —
  * mantendo o provider trocável sem mudar o orquestrador/tools.
  *
- * @module LlmModule
  */
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -24,11 +23,13 @@ import { LLM_PROVIDER, type LlmProviderInterface } from './llm-provider.interfac
  * Sem o token, **falha-rápido** em vez de cair silenciosamente no fake (que esconderia a
  * má-configuração em produção). Função pura → testável sem subir o módulo Nest.
  *
- * @param {string | undefined} providerName - Valor de `llm.provider` (`bedrock` | `fake`).
- * @param {string | undefined} bearerToken - `bedrock.apiKey` (= `AWS_BEARER_TOKEN_BEDROCK`).
- * @param {LlmProviderInterface} bedrock - Instância do provider Bedrock.
- * @param {LlmProviderInterface} fake - Instância do provider fake.
- * @returns {LlmProviderInterface} O provider selecionado.
+ * @param providerName - Valor de `llm.provider` (`bedrock` | `fake`).
+ * @param bearerToken - `bedrock.apiKey` (= `AWS_BEARER_TOKEN_BEDROCK`).
+ * @param bedrock - Instância do provider Bedrock.
+ * @param fake - Instância do provider fake.
+ *
+ * @returns O provider selecionado.
+ *
  * @throws {Error} Se `bedrock` for pedido sem o token Bearer.
  */
 export function resolveLlmProvider(
@@ -50,6 +51,10 @@ export function resolveLlmProvider(
   return bedrock;
 }
 
+/**
+ * Provides the LLM provider chosen by `llm.provider` under the `LLM_PROVIDER` token (see
+ * {@link resolveLlmProvider} and the comment at the top of this file).
+ */
 @Module({
   providers: [
     BedrockProvider,

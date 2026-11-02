@@ -16,7 +16,7 @@ import { CatalogQueryDto } from './dto/catalog-query.dto';
 @Controller('customers')
 export class CustomersController {
   /**
-   * @param {CatalogService} catalog - Serviço com a lógica das tools de catálogo.
+   * @param catalog - Serviço com a lógica das tools de catálogo.
    */
   constructor(private readonly catalog: CatalogService) {}
 
@@ -25,17 +25,18 @@ export class CustomersController {
    *
    * Registrada no audit log via `@Audit('tool_call')`.
    *
-   * @param {CatalogQueryDto} query - Janela opcional (`date_from`/`date_to`/`date_range`) + `search`.
-   * @returns {Promise<{ items: Array<{ id: string; name: string }>; total: number }>} Top-N clientes por
+   * @param query - Janela opcional (`date_from`/`date_to`/`date_range`) + `search`.
+   *
+   * @returns Top-N clientes por
    *   volume (`id === name` por ora) + total distinto na janela.
    */
   @Get()
   @Audit('tool_call', 'info')
   list(@Query() query: CatalogQueryDto): Promise<{
-    items: Array<{
+    items: {
       id: string;
       name: string
-    }>;
+    }[];
     total: number
   }> {
     return this.catalog.listCustomers(query);

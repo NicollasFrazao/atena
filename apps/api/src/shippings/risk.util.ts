@@ -4,16 +4,13 @@ import type {
   RiskVerdictType,
 } from '@atena/types';
 
-/**
- * Sinal de risco heurístico: nome da categoria, peso e padrão que o detecta.
- *
- * @property {string} name - Nome da categoria de risco exibida no resultado.
- * @property {number} strength - Peso/intensidade do sinal em `[0, 1]`.
- * @property {RegExp} pattern - Padrão (case-insensitive) que dispara o sinal no texto.
- */
+/** Sinal de risco heurístico: nome da categoria, peso e padrão que o detecta. */
 interface RiskSignalInterface {
+  /** Nome da categoria de risco exibida no resultado. */
   name: string;
+  /** Peso/intensidade do sinal em `[0, 1]`. */
   strength: number;
+  /** Padrão (case-insensitive) que dispara o sinal no texto. */
   pattern: RegExp;
 }
 
@@ -46,19 +43,26 @@ const RISK_SIGNALS: readonly RiskSignalInterface[] = [
   },
 ];
 
+/** Lowest score with a `high` verdict. */
+const HIGH_RISK_MIN_SCORE = 0.7;
+
+/** Lowest score with a `medium` verdict. */
+const MEDIUM_RISK_MIN_SCORE = 0.4;
+
 /**
  * Deriva o veredito de risco a partir do score, por faixas: `>= 0.7` → `high`,
  * `[0.4, 0.7)` → `medium`, `< 0.4` → `low`.
  *
- * @param {number} score - Maior intensidade entre os sinais detectados (`[0, 1]`).
- * @returns {RiskVerdictType} Veredito de risco.
+ * @param score - Maior intensidade entre os sinais detectados (`[0, 1]`).
+ *
+ * @returns Veredito de risco.
  */
 function verdictFromScore(score: number): RiskVerdictType {
-  if (score >= 0.7) {
+  if (score >= HIGH_RISK_MIN_SCORE) {
     return 'high';
   }
 
-  if (score >= 0.4) {
+  if (score >= MEDIUM_RISK_MIN_SCORE) {
     return 'medium';
   }
 
@@ -74,8 +78,9 @@ function verdictFromScore(score: number): RiskVerdictType {
  * `verdict` é derivado por faixas: `< 0.4` → `low`, `[0.4, 0.7)` → `medium`,
  * `>= 0.7` → `high`. Não chama LLM nem serviço externo (princípio: não fabricar dados).
  *
- * @param {string} text - Texto do envio a analisar.
- * @returns {RiskAnalysisInterface} Score, veredito, categorias (ordenadas por `strength` desc) e explicação.
+ * @param text - Texto do envio a analisar.
+ *
+ * @returns Score, veredito, categorias (ordenadas por `strength` desc) e explicação.
  */
 export function analyzeRisk(text: string): RiskAnalysisInterface {
   const categories: RiskCategoryInterface[] = RISK_SIGNALS
@@ -89,7 +94,7 @@ export function analyzeRisk(text: string): RiskAnalysisInterface {
       right,
     ) => right.strength - left.strength);
 
-  const top = categories[0];
+  const top = categories.at(0);
 
   const score = top
     ? top.strength

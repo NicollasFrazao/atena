@@ -4,14 +4,11 @@ import type { AuditActionType, AuditSeverityType } from '@atena/types';
 /** Chave de metadata usada pelo AuditInterceptor para localizar a config de auditoria. */
 export const AUDIT_KEY = 'audit';
 
-/**
- * Metadata anexada a um handler para indicar que ele deve ser auditado.
- *
- * @property {AuditActionType} action - Ação auditada quando o handler é executado.
- * @property {AuditSeverityType} [severity] - Severidade do evento; o interceptor assume `info` se ausente.
- */
+/** Metadata anexada a um handler para indicar que ele deve ser auditado. */
 export interface AuditMetaInterface {
+  /** Ação auditada quando o handler é executado. */
   action: AuditActionType;
+  /** Severidade do evento; o interceptor assume `info` se ausente. */
   severity?: AuditSeverityType;
 }
 
@@ -19,13 +16,16 @@ export interface AuditMetaInterface {
  * Marca um handler (ou classe) para auditoria, anexando a {@link AuditMetaInterface}
  * lida depois pelo `AuditInterceptor`.
  *
- * @param {AuditActionType} action - Ação a registrar quando o handler executa com sucesso.
- * @param {AuditSeverityType} [severity='info'] - Severidade do evento (use `'pii'` para acessos a dados sensíveis).
- * @returns {MethodDecorator & ClassDecorator} Decorator que anexa a metadata de auditoria.
+ * @param action - Ação a registrar quando o handler executa com sucesso.
+ * @param [severity] - Severidade do evento (use `'pii'` para acessos a dados sensíveis).
+ *
+ * @returns Decorator que anexa a metadata de auditoria.
  *
  * @example
- *   @Audit('reveal_phone', 'pii')
- *   revealPhone() { ... }
+ * ```ts
+ * @Audit('reveal_phone', 'pii')
+ * revealPhone() { ... }
+ * ```
  */
 export const Audit = (
   action: AuditActionType,

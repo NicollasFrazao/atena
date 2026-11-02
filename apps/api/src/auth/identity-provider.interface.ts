@@ -4,56 +4,48 @@ import type { PermissionType, RoleType, UserStatusType } from '@atena/types';
  * Identidade autenticada pelo IdP, normalizada para o domínio da Atena. É o que o provider OIDC
  * produz e o que o **cookie de sessão (JWT)** carrega — apenas identidade, **sem papéis** (os
  * papéis são gerenciados no app e resolvidos do banco a cada requisição).
- *
- * @property {string} sub - Identificador estável e único do usuário no IdP (claim `sub`).
- * @property {string} email - E-mail institucional (dentro do domínio permitido).
- * @property {string} name - Nome de exibição (claim `name`).
  */
 export interface AuthenticatedIdentityInterface {
+  /** Identificador estável e único do usuário no IdP (claim `sub`). */
   sub: string;
+  /** E-mail institucional (dentro do domínio permitido). */
   email: string;
+  /** Nome de exibição (claim `name`). */
   name: string;
 }
 
 /**
  * Usuário resolvido para `request.user`: identidade + autorização (papéis/permissões/status),
  * montado pelo {@link AuthGuard} a partir do cookie (identidade) + do banco (papéis/status).
- *
- * @property {RoleType[]} roles - Papéis atribuídos no app (vazio = acesso pendente).
- * @property {PermissionType[]} permissions - Permissões derivadas dos papéis.
- * @property {UserStatusType} status - `active` | `disabled`.
- * @property {boolean} is_super_admin - Super admin (derivado do env `auth.adminEmails`).
  */
 export interface AuthenticatedUserInterface extends AuthenticatedIdentityInterface {
+  /** Papéis atribuídos no app (vazio = acesso pendente). */
   roles: RoleType[];
+  /** Permissões derivadas dos papéis. */
   permissions: PermissionType[];
+  /** `active` | `disabled`. */
   status: UserStatusType;
+  /** Super admin (derivado do env `auth.adminEmails`). */
   is_super_admin: boolean;
 }
 
-/**
- * Desafio anti-CSRF/replay enviado na URL de autorização (OIDC authorization code + PKCE).
- *
- * @property {string} state - Valor opaco anti-CSRF, ecoado de volta no callback.
- * @property {string} nonce - Liga o `id_token` a esta requisição (anti-replay).
- * @property {string} codeChallenge - Hash S256 do `code_verifier` (PKCE).
- */
+/** Desafio anti-CSRF/replay enviado na URL de autorização (OIDC authorization code + PKCE). */
 export interface AuthorizationChallengeInterface {
+  /** Valor opaco anti-CSRF, ecoado de volta no callback. */
   state: string;
+  /** Liga o `id_token` a esta requisição (anti-replay). */
   nonce: string;
+  /** Hash S256 do `code_verifier` (PKCE). */
   codeChallenge: string;
 }
 
-/**
- * Desafio recuperado no callback (do cookie curto) para validar a troca do `code`.
- *
- * @property {string} state - `state` original, comparado com o ecoado pelo IdP.
- * @property {string} nonce - `nonce` original, validado contra o `id_token`.
- * @property {string} codeVerifier - Segredo PKCE original (prova de posse do `code`).
- */
+/** Desafio recuperado no callback (do cookie curto) para validar a troca do `code`. */
 export interface CallbackChallengeInterface {
+  /** `state` original, comparado com o ecoado pelo IdP. */
   state: string;
+  /** `nonce` original, validado contra o `id_token`. */
   nonce: string;
+  /** Segredo PKCE original (prova de posse do `code`). */
   codeVerifier: string;
 }
 
@@ -74,9 +66,10 @@ export interface IdentityProviderInterface {
    * Monta a URL de autorização do IdP para a qual o navegador será redirecionado,
    * iniciando o fluxo de login social (OIDC authorization code + PKCE).
    *
-   * @param {AuthorizationChallengeInterface} challenge - `state`/`nonce`/`codeChallenge`
+   * @param challenge - `state`/`nonce`/`codeChallenge`
    *   gerados pela aplicação para esta tentativa de login.
-   * @returns {Promise<string>} URL de autorização absoluta do IdP.
+   *
+   * @returns URL de autorização absoluta do IdP.
    */
   getAuthorizationUrl(challenge: AuthorizationChallengeInterface): Promise<string>;
 
@@ -84,10 +77,12 @@ export interface IdentityProviderInterface {
    * Processa o callback do IdP: troca o `code` por tokens (validando `state`/`nonce`/PKCE),
    * extrai as claims e normaliza o resultado para o domínio da Atena.
    *
-   * @param {Record<string, string>} params - Query params recebidos no redirect
+   * @param params - Query params recebidos no redirect
    *   (`code`, `state`, …).
-   * @param {CallbackChallengeInterface} challenge - Desafio original recuperado do cookie.
-   * @returns {Promise<AuthenticatedIdentityInterface>} Identidade autenticada e normalizada.
+   * @param challenge - Desafio original recuperado do cookie.
+   *
+   * @returns Identidade autenticada e normalizada.
+   *
    * @throws {UnauthorizedException} Se o e-mail estiver fora do domínio institucional
    *   permitido, o `state`/`nonce` não baterem ou as claims forem inválidas.
    */

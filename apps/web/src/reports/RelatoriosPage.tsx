@@ -1,16 +1,16 @@
-import { useState } from 'react';
+import { useState, type JSX } from 'react';
 import {
-  Buildings,
-  CalendarBlank,
-  ChartBar,
-  CheckCircle,
-  Circle,
-  CircleNotch,
-  DownloadSimple,
-  EyeSlash,
-  Funnel,
-  TrendUp,
-  X,
+  BuildingsIcon as Buildings,
+  CalendarBlankIcon as CalendarBlank,
+  ChartBarIcon as ChartBar,
+  CheckCircleIcon as CheckCircle,
+  CircleIcon as Circle,
+  CircleNotchIcon as CircleNotch,
+  DownloadSimpleIcon as DownloadSimple,
+  EyeSlashIcon as EyeSlash,
+  FunnelIcon as Funnel,
+  TrendUpIcon as TrendUp,
+  XIcon,
 } from '@phosphor-icons/react';
 import type {
   ActionCategoryType,
@@ -30,15 +30,17 @@ import { ReportCard } from '../chat/tool-cards/ReportCard';
 import { SEVERITY_COLOR, SEVERITY_LABEL } from '../incidents/severity';
 import { triggerBlobDownload } from '../util/download';
 import { dayKeyInTz, formatRelativeTime } from '../util/time';
+import { cssValue, cssVar, FONT_WEIGHT } from '../styles/tokens';
+import { PERCENT_SCALE, SECONDS_PER_HOUR, SECONDS_PER_MINUTE } from '../util/units';
 
 /** Tipo de relatório selecionado. */
 type ReportType = 'delivery' | 'incidents';
 
 /** Presets de janela disponíveis na tela. */
-const RANGES: Array<{
+const RANGES: {
   value: string;
   label: string
-}> = [
+}[] = [
   {
     value: '24h',
     label: 'Últimas 24h',
@@ -90,29 +92,47 @@ const DIMENSION_TABS: DimensionType[] = [
   'route',
 ];
 
-/** Metas de SLA (em segundos) exibidas nas dicas dos KPIs de MTTA/MTTR. */
-const MTTA_TARGET_SECONDS = 5 * 60;
+/** SLA target for MTTA, in minutes. */
+const MTTA_TARGET_MINUTES = 5;
 
-const MTTR_TARGET_SECONDS = 30 * 60;
+/** SLA target for MTTR, in minutes. */
+const MTTR_TARGET_MINUTES = 30;
+
+/** Metas de SLA (em segundos) exibidas nas dicas dos KPIs de MTTA/MTTR. */
+const MTTA_TARGET_SECONDS = MTTA_TARGET_MINUTES * SECONDS_PER_MINUTE;
+
+const MTTR_TARGET_SECONDS = MTTR_TARGET_MINUTES * SECONDS_PER_MINUTE;
+
+/** What the operator picked for the delivery report window (all strings straight from the inputs). */
+interface DeliveryWindowSelectionInterface {
+  /** Preset selecionado (`24h`/`7d`/`30d`). */
+  range: string;
+  /** Dia escolhido (`YYYY-MM-DD`) ou vazio. */
+  day: string;
+  /** Hora inicial (`HH:mm`) ou vazio. */
+  fromTime: string;
+  /** Hora final (`HH:mm`) ou vazio. */
+  toTime: string;
+  /** Customer id typed in the filter, or empty; surrounding spaces are trimmed. */
+  customer: string;
+}
 
 /**
  * Resolve a janela do relatório de entregabilidade: sem dia escolhido usa o preset; com dia, vira o
  * dia inteiro (`date_from`/`date_to` só-data) ou um intervalo de horas (datetime sem fuso). Tudo no
  * fuso do operador (o backend interpreta data nua e datetime naive em BRT).
  *
- * @param {string} range - Preset selecionado (`24h`/`7d`/`30d`).
- * @param {string} day - Dia escolhido (`YYYY-MM-DD`) ou vazio.
- * @param {string} fromTime - Hora inicial (`HH:mm`) ou vazio.
- * @param {string} toTime - Hora final (`HH:mm`) ou vazio.
- * @returns {ReportWindowInterface} Janela a enviar ao endpoint.
+ * @param selection - The operator's choices on the screen.
+ *
+ * @returns Janela a enviar ao endpoint.
  */
-function deliveryWindow(
-  range: string,
-  day: string,
-  fromTime: string,
-  toTime: string,
-  customer: string,
-): ReportWindowInterface {
+function deliveryWindow({
+  range,
+  day,
+  fromTime,
+  toTime,
+  customer,
+}: DeliveryWindowSelectionInterface): ReportWindowInterface {
   const customerId = customer.trim();
 
   const filters = customerId
@@ -144,12 +164,15 @@ function deliveryWindow(
   };
 }
 
+/** Opacity of the range presets while a delivery day is picked (the day overrides them). */
+const DIMMED_OPACITY = 0.45;
+
 /**
  * Tela de Relatórios (admin): alterna entre **Entregabilidade** (`POST /reports/delivery`, reusa o
  * {@link ReportCard}) e **Incidentes resolvidos** (`POST /reports/incidents`), por janela
  * (`24h`/`7d`/`30d`). O export CSV do relatório de entrega vem do próprio card.
  *
- * @returns {JSX.Element} A tela de Relatórios.
+ * @returns A tela de Relatórios.
  */
 export function RelatoriosPage(): JSX.Element {
   const [
@@ -185,13 +208,13 @@ export function RelatoriosPage(): JSX.Element {
   ] = useState<string>('');
 
   const delivery = useDeliveryReportStream(
-    deliveryWindow(
+    deliveryWindow({
       range,
       day,
       fromTime,
       toTime,
       customer,
-    ),
+    }),
     type === 'delivery',
   );
 
@@ -212,24 +235,24 @@ export function RelatoriosPage(): JSX.Element {
     <div style={{
       maxWidth: 1200,
       margin: '0 auto',
-      padding: 'var(--at-space-32)',
+      padding: cssVar.space32,
     }}
     >
       <h1 style={{
         margin: 0,
-        fontFamily: 'var(--at-font-heading)',
-        fontSize: 'var(--at-fs-24)',
+        fontFamily: cssVar.fontHeading,
+        fontSize: cssVar.fs24,
         fontWeight: 600,
-        color: 'var(--at-fg)',
+        color: cssVar.fg,
       }}
       >
         Relatórios
       </h1>
       <div style={{
-        fontSize: 'var(--at-fs-14)',
-        color: 'var(--at-fg-muted)',
-        marginTop: 'var(--at-space-4)',
-        marginBottom: 'var(--at-space-24)',
+        fontSize: cssVar.fs14,
+        color: cssVar.fgMuted,
+        marginTop: cssVar.space4,
+        marginBottom: cssVar.space24,
       }}
       >
         Entregabilidade e incidentes resolvidos · dado real do período
@@ -238,9 +261,9 @@ export function RelatoriosPage(): JSX.Element {
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--at-space-12)',
+        gap: cssVar.space12,
         flexWrap: 'wrap',
-        marginBottom: 'var(--at-space-24)',
+        marginBottom: cssVar.space24,
       }}
       >
         <Segmented
@@ -257,7 +280,7 @@ export function RelatoriosPage(): JSX.Element {
             },
           ]}
           value={type}
-          onChange={(value) => setType(value as ReportType)}
+          onChange={(value) => { setType(value as ReportType); }}
         />
         {type === 'delivery'
           ? (
@@ -282,7 +305,7 @@ export function RelatoriosPage(): JSX.Element {
           : null}
         <div style={{
           opacity: type === 'delivery' && day
-            ? 0.45
+            ? DIMMED_OPACITY
             : 1,
           transition: 'opacity .15s',
         }}
@@ -325,11 +348,11 @@ export function RelatoriosPage(): JSX.Element {
 }
 
 /** Texto auxiliar (muted) de loading/erro. */
-function Note({ children }: { children: React.ReactNode }): JSX.Element {
+function Note({ children }: Readonly<{ children: React.ReactNode }>): JSX.Element {
   return (
     <div style={{
-      fontSize: 'var(--at-fs-14)',
-      color: 'var(--at-fg-muted)',
+      fontSize: cssVar.fs14,
+      color: cssVar.fgMuted,
       padding: 'var(--at-space-16) 0',
     }}
     >
@@ -362,10 +385,10 @@ const REPORT_STEPS: Record<ReportType, {
 };
 
 /** Fases reais da geração do relatório de entregabilidade (ordem do motor), com rótulo PT-BR. */
-const DELIVERY_PHASES: Array<{
+const DELIVERY_PHASES: {
   phase: DeliveryProgressInterface['phase'];
   label: string
-}> = [
+}[] = [
   {
     phase: 'mapping',
     label: 'Mapeando as partições da janela',
@@ -385,16 +408,17 @@ const DELIVERY_PHASES: Array<{
  * (stream), reflete a fase atual do motor (mapping → reading X/Y → querying) com ícone de estado;
  * sem progresso (ou incidentes), cai nas etapas descritivas estáticas.
  *
- * @param {{ type: ReportType; progress?: DeliveryProgressInterface }} props - Tipo + progresso ao vivo.
- * @returns {JSX.Element} O card de carregamento.
+ * @param props - Tipo + progresso ao vivo.
+ *
+ * @returns O card de carregamento.
  */
 function ReportLoading({
   type,
   progress,
-}: {
+}: Readonly<{
   type: ReportType;
   progress?: DeliveryProgressInterface
-}): JSX.Element {
+}>): JSX.Element {
   const {
     title,
     steps,
@@ -407,17 +431,17 @@ function ReportLoading({
   return (
     <div style={{
       display: 'flex',
-      gap: 'var(--at-space-12)',
-      padding: 'var(--at-space-16)',
-      background: 'var(--at-white)',
-      border: '1px solid var(--at-border)',
-      borderRadius: 'var(--at-radius-8)',
+      gap: cssVar.space12,
+      padding: cssVar.space16,
+      background: cssVar.white,
+      border: cssVar.borderLine,
+      borderRadius: cssVar.radius8,
     }}
     >
       <CircleNotch
         size={18}
         className="at-spin"
-        color="var(--at-primary)"
+        color={cssVar.primary}
         style={{
           flexShrink: 0,
           marginTop: 2,
@@ -425,9 +449,9 @@ function ReportLoading({
       />
       <div style={{ flex: 1 }}>
         <div style={{
-          fontSize: 'var(--at-fs-14)',
+          fontSize: cssVar.fs14,
           fontWeight: 600,
-          color: 'var(--at-fg)',
+          color: cssVar.fg,
         }}
         >
           {title}…
@@ -441,15 +465,15 @@ function ReportLoading({
               listStyle: 'none',
               display: 'flex',
               flexDirection: 'column',
-              gap: 'var(--at-space-4)',
+              gap: cssVar.space4,
             }}
             >
               {steps.map((step) => (
                 <li
                   key={step}
                   style={{
-                    fontSize: 'var(--at-fs-12)',
-                    color: 'var(--at-fg-muted)',
+                    fontSize: cssVar.fs12,
+                    color: cssVar.fgMuted,
                   }}
                 >
                   · {step}
@@ -466,10 +490,11 @@ function ReportLoading({
  * Lista das fases reais com estado (concluída ✓ / atual ↻ / pendente ○) a partir do progresso do
  * motor. Na fase `reading`, mostra a contagem de partições (X/Y) e uma barra de progresso.
  *
- * @param {{ progress: DeliveryProgressInterface }} props - Etapa atual do motor.
- * @returns {JSX.Element} A lista de fases ao vivo.
+ * @param props - Etapa atual do motor.
+ *
+ * @returns A lista de fases ao vivo.
  */
-function LivePhases({ progress }: { progress: DeliveryProgressInterface }): JSX.Element {
+function LivePhases({ progress }: Readonly<{ progress: DeliveryProgressInterface }>): JSX.Element {
   const currentIndex = DELIVERY_PHASES.findIndex((item) => item.phase === progress.phase);
 
   return (
@@ -479,7 +504,7 @@ function LivePhases({ progress }: { progress: DeliveryProgressInterface }): JSX.
       listStyle: 'none',
       display: 'flex',
       flexDirection: 'column',
-      gap: 'var(--at-space-4)',
+      gap: cssVar.space4,
     }}
     >
       {DELIVERY_PHASES.map((
@@ -500,14 +525,14 @@ function LivePhases({ progress }: { progress: DeliveryProgressInterface }): JSX.
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 'var(--at-space-8)',
-              fontSize: 'var(--at-fs-12)',
+              gap: cssVar.space8,
+              fontSize: cssVar.fs12,
               color: active
-                ? 'var(--at-fg)'
-                : 'var(--at-fg-muted)',
+                ? cssVar.fg
+                : cssVar.fgMuted,
               fontWeight: active
-                ? 600
-                : 400,
+                ? FONT_WEIGHT.semibold
+                : FONT_WEIGHT.regular,
             }}
           >
             <PhaseIcon
@@ -531,16 +556,16 @@ function LivePhases({ progress }: { progress: DeliveryProgressInterface }): JSX.
 function PhaseIcon({
   done,
   active,
-}: {
+}: Readonly<{
   done: boolean;
   active: boolean
-}): JSX.Element {
+}>): JSX.Element {
   if (done) {
     return (
       <CheckCircle
         size={13}
         weight="fill"
-        color="var(--at-success-300)"
+        color={cssVar.success300}
         style={{ flexShrink: 0 }}
       />
     );
@@ -551,7 +576,7 @@ function PhaseIcon({
       <CircleNotch
         size={13}
         className="at-spin"
-        color="var(--at-primary)"
+        color={cssVar.primary}
         style={{ flexShrink: 0 }}
       />
     );
@@ -560,7 +585,7 @@ function PhaseIcon({
   return (
     <Circle
       size={13}
-      color="var(--at-fg-subtle)"
+      color={cssVar.fgSubtle}
       style={{ flexShrink: 0 }}
     />
   );
@@ -571,45 +596,45 @@ function Segmented({
   options,
   value,
   onChange,
-}: {
-  options: Array<{
+}: Readonly<{
+  options: {
     value: string;
     label: string;
     icon?: React.ReactNode
-  }>;
+  }[];
   value: string;
   onChange: (value: string) => void
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <div style={{
-      display: 'inline-flex',
-      gap: 'var(--at-space-4)',
+      display: cssValue.inlineFlex,
+      gap: cssVar.space4,
       padding: 4,
-      borderRadius: 'var(--at-radius-8)',
-      background: 'var(--at-bg-soft)',
-      border: '1px solid var(--at-border)',
+      borderRadius: cssVar.radius8,
+      background: cssVar.bgSoft,
+      border: cssVar.borderLine,
     }}
     >
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
-          onClick={() => onChange(option.value)}
+          onClick={() => { onChange(option.value); }}
           style={{
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
-            gap: 'var(--at-space-4)',
+            gap: cssVar.space4,
             height: 30,
-            padding: '0 var(--at-space-12)',
-            borderRadius: 'var(--at-radius-4)',
+            padding: cssVar.paddingInline12,
+            borderRadius: cssVar.radius4,
             border: 'none',
             background: value === option.value
-              ? 'var(--at-white)'
+              ? cssVar.white
               : 'transparent',
             color: value === option.value
-              ? 'var(--at-fg)'
-              : 'var(--at-fg-muted)',
-            fontSize: 'var(--at-fs-13)',
+              ? cssVar.fg
+              : cssVar.fgMuted,
+            fontSize: cssVar.fs13,
             fontWeight: 600,
             cursor: 'pointer',
             boxShadow: value === option.value
@@ -629,35 +654,36 @@ function Segmented({
  * Filtro de cliente da entregabilidade: id do cliente (ex.: "1001"); vazio = todos. Debounce natural
  * via estado controlado — a query refaz quando o valor muda (a janela inclui `filters.customer_id`).
  *
- * @param {{ value: string; onChange: (next: string) => void }} props - Valor e setter.
- * @returns {JSX.Element} O campo de cliente.
+ * @param props - Valor e setter.
+ *
+ * @returns O campo de cliente.
  */
 function CustomerFilter({
   value,
   onChange,
-}: {
+}: Readonly<{
   value: string;
   onChange: (next: string) => void
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <div style={{
-      display: 'inline-flex',
+      display: cssValue.inlineFlex,
       alignItems: 'center',
-      gap: 'var(--at-space-8)',
+      gap: cssVar.space8,
       height: 38,
-      padding: '0 var(--at-space-12)',
-      borderRadius: 'var(--at-radius-8)',
-      background: 'var(--at-bg-soft)',
-      border: '1px solid var(--at-border)',
+      padding: cssVar.paddingInline12,
+      borderRadius: cssVar.radius8,
+      background: cssVar.bgSoft,
+      border: cssVar.borderLine,
     }}
     >
       <Buildings
         size={14}
-        color="var(--at-fg-muted)"
+        color={cssVar.fgMuted}
       />
       <input
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => { onChange(event.target.value); }}
         placeholder="Cliente (id) · todos"
         inputMode="numeric"
         style={{
@@ -665,30 +691,30 @@ function CustomerFilter({
           border: 'none',
           outline: 'none',
           background: 'transparent',
-          fontSize: 'var(--at-fs-13)',
-          color: 'var(--at-fg)',
+          fontSize: cssVar.fs13,
+          color: cssVar.fg,
         }}
       />
       {value
         ? (
           <button
             type="button"
-            onClick={() => onChange('')}
+            onClick={() => { onChange(''); }}
             title="Limpar (todos os clientes)"
             style={{
-              display: 'inline-flex',
+              display: cssValue.inlineFlex,
               alignItems: 'center',
               justifyContent: 'center',
               width: 22,
               height: 22,
               border: 'none',
-              borderRadius: 'var(--at-radius-4)',
+              borderRadius: cssVar.radius4,
               background: 'transparent',
-              color: 'var(--at-fg-muted)',
+              color: cssVar.fgMuted,
               cursor: 'pointer',
             }}
           >
-            <X size={13} />
+            <XIcon size={13} />
           </button>
         )
         : null}
@@ -699,11 +725,11 @@ function CustomerFilter({
 /** Estilo dos campos nativos (date/time) do seletor de dia. */
 const PICKER_INPUT_STYLE: React.CSSProperties = {
   height: 30,
-  border: '1px solid var(--at-border)',
-  borderRadius: 'var(--at-radius-4)',
-  background: 'var(--at-white)',
-  color: 'var(--at-fg)',
-  fontSize: 'var(--at-fs-13)',
+  border: cssVar.borderLine,
+  borderRadius: cssVar.radius4,
+  background: cssVar.white,
+  color: cssVar.fg,
+  fontSize: cssVar.fs13,
   padding: '0 var(--at-space-8)',
   colorScheme: 'light',
 };
@@ -712,7 +738,7 @@ const PICKER_INPUT_STYLE: React.CSSProperties = {
  * Seletor de DIA específico (com intervalo de horas opcional) da entregabilidade — tudo no fuso do
  * operador. Vazio = usa o preset; com dia preenchido, sobrepõe o preset (dia inteiro, ou `das X às Y`).
  *
- * @returns {JSX.Element} O seletor de dia/horário.
+ * @returns O seletor de dia/horário.
  */
 function DayPicker({
   day,
@@ -721,14 +747,14 @@ function DayPicker({
   onDay,
   onFromTime,
   onToTime,
-}: {
+}: Readonly<{
   day: string;
   fromTime: string;
   toTime: string;
   onDay: (value: string) => void;
   onFromTime: (value: string) => void;
   onToTime: (value: string) => void
-}): JSX.Element {
+}>): JSX.Element {
   const clear = (): void => {
     onDay('');
     onFromTime('');
@@ -740,25 +766,25 @@ function DayPicker({
     <div
       lang="pt-BR"
       style={{
-        display: 'inline-flex',
+        display: cssValue.inlineFlex,
         alignItems: 'center',
-        gap: 'var(--at-space-8)',
+        gap: cssVar.space8,
         height: 38,
         padding: '0 var(--at-space-8)',
-        borderRadius: 'var(--at-radius-8)',
-        background: 'var(--at-bg-soft)',
-        border: '1px solid var(--at-border)',
+        borderRadius: cssVar.radius8,
+        background: cssVar.bgSoft,
+        border: cssVar.borderLine,
       }}
     >
       <CalendarBlank
         size={14}
-        color="var(--at-fg-muted)"
+        color={cssVar.fgMuted}
       />
       <input
         type="date"
         value={day}
         max={dayKeyInTz(new Date().toISOString())}
-        onChange={(event) => onDay(event.target.value)}
+        onChange={(event) => { onDay(event.target.value); }}
         title="Dia específico (horário de Brasília)"
         style={PICKER_INPUT_STYLE}
       />
@@ -766,8 +792,8 @@ function DayPicker({
         ? (
           <>
             <span style={{
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg-muted)',
+              fontSize: cssVar.fs12,
+              color: cssVar.fgMuted,
             }}
             >
               das
@@ -775,12 +801,12 @@ function DayPicker({
             <input
               type="time"
               value={fromTime}
-              onChange={(event) => onFromTime(event.target.value)}
+              onChange={(event) => { onFromTime(event.target.value); }}
               style={PICKER_INPUT_STYLE}
             />
             <span style={{
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg-muted)',
+              fontSize: cssVar.fs12,
+              color: cssVar.fgMuted,
             }}
             >
               às
@@ -788,7 +814,7 @@ function DayPicker({
             <input
               type="time"
               value={toTime}
-              onChange={(event) => onToTime(event.target.value)}
+              onChange={(event) => { onToTime(event.target.value); }}
               style={PICKER_INPUT_STYLE}
             />
             <button
@@ -796,19 +822,19 @@ function DayPicker({
               onClick={clear}
               title="Limpar (voltar ao preset)"
               style={{
-                display: 'inline-flex',
+                display: cssValue.inlineFlex,
                 alignItems: 'center',
                 justifyContent: 'center',
                 width: 28,
                 height: 28,
                 border: 'none',
-                borderRadius: 'var(--at-radius-4)',
+                borderRadius: cssVar.radius4,
                 background: 'transparent',
-                color: 'var(--at-fg-muted)',
+                color: cssVar.fgMuted,
                 cursor: 'pointer',
               }}
             >
-              <X size={14} />
+              <XIcon size={14} />
             </button>
           </>
         )
@@ -822,20 +848,21 @@ function DayPicker({
  * subtítulo com MTTA/MTTR, KPIs (total/críticos/MTTA/MTTR), distribuição por ação tomada, top
  * dimensões afetadas e tabela de incidentes recentes (com export CSV).
  *
- * @param {{ report: IncidentReportInterface }} props - Relatório de incidentes da janela.
- * @returns {JSX.Element} A visão de incidentes.
+ * @param props - Relatório de incidentes da janela.
+ *
+ * @returns A visão de incidentes.
  */
-function IncidentReportView({ report }: { report: IncidentReportInterface }): JSX.Element {
+function IncidentReportView({ report }: Readonly<{ report: IncidentReportInterface }>): JSX.Element {
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      gap: 'var(--at-space-24)',
+      gap: cssVar.space24,
     }}
     >
       <div style={{
-        fontSize: 'var(--at-fs-13)',
-        color: 'var(--at-fg-muted)',
+        fontSize: cssVar.fs13,
+        color: cssVar.fgMuted,
       }}
       >
         {report.window}
@@ -850,7 +877,7 @@ function IncidentReportView({ report }: { report: IncidentReportInterface }): JS
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 'var(--at-space-12)',
+        gap: cssVar.space12,
       }}
       >
         <Kpi
@@ -865,7 +892,7 @@ function IncidentReportView({ report }: { report: IncidentReportInterface }): JS
             report.by_severity.critical,
             report.total,
           )}
-          color="var(--at-danger-300)"
+          color={cssVar.danger300}
         />
         <Kpi
           label="MTTA médio"
@@ -875,7 +902,7 @@ function IncidentReportView({ report }: { report: IncidentReportInterface }): JS
             MTTA_TARGET_SECONDS,
             '5 min',
           )}
-          color="var(--at-primary)"
+          color={cssVar.primary}
         />
         <Kpi
           label="MTTR médio"
@@ -885,14 +912,14 @@ function IncidentReportView({ report }: { report: IncidentReportInterface }): JS
             MTTR_TARGET_SECONDS,
             '30 min',
           )}
-          color="var(--at-primary)"
+          color={cssVar.primary}
         />
       </div>
 
       <div style={{
         display: 'grid',
         gridTemplateColumns: '1fr 1.2fr',
-        gap: 'var(--at-space-16)',
+        gap: cssVar.space16,
       }}
       >
         <ActionDistribution report={report} />
@@ -915,9 +942,9 @@ function formatDurationSeconds(seconds: number | null): string {
     Math.round(seconds),
   );
 
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const secs = total % 60;
+  const hours = Math.floor(total / SECONDS_PER_HOUR);
+  const minutes = Math.floor((total % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
+  const secs = total % SECONDS_PER_MINUTE;
 
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
@@ -959,7 +986,7 @@ function criticalHint(
     return '0% do volume';
   }
 
-  return `${Math.round((critical / total) * 100)}% do volume`;
+  return `${Math.round((critical / total) * PERCENT_SCALE)}% do volume`;
 }
 
 /** Dica de SLA dos KPIs de MTTA/MTTR (`meta < X · ok|acima|sem dados`). */
@@ -979,6 +1006,9 @@ function slaHint(
   return `meta < ${targetLabel} · ${status}`;
 }
 
+/** Smallest width (%) of a bar that has a count, so a tiny share stays visible. */
+const MIN_BAR_WIDTH_PERCENT = 6;
+
 /** Largura (%) da barra de distribuição: proporção do total, com mínimo visível quando há contagem. */
 function barWidth(
   count: number,
@@ -992,8 +1022,8 @@ function barWidth(
   }
 
   return Math.max(
-    (count / total) * 100,
-    6,
+    (count / total) * PERCENT_SCALE,
+    MIN_BAR_WIDTH_PERCENT,
   );
 }
 
@@ -1017,7 +1047,7 @@ function actionCounts(report: IncidentReportInterface): Record<ActionCategoryTyp
 }
 
 /** Painel "Distribuição por ação tomada": uma barra por categoria (todas, inclusive zeradas). */
-function ActionDistribution({ report }: { report: IncidentReportInterface }): JSX.Element {
+function ActionDistribution({ report }: Readonly<{ report: IncidentReportInterface }>): JSX.Element {
   const counts = actionCounts(report);
 
   return (
@@ -1026,8 +1056,8 @@ function ActionDistribution({ report }: { report: IncidentReportInterface }): JS
       <div style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: 'var(--at-space-12)',
-        marginTop: 'var(--at-space-16)',
+        gap: cssVar.space12,
+        marginTop: cssVar.space16,
       }}
       >
         {(Object.keys(ACTION_LABEL) as ActionCategoryType[]).map((action) => (
@@ -1037,20 +1067,20 @@ function ActionDistribution({ report }: { report: IncidentReportInterface }): JS
               display: 'grid',
               gridTemplateColumns: '170px 1fr 30px',
               alignItems: 'center',
-              gap: 'var(--at-space-12)',
+              gap: cssVar.space12,
             }}
           >
             <span style={{
-              fontSize: 'var(--at-fs-13)',
-              color: 'var(--at-fg)',
+              fontSize: cssVar.fs13,
+              color: cssVar.fg,
             }}
             >
               {ACTION_LABEL[action]}
             </span>
             <span style={{
               height: 8,
-              background: 'var(--at-bg-soft)',
-              borderRadius: 'var(--at-radius-full)',
+              background: cssVar.bgSoft,
+              borderRadius: cssVar.radiusFull,
               overflow: 'hidden',
             }}
             >
@@ -1066,11 +1096,11 @@ function ActionDistribution({ report }: { report: IncidentReportInterface }): JS
               />
             </span>
             <span style={{
-              fontFamily: 'ui-monospace, Menlo, monospace',
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg-muted)',
+              fontFamily: cssValue.fontMono,
+              fontSize: cssVar.fs12,
+              color: cssVar.fgMuted,
               textAlign: 'right',
-              fontVariantNumeric: 'tabular-nums',
+              fontVariantNumeric: cssValue.tabularNums,
             }}
             >
               {counts[action]}
@@ -1083,7 +1113,7 @@ function ActionDistribution({ report }: { report: IncidentReportInterface }): JS
 }
 
 /** Painel "Top dimensões afetadas": abas Fornecedor/Cliente/Rota + lista ordenada por contagem. */
-function TopDimensions({ dimensions }: { dimensions: AffectedDimensionInterface[] }): JSX.Element {
+function TopDimensions({ dimensions }: Readonly<{ dimensions: AffectedDimensionInterface[] }>): JSX.Element {
   // Abre na dimensão mais afetada (lista vem ordenada por contagem) — evita abrir numa aba vazia.
   const [
     tab,
@@ -1097,9 +1127,9 @@ function TopDimensions({ dimensions }: { dimensions: AffectedDimensionInterface[
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 'var(--at-space-12)',
-        marginBottom: 'var(--at-space-16)',
+        justifyContent: cssValue.spaceBetween,
+        gap: cssVar.space12,
+        marginBottom: cssVar.space16,
       }}
       >
         <PanelHeading>Top dimensões afetadas</PanelHeading>
@@ -1109,7 +1139,7 @@ function TopDimensions({ dimensions }: { dimensions: AffectedDimensionInterface[
             label: DIMENSION_LABEL[dimension],
           }))}
           value={tab}
-          onChange={(value) => setTab(value as DimensionType)}
+          onChange={(value) => { setTab(value as DimensionType); }}
         />
       </div>
       {items.length === 0
@@ -1126,7 +1156,7 @@ function TopDimensions({ dimensions }: { dimensions: AffectedDimensionInterface[
           <div style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 'var(--at-space-8)',
+            gap: cssVar.space8,
           }}
           >
             {items.map((item) => (
@@ -1135,33 +1165,33 @@ function TopDimensions({ dimensions }: { dimensions: AffectedDimensionInterface[
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 'var(--at-space-12)',
+                  gap: cssVar.space12,
                   padding: '8px 10px',
-                  background: 'var(--at-bg-soft)',
-                  borderRadius: 'var(--at-radius-4)',
-                  border: '1px solid var(--at-border)',
+                  background: cssVar.bgSoft,
+                  borderRadius: cssVar.radius4,
+                  border: cssVar.borderLine,
                 }}
               >
                 <span style={{
                   width: 8,
                   height: 8,
-                  borderRadius: 'var(--at-radius-full)',
+                  borderRadius: cssVar.radiusFull,
                   background: SEVERITY_COLOR[item.severity],
                 }}
                 />
                 <span style={{
                   flex: 1,
-                  fontSize: 'var(--at-fs-13)',
+                  fontSize: cssVar.fs13,
                   fontWeight: 600,
-                  color: 'var(--at-fg)',
+                  color: cssVar.fg,
                 }}
                 >
                   {item.value}
                 </span>
                 <span style={{
-                  fontFamily: 'ui-monospace, Menlo, monospace',
-                  fontSize: 'var(--at-fs-12)',
-                  color: 'var(--at-fg-muted)',
+                  fontFamily: cssValue.fontMono,
+                  fontSize: cssVar.fs12,
+                  color: cssVar.fgMuted,
                 }}
                 >
                   {item.count}
@@ -1176,7 +1206,7 @@ function TopDimensions({ dimensions }: { dimensions: AffectedDimensionInterface[
 }
 
 /** Tabela "Incidentes recentes": filtro por severidade + export CSV (metadados, sem PII). */
-function IncidentsTable({ report }: { report: IncidentReportInterface }): JSX.Element {
+function IncidentsTable({ report }: Readonly<{ report: IncidentReportInterface }>): JSX.Element {
   const [
     severity,
     setSeverity,
@@ -1206,29 +1236,29 @@ function IncidentsTable({ report }: { report: IncidentReportInterface }): JSX.El
     <Card padding={0}>
       <div style={{
         padding: '14px 18px',
-        borderBottom: '1px solid var(--at-border)',
+        borderBottom: cssVar.borderLine,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 'var(--at-space-12)',
+        justifyContent: cssValue.spaceBetween,
+        gap: cssVar.space12,
       }}
       >
         <PanelHeading>Incidentes recentes</PanelHeading>
         <div style={{
           display: 'flex',
-          gap: 'var(--at-space-8)',
+          gap: cssVar.space8,
         }}
         >
           <ToolbarButton
             icon={<Funnel size={14} />}
             active={filterOpen}
-            onClick={() => setFilterOpen((open) => !open)}
+            onClick={() => { setFilterOpen((open) => !open); }}
           >
             Filtrar
           </ToolbarButton>
           <ToolbarButton
             icon={<DownloadSimple size={14} />}
-            onClick={() => exportIncidentsCsv(rows)}
+            onClick={() => { exportIncidentsCsv(rows); }}
           >
             Exportar CSV
           </ToolbarButton>
@@ -1239,15 +1269,15 @@ function IncidentsTable({ report }: { report: IncidentReportInterface }): JSX.El
         ? (
           <div style={{
             padding: '12px 18px',
-            borderBottom: '1px solid var(--at-border)',
+            borderBottom: cssVar.borderLine,
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--at-space-12)',
+            gap: cssVar.space12,
           }}
           >
             <span style={{
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg-muted)',
+              fontSize: cssVar.fs12,
+              color: cssVar.fgMuted,
             }}
             >
               Severidade
@@ -1285,7 +1315,7 @@ function IncidentsTable({ report }: { report: IncidentReportInterface }): JSX.El
         }}
         >
           <thead>
-            <tr style={{ background: 'var(--at-bg-soft)' }}>
+            <tr style={{ background: cssVar.bgSoft }}>
               {headers.map((header) => (
                 <th
                   key={header}
@@ -1294,10 +1324,10 @@ function IncidentsTable({ report }: { report: IncidentReportInterface }): JSX.El
                     padding: '9px 14px',
                     fontSize: 11,
                     fontWeight: 600,
-                    color: 'var(--at-fg-muted)',
+                    color: cssVar.fgMuted,
                     textTransform: 'uppercase',
                     letterSpacing: 0.4,
-                    borderBottom: '1px solid var(--at-border)',
+                    borderBottom: cssVar.borderLine,
                     whiteSpace: 'nowrap',
                   }}
                 >
@@ -1315,21 +1345,21 @@ function IncidentsTable({ report }: { report: IncidentReportInterface }): JSX.El
                 key={incident.id}
                 style={{
                   borderBottom: index < rows.length - 1
-                    ? '1px solid var(--at-border)'
+                    ? cssVar.borderLine
                     : 'none',
                 }}
               >
                 <td style={{ padding: '10px 14px' }}>
                   <span style={{
-                    display: 'inline-flex',
+                    display: cssValue.inlineFlex,
                     alignItems: 'center',
-                    gap: 'var(--at-space-8)',
+                    gap: cssVar.space8,
                   }}
                   >
                     <span style={{
-                      fontFamily: 'ui-monospace, Menlo, monospace',
-                      fontSize: 'var(--at-fs-12)',
-                      color: 'var(--at-fg)',
+                      fontFamily: cssValue.fontMono,
+                      fontSize: cssVar.fs12,
+                      color: cssVar.fg,
                     }}
                     >
                       {incident.id}
@@ -1344,16 +1374,16 @@ function IncidentsTable({ report }: { report: IncidentReportInterface }): JSX.El
                 </td>
                 <td style={{
                   padding: '10px 14px',
-                  fontSize: 'var(--at-fs-13)',
-                  color: 'var(--at-fg)',
+                  fontSize: cssVar.fs13,
+                  color: cssVar.fg,
                 }}
                 >
                   {incident.rule}
                 </td>
                 <td style={{
                   padding: '10px 14px',
-                  fontSize: 'var(--at-fs-12)',
-                  color: 'var(--at-fg-muted)',
+                  fontSize: cssVar.fs12,
+                  color: cssVar.fgMuted,
                   whiteSpace: 'nowrap',
                 }}
                 >
@@ -1364,25 +1394,25 @@ function IncidentsTable({ report }: { report: IncidentReportInterface }): JSX.El
                 </td>
                 <td style={{
                   padding: '10px 14px',
-                  fontSize: 'var(--at-fs-13)',
-                  color: 'var(--at-fg)',
+                  fontSize: cssVar.fs13,
+                  color: cssVar.fg,
                 }}
                 >
                   {incident.analyst ?? '—'}
                 </td>
                 <td style={{
                   padding: '10px 14px',
-                  fontSize: 'var(--at-fs-13)',
-                  color: 'var(--at-fg-muted)',
-                  fontVariantNumeric: 'tabular-nums',
+                  fontSize: cssVar.fs13,
+                  color: cssVar.fgMuted,
+                  fontVariantNumeric: cssValue.tabularNums,
                 }}
                 >
                   {incident.duration}
                 </td>
                 <td style={{
                   padding: '10px 14px',
-                  fontSize: 'var(--at-fs-12)',
-                  color: 'var(--at-fg-muted)',
+                  fontSize: cssVar.fs12,
+                  color: cssVar.fgMuted,
                 }}
                 >
                   {incident.escalated_to ?? '—'}
@@ -1395,10 +1425,10 @@ function IncidentsTable({ report }: { report: IncidentReportInterface }): JSX.El
                   <td
                     colSpan={headers.length}
                     style={{
-                      padding: 'var(--at-space-20)',
+                      padding: cssVar.space20,
                       textAlign: 'center',
-                      fontSize: 'var(--at-fs-13)',
-                      color: 'var(--at-fg-muted)',
+                      fontSize: cssVar.fs13,
+                      color: cssVar.fgMuted,
                     }}
                   >
                     Nenhum incidente resolvido na janela.
@@ -1414,19 +1444,19 @@ function IncidentsTable({ report }: { report: IncidentReportInterface }): JSX.El
 }
 
 /** Badge da ação tomada: ponto + rótulo, tonalizado pela paleta da ação. */
-function ActionBadge({ action }: { action: ActionCategoryType }): JSX.Element {
+function ActionBadge({ action }: Readonly<{ action: ActionCategoryType }>): JSX.Element {
   const color = ACTION_PALETTE[action];
 
   return (
     <span style={{
-      display: 'inline-flex',
+      display: cssValue.inlineFlex,
       alignItems: 'center',
-      gap: 'var(--at-space-4)',
+      gap: cssVar.space4,
       padding: '2px 8px',
       borderRadius: 999,
       background: `${color}1a`,
       color,
-      fontSize: 'var(--at-fs-12)',
+      fontSize: cssVar.fs12,
       fontWeight: 600,
       whiteSpace: 'nowrap',
     }}
@@ -1449,15 +1479,15 @@ function ShadowTag(): JSX.Element {
     <span
       title="Detectado por regra em shadow mode (registrado, não notificado)"
       style={{
-        display: 'inline-flex',
+        display: cssValue.inlineFlex,
         alignItems: 'center',
-        gap: 'var(--at-space-4)',
+        gap: cssVar.space4,
         padding: '1px 6px',
         borderRadius: 999,
-        background: 'var(--at-bg-soft)',
-        border: '1px solid var(--at-border)',
-        color: 'var(--at-fg-muted)',
-        fontSize: 'var(--at-fs-12)',
+        background: cssVar.bgSoft,
+        border: cssVar.borderLine,
+        color: cssVar.fgMuted,
+        fontSize: cssVar.fs12,
         fontWeight: 600,
       }}
     >
@@ -1483,8 +1513,7 @@ function csvCell(value: string): string {
  * Gera e baixa o CSV (BOM + `;`, Excel pt-BR) dos incidentes resolvidos exibidos — apenas metadados
  * do incidente (sem PII), montado no cliente a partir do que já está em tela.
  *
- * @param {ResolvedIncidentInterface[]} rows - Incidentes resolvidos exibidos (já filtrados).
- * @returns {void}
+ * @param rows - Incidentes resolvidos exibidos (já filtrados).
  */
 function exportIncidentsCsv(rows: ResolvedIncidentInterface[]): void {
   const header = [
@@ -1535,29 +1564,29 @@ function ToolbarButton({
   onClick,
   active,
   icon,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   onClick: () => void;
   active?: boolean;
   icon?: React.ReactNode
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <button
       type="button"
       onClick={onClick}
       style={{
-        display: 'inline-flex',
+        display: cssValue.inlineFlex,
         alignItems: 'center',
-        gap: 'var(--at-space-4)',
+        gap: cssVar.space4,
         height: 30,
-        padding: '0 var(--at-space-12)',
-        borderRadius: 'var(--at-radius-4)',
-        border: '1px solid var(--at-border)',
+        padding: cssVar.paddingInline12,
+        borderRadius: cssVar.radius4,
+        border: cssVar.borderLine,
         background: active
-          ? 'var(--at-bg-soft)'
-          : 'var(--at-white)',
-        color: 'var(--at-fg)',
-        fontSize: 'var(--at-fs-13)',
+          ? cssVar.bgSoft
+          : cssVar.white,
+        color: cssVar.fg,
+        fontSize: cssVar.fs13,
         fontWeight: 600,
         cursor: 'pointer',
       }}
@@ -1572,15 +1601,15 @@ function ToolbarButton({
 function Card({
   children,
   padding = 20,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   padding?: number
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <div style={{
-      background: 'var(--at-white)',
-      border: '1px solid var(--at-border)',
-      borderRadius: 'var(--at-radius-8)',
+      background: cssVar.white,
+      border: cssVar.borderLine,
+      borderRadius: cssVar.radius8,
       padding,
       overflow: 'hidden',
     }}
@@ -1591,14 +1620,14 @@ function Card({
 }
 
 /** Título de painel (h4 14px, normal-case — paridade com o protótipo). */
-function PanelHeading({ children }: { children: React.ReactNode }): JSX.Element {
+function PanelHeading({ children }: Readonly<{ children: React.ReactNode }>): JSX.Element {
   return (
     <h4 style={{
       margin: 0,
-      fontFamily: 'var(--at-font-heading)',
-      fontSize: 'var(--at-fs-14)',
+      fontFamily: cssVar.fontHeading,
+      fontSize: cssVar.fs14,
       fontWeight: 600,
-      color: 'var(--at-fg)',
+      color: cssVar.fg,
     }}
     >
       {children}
@@ -1611,25 +1640,25 @@ function Kpi({
   label,
   value,
   hint,
-  color = 'var(--at-fg)',
-}: {
+  color = cssVar.fg,
+}: Readonly<{
   label: string;
   value: string;
   hint?: string;
   color?: string
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <div style={{
-      padding: 'var(--at-space-16)',
-      background: 'var(--at-white)',
-      border: '1px solid var(--at-border)',
-      borderRadius: 'var(--at-radius-8)',
+      padding: cssVar.space16,
+      background: cssVar.white,
+      border: cssVar.borderLine,
+      borderRadius: cssVar.radius8,
     }}
     >
       <div style={{
-        fontSize: 'var(--at-fs-10)',
+        fontSize: cssVar.fs10,
         fontWeight: 600,
-        color: 'var(--at-fg-subtle)',
+        color: cssVar.fgSubtle,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
       }}
@@ -1637,13 +1666,13 @@ function Kpi({
         {label}
       </div>
       <div style={{
-        fontFamily: 'var(--at-font-heading)',
-        fontSize: 'var(--at-fs-28)',
+        fontFamily: cssVar.fontHeading,
+        fontSize: cssVar.fs28,
         fontWeight: 700,
         lineHeight: 1.15,
         color,
-        marginTop: 'var(--at-space-4)',
-        fontVariantNumeric: 'tabular-nums',
+        marginTop: cssVar.space4,
+        fontVariantNumeric: cssValue.tabularNums,
       }}
       >
         {value}
@@ -1651,9 +1680,9 @@ function Kpi({
       {hint !== undefined
         ? (
           <div style={{
-            fontSize: 'var(--at-fs-12)',
-            color: 'var(--at-fg-muted)',
-            marginTop: 'var(--at-space-4)',
+            fontSize: cssVar.fs12,
+            color: cssVar.fgMuted,
+            marginTop: cssVar.space4,
           }}
           >
             {hint}
@@ -1665,19 +1694,19 @@ function Kpi({
 }
 
 /** Chip de severidade (cor + rótulo). */
-function SeverityChip({ severity }: { severity: IncidentSeverityType }): JSX.Element {
+function SeverityChip({ severity }: Readonly<{ severity: IncidentSeverityType }>): JSX.Element {
   const color = SEVERITY_COLOR[severity];
 
   return (
     <span style={{
-      display: 'inline-flex',
+      display: cssValue.inlineFlex,
       alignItems: 'center',
-      gap: 'var(--at-space-4)',
+      gap: cssVar.space4,
       padding: '2px 8px',
       borderRadius: 999,
       background: `${color}1a`,
       color,
-      fontSize: 'var(--at-fs-12)',
+      fontSize: cssVar.fs12,
       fontWeight: 600,
     }}
     >

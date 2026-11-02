@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Flag, Info, X } from '@phosphor-icons/react';
+import { useEffect, useState, type JSX } from 'react';
+import { FlagIcon as Flag, InfoIcon as Info, XIcon } from '@phosphor-icons/react';
 import type {
   ActionCategoryType,
   IncidentInterface,
@@ -8,6 +8,7 @@ import type {
 import { ApiError } from '../api/client';
 import { resolveIncident } from '../api/incidents';
 import { SEVERITY_COLOR, SEVERITY_LABEL } from './severity';
+import { cssValue, cssVar } from '../styles/tokens';
 
 /** Comprimento mínimo da descrição da ação (regra §D; o servidor revalida). */
 const MIN_DESCRIPTION = 20;
@@ -71,21 +72,22 @@ const ESCALATION_CATEGORIES = new Set<ActionCategoryType>([
  * Modal de resolução manual de incidente (§D): escolha de categoria, descrição (≥ 20 chars) e, quando
  * escalonado, o destino. Ao confirmar, chama `POST /incidents/:id/resolve` e devolve via `onResolved`.
  *
- * @param {object} props - Incidente + callbacks.
- * @param {IncidentInterface} props.incident - Incidente a resolver (id, severidade, regra).
- * @param {() => void} props.onClose - Fecha o modal sem resolver.
- * @param {() => void} props.onResolved - Chamado após resolver com sucesso (invalida/atualiza a lista).
- * @returns {JSX.Element} O modal de resolução.
+ * @param props - Incidente + callbacks.
+ * @param props.incident - Incidente a resolver (id, severidade, regra).
+ * @param props.onClose - Fecha o modal sem resolver.
+ * @param props.onResolved - Chamado após resolver com sucesso (invalida/atualiza a lista).
+ *
+ * @returns O modal de resolução.
  */
 export function ResolveIncidentModal({
   incident,
   onClose,
   onResolved,
-}: {
+}: Readonly<{
   incident: IncidentInterface;
   onClose: () => void;
   onResolved: () => void
-}): JSX.Element {
+}>): JSX.Element {
   const [
     category,
     setCategory,
@@ -134,10 +136,12 @@ export function ResolveIncidentModal({
         onKey,
       );
 
-      return () => document.removeEventListener(
-        'keydown',
-        onKey,
-      );
+      return () => {
+        document.removeEventListener(
+          'keydown',
+          onKey,
+        );
+      };
     },
     [onClose],
   );
@@ -175,7 +179,7 @@ export function ResolveIncidentModal({
       incident.id,
       payload,
     )
-      .then(() => onResolved())
+      .then(() => { onResolved(); })
       .catch((err: unknown) => {
         setError(err instanceof ApiError
           ? err.message
@@ -185,7 +189,9 @@ export function ResolveIncidentModal({
       });
   };
 
-  const removeTag = (tag: string): void => setTags((current) => current.filter((item) => item !== tag));
+  const removeTag = (tag: string): void => {
+    setTags((current) => current.filter((item) => item !== tag));
+  };
 
   const addTag = (): void => {
     const value = newTag.trim();
@@ -215,18 +221,18 @@ export function ResolveIncidentModal({
         background: 'rgba(0, 0, 0, 0.4)',
         display: 'grid',
         placeItems: 'center',
-        padding: 'var(--at-space-16)',
+        padding: cssVar.space16,
       }}
     >
       <div
-        onClick={(event) => event.stopPropagation()}
+        onClick={(event) => { event.stopPropagation(); }}
         style={{
           width: '100%',
           maxWidth: 640,
           maxHeight: '90vh',
           overflowY: 'auto',
-          background: 'var(--at-white)',
-          border: '1px solid var(--at-border)',
+          background: cssVar.white,
+          border: cssVar.borderLine,
           borderRadius: 8,
           boxShadow: '0 20px 48px rgba(0, 0, 0, 0.2)',
         }}
@@ -234,21 +240,21 @@ export function ResolveIncidentModal({
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 'var(--at-space-8)',
-          padding: 'var(--at-space-20)',
-          borderBottom: '1px solid var(--at-border)',
+          gap: cssVar.space8,
+          padding: cssVar.space20,
+          borderBottom: cssVar.borderLine,
         }}
         >
           <Flag
             size={18}
-            color="var(--at-primary)"
+            color={cssVar.primary}
           />
           <h2 style={{
             margin: 0,
             flex: 1,
-            fontSize: 'var(--at-fs-18)',
+            fontSize: cssVar.fs18,
             fontWeight: 600,
-            color: 'var(--at-fg)',
+            color: cssVar.fg,
           }}
           >
             Resolver incidente
@@ -264,48 +270,48 @@ export function ResolveIncidentModal({
               height: 28,
               border: 'none',
               background: 'transparent',
-              color: 'var(--at-fg-muted)',
+              color: cssVar.fgMuted,
               cursor: 'pointer',
             }}
           >
-            <X size={16} />
+            <XIcon size={16} />
           </button>
         </div>
 
-        <div style={{ padding: 'var(--at-space-20)' }}>
+        <div style={{ padding: cssVar.space20 }}>
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--at-space-8)',
-            marginBottom: 'var(--at-space-20)',
+            gap: cssVar.space8,
+            marginBottom: cssVar.space20,
           }}
           >
             <code style={{
-              fontFamily: 'ui-monospace, Menlo, monospace',
-              fontSize: 'var(--at-fs-12)',
+              fontFamily: cssValue.fontMono,
+              fontSize: cssVar.fs12,
               fontWeight: 600,
-              color: 'var(--at-fg-muted)',
+              color: cssVar.fgMuted,
             }}
             >
               {incident.id}
             </code>
             <span style={{
-              display: 'inline-flex',
+              display: cssValue.inlineFlex,
               alignItems: 'center',
-              gap: 'var(--at-space-4)',
+              gap: cssVar.space4,
               padding: '2px 8px',
               borderRadius: 999,
               background: `${SEVERITY_COLOR[incident.severity]}1a`,
               color: SEVERITY_COLOR[incident.severity],
-              fontSize: 'var(--at-fs-12)',
+              fontSize: cssVar.fs12,
               fontWeight: 600,
             }}
             >
               {SEVERITY_LABEL[incident.severity]}
             </span>
             <span style={{
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg-muted)',
+              fontSize: cssVar.fs12,
+              color: cssVar.fgMuted,
             }}
             >
               {incident.rule}
@@ -316,9 +322,9 @@ export function ResolveIncidentModal({
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: 'var(--at-space-8)',
-            marginTop: 'var(--at-space-8)',
-            marginBottom: 'var(--at-space-16)',
+            gap: cssVar.space8,
+            marginTop: cssVar.space8,
+            marginBottom: cssVar.space16,
           }}
           >
             {CATEGORIES.map((option) => (
@@ -326,7 +332,7 @@ export function ResolveIncidentModal({
                 key={option.value}
                 option={option}
                 selected={category === option.value}
-                onSelect={() => setCategory(option.value)}
+                onSelect={() => { setCategory(option.value); }}
               />
             ))}
           </div>
@@ -334,16 +340,16 @@ export function ResolveIncidentModal({
           <div style={{
             display: 'flex',
             alignItems: 'baseline',
-            justifyContent: 'space-between',
+            justifyContent: cssValue.spaceBetween,
           }}
           >
             <FieldLabel required>Descrição da ação</FieldLabel>
             <span style={{
-              fontSize: 'var(--at-fs-12)',
+              fontSize: cssVar.fs12,
               color: description.trim().length >= MIN_DESCRIPTION
-                ? 'var(--at-fg-subtle)'
-                : 'var(--at-danger-300)',
-              fontVariantNumeric: 'tabular-nums',
+                ? cssVar.fgSubtle
+                : cssVar.danger300,
+              fontVariantNumeric: cssValue.tabularNums,
             }}
             >
               Mínimo {MIN_DESCRIPTION} caracteres · {description.trim().length}/{MIN_DESCRIPTION}
@@ -351,59 +357,59 @@ export function ResolveIncidentModal({
           </div>
           <textarea
             value={description}
-            onChange={(event) => setDescription(event.target.value)}
+            onChange={(event) => { setDescription(event.target.value); }}
             placeholder="O que foi feito ou observado, em linguagem natural? Ex.: 'Contatei o fornecedor pelo canal comercial; confirmaram instabilidade e normalizaram às 14:18. Validei recuperação até 97% às 14:25.'"
             rows={4}
             style={{
               width: '100%',
-              marginTop: 'var(--at-space-8)',
+              marginTop: cssVar.space8,
               padding: '10px 12px',
               resize: 'vertical',
-              border: '1px solid var(--at-border)',
-              borderRadius: 'var(--at-radius-4)',
+              border: cssVar.borderLine,
+              borderRadius: cssVar.radius4,
               fontFamily: 'inherit',
-              fontSize: 'var(--at-fs-14)',
-              lineHeight: 'var(--at-lh-22)',
-              color: 'var(--at-fg)',
+              fontSize: cssVar.fs14,
+              lineHeight: cssVar.lh22,
+              color: cssVar.fg,
             }}
           />
 
           {needsEscalation
             ? (
-              <div style={{ marginTop: 'var(--at-space-16)' }}>
+              <div style={{ marginTop: cssVar.space16 }}>
                 <FieldLabel required>Para quem escalou</FieldLabel>
                 <input
                   value={escalatedTo}
-                  onChange={(event) => setEscalatedTo(event.target.value)}
+                  onChange={(event) => { setEscalatedTo(event.target.value); }}
                   placeholder="Ex.: Twilio Support — ticket #91234"
                   style={{
                     width: '100%',
-                    marginTop: 'var(--at-space-8)',
+                    marginTop: cssVar.space8,
                     height: 38,
                     padding: '0 12px',
-                    border: '1px solid var(--at-border)',
-                    borderRadius: 'var(--at-radius-4)',
+                    border: cssVar.borderLine,
+                    borderRadius: cssVar.radius4,
                     fontFamily: 'inherit',
-                    fontSize: 'var(--at-fs-14)',
-                    color: 'var(--at-fg)',
+                    fontSize: cssVar.fs14,
+                    color: cssVar.fg,
                   }}
                 />
               </div>
             )
             : null}
 
-          <div style={{ marginTop: 'var(--at-space-16)' }}>
+          <div style={{ marginTop: cssVar.space16 }}>
             <div style={{
               display: 'flex',
               alignItems: 'baseline',
-              justifyContent: 'space-between',
-              gap: 'var(--at-space-8)',
+              justifyContent: cssValue.spaceBetween,
+              gap: cssVar.space8,
             }}
             >
               <FieldLabel>Tags</FieldLabel>
               <span style={{
-                fontSize: 'var(--at-fs-12)',
-                color: 'var(--at-fg-subtle)',
+                fontSize: cssVar.fs12,
+                color: cssVar.fgSubtle,
               }}
               >
                 Opcional — para organização e auditoria
@@ -413,31 +419,31 @@ export function ResolveIncidentModal({
               display: 'flex',
               flexWrap: 'wrap',
               alignItems: 'center',
-              gap: 'var(--at-space-4)',
-              marginTop: 'var(--at-space-8)',
+              gap: cssVar.space4,
+              marginTop: cssVar.space8,
             }}
             >
               {tags.map((tag) => (
                 <span
                   key={tag}
                   style={{
-                    display: 'inline-flex',
+                    display: cssValue.inlineFlex,
                     alignItems: 'center',
-                    gap: 'var(--at-space-4)',
+                    gap: cssVar.space4,
                     height: 26,
                     padding: '0 4px 0 10px',
                     borderRadius: 999,
-                    background: 'var(--at-primary-lighter)',
-                    color: 'var(--at-primary-dark)',
+                    background: cssVar.primaryLighter,
+                    color: cssVar.primaryDark,
                     border: '1px solid var(--at-primary-light)',
-                    fontSize: 'var(--at-fs-12)',
+                    fontSize: cssVar.fs12,
                     fontWeight: 600,
                   }}
                 >
                   {tag}
                   <button
                     type="button"
-                    onClick={() => removeTag(tag)}
+                    onClick={() => { removeTag(tag); }}
                     aria-label={`Remover ${tag}`}
                     style={{
                       display: 'grid',
@@ -446,17 +452,17 @@ export function ResolveIncidentModal({
                       height: 16,
                       border: 'none',
                       background: 'transparent',
-                      color: 'var(--at-primary)',
+                      color: cssVar.primary,
                       cursor: 'pointer',
                     }}
                   >
-                    <X size={11} />
+                    <XIcon size={11} />
                   </button>
                 </span>
               ))}
               <input
                 value={newTag}
-                onChange={(event) => setNewTag(event.target.value)}
+                onChange={(event) => { setNewTag(event.target.value); }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
                     event.preventDefault();
@@ -473,8 +479,8 @@ export function ResolveIncidentModal({
                   borderRadius: 999,
                   outline: 'none',
                   fontFamily: 'inherit',
-                  fontSize: 'var(--at-fs-12)',
-                  color: 'var(--at-fg-muted)',
+                  fontSize: cssVar.fs12,
+                  color: cssVar.fgMuted,
                 }}
               />
             </div>
@@ -482,15 +488,15 @@ export function ResolveIncidentModal({
 
           <div style={{
             display: 'flex',
-            gap: 'var(--at-space-8)',
-            marginTop: 'var(--at-space-16)',
+            gap: cssVar.space8,
+            marginTop: cssVar.space16,
             padding: '12px',
-            background: 'var(--at-primary-lighter)',
+            background: cssVar.primaryLighter,
             border: '1px solid var(--at-primary-light)',
-            borderRadius: 'var(--at-radius-4)',
-            fontSize: 'var(--at-fs-12)',
-            color: 'var(--at-primary-dark)',
-            lineHeight: 'var(--at-lh-22)',
+            borderRadius: cssVar.radius4,
+            fontSize: cssVar.fs12,
+            color: cssVar.primaryDark,
+            lineHeight: cssVar.lh22,
           }}
           >
             <Info
@@ -509,13 +515,13 @@ export function ResolveIncidentModal({
           {error !== null
             ? (
               <div style={{
-                marginTop: 'var(--at-space-16)',
+                marginTop: cssVar.space16,
                 padding: '10px 12px',
-                borderRadius: 'var(--at-radius-4)',
-                background: 'var(--at-danger-50)',
+                borderRadius: cssVar.radius4,
+                background: cssVar.danger50,
                 border: '1px solid var(--at-danger-200)',
-                fontSize: 'var(--at-fs-12)',
-                color: 'var(--at-danger-300)',
+                fontSize: cssVar.fs12,
+                color: cssVar.danger300,
               }}
               >
                 {error}
@@ -527,9 +533,9 @@ export function ResolveIncidentModal({
         <div style={{
           display: 'flex',
           justifyContent: 'flex-end',
-          gap: 'var(--at-space-8)',
+          gap: cssVar.space8,
           padding: 'var(--at-space-16) var(--at-space-20)',
-          borderTop: '1px solid var(--at-border)',
+          borderTop: cssVar.borderLine,
         }}
         >
           <button
@@ -538,11 +544,11 @@ export function ResolveIncidentModal({
             style={{
               height: 36,
               padding: '0 var(--at-space-16)',
-              borderRadius: 'var(--at-radius-4)',
-              border: '1px solid var(--at-border)',
-              background: 'var(--at-white)',
-              color: 'var(--at-fg)',
-              fontSize: 'var(--at-fs-14)',
+              borderRadius: cssVar.radius4,
+              border: cssVar.borderLine,
+              background: cssVar.white,
+              color: cssVar.fg,
+              fontSize: cssVar.fs14,
               fontWeight: 600,
               cursor: 'pointer',
             }}
@@ -554,20 +560,20 @@ export function ResolveIncidentModal({
             onClick={submit}
             disabled={!valid || submitting}
             style={{
-              display: 'inline-flex',
+              display: cssValue.inlineFlex,
               alignItems: 'center',
-              gap: 'var(--at-space-8)',
+              gap: cssVar.space8,
               height: 36,
               padding: '0 var(--at-space-16)',
-              borderRadius: 'var(--at-radius-4)',
+              borderRadius: cssVar.radius4,
               border: 'none',
               background: valid && !submitting
-                ? 'var(--at-primary)'
-                : 'var(--at-bg-soft)',
+                ? cssVar.primary
+                : cssVar.bgSoft,
               color: valid && !submitting
-                ? 'var(--at-white)'
-                : 'var(--at-fg-subtle)',
-              fontSize: 'var(--at-fs-14)',
+                ? cssVar.white
+                : cssVar.fgSubtle,
+              fontSize: cssVar.fs14,
               fontWeight: 600,
               cursor: valid && !submitting
                 ? 'pointer'
@@ -589,20 +595,20 @@ export function ResolveIncidentModal({
 function FieldLabel({
   children,
   required,
-}: {
+}: Readonly<{
   children: string;
   required?: boolean
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <label style={{
-      fontSize: 'var(--at-fs-12)',
+      fontSize: cssVar.fs12,
       fontWeight: 600,
-      color: 'var(--at-fg)',
+      color: cssVar.fg,
     }}
     >
       {children}
       {required
-        ? <span style={{ color: 'var(--at-danger-300)' }}> *</span>
+        ? <span style={{ color: cssVar.danger300 }}> *</span>
         : null}
     </label>
   );
@@ -613,11 +619,11 @@ function CategoryCard({
   option,
   selected,
   onSelect,
-}: {
+}: Readonly<{
   option: CategoryOptionInterface;
   selected: boolean;
   onSelect: () => void
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <button
       type="button"
@@ -625,32 +631,32 @@ function CategoryCard({
       style={{
         textAlign: 'left',
         padding: '10px 12px',
-        borderRadius: 'var(--at-radius-4)',
+        borderRadius: cssVar.radius4,
         border: `1px solid ${selected
-          ? 'var(--at-primary)'
-          : 'var(--at-border)'}`,
+          ? cssVar.primary
+          : cssVar.border}`,
         background: selected
-          ? 'var(--at-primary-lighter)'
-          : 'var(--at-white)',
+          ? cssVar.primaryLighter
+          : cssVar.white,
         cursor: 'pointer',
         font: 'inherit',
       }}
     >
       <span style={{
         display: 'block',
-        fontSize: 'var(--at-fs-14)',
+        fontSize: cssVar.fs14,
         fontWeight: 600,
         color: selected
-          ? 'var(--at-primary-dark)'
-          : 'var(--at-fg)',
+          ? cssVar.primaryDark
+          : cssVar.fg,
       }}
       >
         {option.title}
       </span>
       <span style={{
         display: 'block',
-        fontSize: 'var(--at-fs-12)',
-        color: 'var(--at-fg-muted)',
+        fontSize: cssVar.fs12,
+        color: cssVar.fgMuted,
         marginTop: 2,
       }}
       >

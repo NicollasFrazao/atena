@@ -1,25 +1,27 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  ChatsCircle,
-  MagnifyingGlass,
-  PushPin,
-  Wrench,
+  ChatsCircleIcon as ChatsCircle,
+  MagnifyingGlassIcon as MagnifyingGlass,
+  PushPinIcon as PushPin,
+  WrenchIcon as Wrench,
 } from '@phosphor-icons/react';
 import type { ChatSessionListItemInterface } from '@atena/types';
 import { setSessionPinned, useSessions } from '../api/sessions';
 import { useChatContext } from '../chat/chat-context';
 import { dayKeyInTz, formatDate, formatTime } from '../util/time';
+import { cssValue, cssVar } from '../styles/tokens';
+import { MS_PER_DAY } from '../util/units';
 
 /** Filtro ativo da lista. */
 type HistoryFilterType = 'all' | 'pinned' | 'incident';
 
 /** Abas de filtro. */
-const FILTERS: Array<{
+const FILTERS: {
   id: HistoryFilterType;
   label: string
-}> = [
+}[] = [
   {
     id: 'all',
     label: 'Todas',
@@ -38,7 +40,7 @@ const FILTERS: Array<{
 function dayLabel(iso: string): string {
   const now = new Date();
   const todayKey = dayKeyInTz(now.toISOString());
-  const yesterdayKey = dayKeyInTz(new Date(now.getTime() - 86_400_000).toISOString());
+  const yesterdayKey = dayKeyInTz(new Date(now.getTime() - MS_PER_DAY).toISOString());
   const key = dayKeyInTz(iso);
 
   if (key === todayKey) {
@@ -62,7 +64,7 @@ function timeLabel(iso: string): string {
  * busca (título/tag/prévia) e filtros (todas/fixadas/com incidente). "Abrir" mostra o transcript
  * read-only da sessão. Dados reais.
  *
- * @returns {JSX.Element} A tela de histórico.
+ * @returns A tela de histórico.
  */
 export function HistoryPage(): JSX.Element {
   const sessions = useSessions();
@@ -122,23 +124,23 @@ export function HistoryPage(): JSX.Element {
     <div style={{
       maxWidth: 1100,
       margin: '0 auto',
-      padding: 'var(--at-space-32)',
+      padding: cssVar.space32,
     }}
     >
       <h1 style={{
         margin: 0,
-        marginBottom: 'var(--at-space-4)',
-        fontSize: 'var(--at-fs-24)',
+        marginBottom: cssVar.space4,
+        fontSize: cssVar.fs24,
         fontWeight: 600,
-        color: 'var(--at-fg)',
+        color: cssVar.fg,
       }}
       >
         Histórico de conversas
       </h1>
       <div style={{
-        fontSize: 'var(--at-fs-14)',
-        color: 'var(--at-fg-muted)',
-        marginBottom: 'var(--at-space-24)',
+        fontSize: cssVar.fs14,
+        color: cssVar.fgMuted,
+        marginBottom: cssVar.space24,
       }}
       >
         {sessions.data?.length ?? 0}
@@ -151,8 +153,8 @@ export function HistoryPage(): JSX.Element {
 
       <div style={{
         display: 'flex',
-        gap: 'var(--at-space-12)',
-        marginBottom: 'var(--at-space-24)',
+        gap: cssVar.space12,
+        marginBottom: cssVar.space24,
         flexWrap: 'wrap',
       }}
       >
@@ -170,54 +172,54 @@ export function HistoryPage(): JSX.Element {
               left: 12,
               top: '50%',
               transform: 'translateY(-50%)',
-              color: 'var(--at-fg-subtle)',
+              color: cssVar.fgSubtle,
             }}
           />
           <input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => { setQuery(event.target.value); }}
             placeholder="Buscar por código, título, tag ou conteúdo…"
             style={{
               width: '100%',
               height: 38,
               padding: '0 12px 0 34px',
-              border: '1px solid var(--at-border)',
-              borderRadius: 'var(--at-radius-4)',
+              border: cssVar.borderLine,
+              borderRadius: cssVar.radius4,
               fontFamily: 'inherit',
-              fontSize: 'var(--at-fs-14)',
-              color: 'var(--at-fg)',
+              fontSize: cssVar.fs14,
+              color: cssVar.fg,
             }}
           />
         </div>
         <div style={{
           display: 'flex',
-          gap: 'var(--at-space-4)',
+          gap: cssVar.space4,
           padding: 2,
-          background: 'var(--at-bg-soft)',
-          border: '1px solid var(--at-border)',
-          borderRadius: 'var(--at-radius-4)',
+          background: cssVar.bgSoft,
+          border: cssVar.borderLine,
+          borderRadius: cssVar.radius4,
         }}
         >
           {FILTERS.map((option) => (
             <button
               key={option.id}
               type="button"
-              onClick={() => setFilter(option.id)}
+              onClick={() => { setFilter(option.id); }}
               style={{
                 height: 32,
-                padding: '0 var(--at-space-12)',
-                borderRadius: 'var(--at-radius-4)',
+                padding: cssVar.paddingInline12,
+                borderRadius: cssVar.radius4,
                 border: 'none',
                 background: filter === option.id
-                  ? 'var(--at-white)'
+                  ? cssVar.white
                   : 'transparent',
                 boxShadow: filter === option.id
-                  ? 'var(--at-shadow-xs)'
+                  ? cssVar.shadowXs
                   : 'none',
                 color: filter === option.id
-                  ? 'var(--at-fg)'
-                  : 'var(--at-fg-muted)',
-                fontSize: 'var(--at-fs-12)',
+                  ? cssVar.fg
+                  : cssVar.fgMuted,
+                fontSize: cssVar.fs12,
                 fontWeight: 600,
                 cursor: 'pointer',
               }}
@@ -237,30 +239,30 @@ export function HistoryPage(): JSX.Element {
       {!sessions.isLoading && list.length === 0
         ? (
           <div style={{
-            background: 'var(--at-white)',
-            border: '1px solid var(--at-border)',
+            background: cssVar.white,
+            border: cssVar.borderLine,
             borderRadius: 8,
-            padding: 'var(--at-space-32)',
+            padding: cssVar.space32,
             textAlign: 'center',
           }}
           >
             <MagnifyingGlass
               size={24}
-              color="var(--at-fg-subtle)"
+              color={cssVar.fgSubtle}
             />
             <div style={{
-              marginTop: 'var(--at-space-12)',
-              fontSize: 'var(--at-fs-14)',
+              marginTop: cssVar.space12,
+              fontSize: cssVar.fs14,
               fontWeight: 600,
-              color: 'var(--at-fg)',
+              color: cssVar.fg,
             }}
             >
               Nenhuma sessão encontrada
             </div>
             <div style={{
-              marginTop: 'var(--at-space-4)',
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg-muted)',
+              marginTop: cssVar.space4,
+              fontSize: cssVar.fs12,
+              color: cssVar.fgMuted,
             }}
             >
               Ajuste os filtros ou o termo de busca.
@@ -272,15 +274,15 @@ export function HistoryPage(): JSX.Element {
       {groups.map((group) => (
         <div
           key={group.label}
-          style={{ marginBottom: 'var(--at-space-24)' }}
+          style={{ marginBottom: cssVar.space24 }}
         >
           <div style={{
-            fontSize: 'var(--at-fs-12)',
+            fontSize: cssVar.fs12,
             fontWeight: 600,
-            color: 'var(--at-fg-subtle)',
+            color: cssVar.fgSubtle,
             textTransform: 'uppercase',
             letterSpacing: 0.5,
-            marginBottom: 'var(--at-space-8)',
+            marginBottom: cssVar.space8,
           }}
           >
             {group.label}
@@ -288,15 +290,15 @@ export function HistoryPage(): JSX.Element {
           <div style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 'var(--at-space-8)',
+            gap: cssVar.space8,
           }}
           >
             {group.sessions.map((session) => (
               <SessionCard
                 key={session.id}
                 session={session}
-                onOpen={() => onOpen(session)}
-                onTogglePin={() => togglePin(session)}
+                onOpen={() => { onOpen(session); }}
+                onTogglePin={() => { togglePin(session); }}
               />
             ))}
           </div>
@@ -311,11 +313,11 @@ function SessionCard({
   session,
   onOpen,
   onTogglePin,
-}: {
+}: Readonly<{
   session: ChatSessionListItemInterface;
   onOpen: () => void;
   onTogglePin: () => void
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <div
       className="at-hover-lift"
@@ -323,12 +325,12 @@ function SessionCard({
       style={{
         display: 'grid',
         gridTemplateColumns: '1fr auto',
-        gap: 'var(--at-space-16)',
+        gap: cssVar.space16,
         alignItems: 'flex-start',
-        background: 'var(--at-white)',
-        border: '1px solid var(--at-border)',
+        background: cssVar.white,
+        border: cssVar.borderLine,
         borderLeft: `3px solid ${session.has_incident
-          ? 'var(--at-danger-200)'
+          ? cssVar.danger200
           : 'transparent'}`,
         borderRadius: 8,
         padding: '14px 18px',
@@ -338,8 +340,8 @@ function SessionCard({
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 'var(--at-space-8)',
-          marginBottom: 'var(--at-space-4)',
+          gap: cssVar.space8,
+          marginBottom: cssVar.space4,
           flexWrap: 'wrap',
         }}
         >
@@ -348,21 +350,21 @@ function SessionCard({
               <PushPin
                 size={12}
                 weight="fill"
-                color="var(--at-primary)"
+                color={cssVar.primary}
               />
             )
             : null}
           {session.has_incident
             ? (
               <span style={{
-                display: 'inline-flex',
+                display: cssValue.inlineFlex,
                 alignItems: 'center',
-                gap: 'var(--at-space-4)',
+                gap: cssVar.space4,
                 padding: '2px 8px',
                 borderRadius: 999,
                 background: '#C127221a',
                 color: '#C12722',
-                fontSize: 'var(--at-fs-12)',
+                fontSize: cssVar.fs12,
                 fontWeight: 600,
               }}
               >
@@ -378,15 +380,15 @@ function SessionCard({
             )
             : null}
           <span style={{
-            fontSize: 'var(--at-fs-12)',
-            color: 'var(--at-fg-muted)',
+            fontSize: cssVar.fs12,
+            color: cssVar.fgMuted,
           }}
           >
             {dayLabel(session.started_at)}, {timeLabel(session.started_at)} · {session.duration}
             {' · '}
             <code style={{
-              fontFamily: 'ui-monospace, Menlo, monospace',
-              color: 'var(--at-fg-subtle)',
+              fontFamily: cssValue.fontMono,
+              color: cssVar.fgSubtle,
             }}
             >
               {session.id}
@@ -394,18 +396,18 @@ function SessionCard({
           </span>
         </div>
         <div style={{
-          fontSize: 'var(--at-fs-14)',
+          fontSize: cssVar.fs14,
           fontWeight: 600,
-          color: 'var(--at-fg)',
-          marginBottom: 'var(--at-space-4)',
+          color: cssVar.fg,
+          marginBottom: cssVar.space4,
         }}
         >
           {session.title}
         </div>
         <div style={{
-          fontSize: 'var(--at-fs-12)',
-          color: 'var(--at-fg-muted)',
-          marginBottom: 'var(--at-space-8)',
+          fontSize: cssVar.fs12,
+          color: cssVar.fgMuted,
+          marginBottom: cssVar.space8,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
@@ -418,7 +420,7 @@ function SessionCard({
             <div style={{
               display: 'flex',
               flexWrap: 'wrap',
-              gap: 'var(--at-space-4)',
+              gap: cssVar.space4,
             }}
             >
               {session.tags.map((tag) => (
@@ -427,11 +429,11 @@ function SessionCard({
                   style={{
                     padding: '2px 8px',
                     borderRadius: 999,
-                    background: 'var(--at-bg-soft)',
-                    border: '1px solid var(--at-border)',
-                    fontSize: 'var(--at-fs-10)',
+                    background: cssVar.bgSoft,
+                    border: cssVar.borderLine,
+                    fontSize: cssVar.fs10,
                     fontWeight: 600,
-                    color: 'var(--at-fg-muted)',
+                    color: cssVar.fgMuted,
                   }}
                 >
                   {tag}
@@ -446,7 +448,7 @@ function SessionCard({
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'flex-end',
-        gap: 'var(--at-space-4)',
+        gap: cssVar.space4,
         flexShrink: 0,
       }}
       >
@@ -460,17 +462,17 @@ function SessionCard({
             ? 'Desafixar'
             : 'Fixar'}
           style={{
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
             justifyContent: 'center',
             width: 26,
             height: 26,
             border: 'none',
-            borderRadius: 'var(--at-radius-4)',
+            borderRadius: cssVar.radius4,
             background: 'transparent',
             color: session.pinned
-              ? 'var(--at-primary)'
-              : 'var(--at-fg-subtle)',
+              ? cssVar.primary
+              : cssVar.fgSubtle,
             cursor: 'pointer',
           }}
         >
@@ -483,24 +485,24 @@ function SessionCard({
         </button>
         <div style={{
           display: 'flex',
-          gap: 'var(--at-space-16)',
-          fontSize: 'var(--at-fs-12)',
-          color: 'var(--at-fg-muted)',
+          gap: cssVar.space16,
+          fontSize: cssVar.fs12,
+          color: cssVar.fgMuted,
         }}
         >
           <span style={{
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
-            gap: 'var(--at-space-4)',
+            gap: cssVar.space4,
           }}
           >
             <ChatsCircle size={12} />
             {session.message_count}
           </span>
           <span style={{
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
-            gap: 'var(--at-space-4)',
+            gap: cssVar.space4,
           }}
           >
             <Wrench size={12} />
@@ -508,9 +510,9 @@ function SessionCard({
           </span>
         </div>
         <span style={{
-          fontSize: 'var(--at-fs-12)',
+          fontSize: cssVar.fs12,
           fontWeight: 600,
-          color: 'var(--at-primary-dark)',
+          color: cssVar.primaryDark,
         }}
         >
           Abrir ›
@@ -521,11 +523,11 @@ function SessionCard({
 }
 
 /** Linha de texto auxiliar (loading/erro/vazio). */
-function Muted({ children }: { children: string }): JSX.Element {
+function Muted({ children }: Readonly<{ children: string }>): JSX.Element {
   return (
     <div style={{
-      fontSize: 'var(--at-fs-14)',
-      color: 'var(--at-fg-muted)',
+      fontSize: cssVar.fs14,
+      color: cssVar.fgMuted,
       padding: 'var(--at-space-16) 0',
     }}
     >
@@ -573,23 +575,20 @@ function filterSessions(
 }
 
 /** Agrupa as sessões por dia, preservando a ordem (mais recentes primeiro). */
-function groupByDay(sessions: ChatSessionListItemInterface[]): Array<{
+function groupByDay(sessions: ChatSessionListItemInterface[]): {
   label: string;
   sessions: ChatSessionListItemInterface[]
-}> {
-  const groups: Array<{
+}[] {
+  const groups: {
     label: string;
     sessions: ChatSessionListItemInterface[]
-  }> = [];
+  }[] = [];
 
   for (const session of sessions) {
     const label = dayLabel(session.started_at);
     const last = groups.at(-1);
 
-    if (
-      last
-      && last.label === label
-    ) {
+    if (last?.label === label) {
       last.sessions.push(session);
     }
     else {

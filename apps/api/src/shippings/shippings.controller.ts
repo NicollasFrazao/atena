@@ -1,5 +1,6 @@
 import { Body, Controller, Get, NotFoundException, Param, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
+import type { PermissionType } from '@atena/types';
 import { resolveWindow } from '../audit-query/window';
 import { streamCsvDownload } from '../common/csv-download';
 import { Audit } from '../audit/audit.decorator';
@@ -10,6 +11,9 @@ import { SearchShippingsDto } from './dto/search-shippings.dto';
 import { TrailQueryDto } from './dto/trail-query.dto';
 import { ShippingsService } from './shippings.service';
 import { RevealService } from './reveal.service';
+
+/** Permission of the endpoints that return the phone in clear (export and reveal). */
+const PII_REVEAL: PermissionType = 'pii:reveal';
 
 /**
  * Endpoints das tools de envios (espelham as tools do LLM), montados sob `/shippings`.
@@ -24,9 +28,9 @@ import { RevealService } from './reveal.service';
 @Controller('shippings')
 export class ShippingsController {
   /**
-   * @param {ShippingsService} shippings - Serviço com a lógica das tools de busca/trilha.
-   * @param {AnalysisService} analysis - Serviço da tool `analyze_shipping_content`.
-   * @param {RevealService} reveal - Serviço de reveal de PII (telefone/conteúdo).
+   * @param shippings - Serviço com a lógica das tools de busca/trilha.
+   * @param analysis - Serviço da tool `analyze_shipping_content`.
+   * @param reveal - Serviço de reveal de PII (telefone/conteúdo).
    */
   constructor(
     private readonly shippings: ShippingsService,
@@ -39,8 +43,9 @@ export class ShippingsController {
    *
    * Registrada no audit log via `@Audit('tool_call')`.
    *
-   * @param {SearchShippingsDto} query - Filtros e paginação (validados server-side).
-   * @returns {Promise<PaginatedEnvelopeInterface<SearchResultRowInterface>>} Envelope paginado de resultados.
+   * @param query - Filtros e paginação (validados server-side).
+   *
+   * @returns Envelope paginado de resultados.
    */
   @Get('search')
   @Requires('messages:search')
@@ -56,12 +61,13 @@ export class ShippingsController {
    * `export_report` com severidade `pii`. O CSV é gerado pelo DuckDB (`COPY`, sem teto de linhas) e
    * enviado em stream com BOM UTF-8 (Excel pt-BR) — o arquivo temporário é removido ao fim.
    *
-   * @param {SearchShippingsDto} query - Mesmos filtros do search (paginação ignorada).
-   * @param {Response} res - Resposta Express (stream do arquivo).
-   * @returns {Promise<void>}
+   * @param query - Mesmos filtros do search (paginação ignorada).
+   * @param token - Snapshot token of a previous search (`export_token`): while it is valid, the export
+   *   reads that exact set; otherwise it falls back to the filter.
+   * @param res - Resposta Express (stream do arquivo).
    */
   @Get('export')
-  @Requires('pii:reveal')
+  @Requires(PII_REVEAL)
   @Audit('export_report', 'pii')
   async export(
     @Query() query: SearchShippingsDto,
@@ -85,10 +91,12 @@ export class ShippingsController {
    *
    * Registrada no audit log via `@Audit('tool_call')`.
    *
-   * @param {string} id - Identificador (PK `id`) do envio.
-   * @param {TrailQueryDto} query - Janela opcional (`date_from`/`date_to`); idealmente a mesma do search
+   * @param id - Identificador (PK `id`) do envio.
+   * @param query - Janela opcional (`date_from`/`date_to`); idealmente a mesma do search
    *   que produziu o `id` (reusa o cache quente e respeita a guarda de data mínima).
-   * @returns {Promise<ShippingTrailInterface>} A trilha do envio (PII mascarada, sem `content_preview`).
+   *
+   * @returns A trilha do envio (PII mascarada, sem `content_preview`).
+   *
    * @throws {NotFoundException} Se o envio não existir; corpo no shape `{ error: { code: 'not_found', message } }`.
    */
   @Get(':id/trail')
@@ -121,8 +129,9 @@ export class ShippingsController {
    * Aceita `text` (direto) ou `shipping_id` (resolve o conteúdo via cache `/tmp`↔S3).
    * Registrada no audit log via `@Audit('tool_call')`.
    *
-   * @param {AnalyzeContentDto} body - `text` OU `shipping_id` (validado server-side).
-   * @returns {Promise<RiskAnalysisInterface>} Score, veredito, categorias e explicação (§C.3).
+   * @param body - `text` OU `shipping_id` (validado server-side).
+   *
+   * @returns Score, veredito, categorias e explicação (§C.3).
    */
   @Post('analyze')
   @Requires('messages:search')
@@ -137,14 +146,15 @@ export class ShippingsController {
    * Auditado como `reveal_phone` (severidade `pii`); o valor vai só na resposta,
    * nunca no audit log.
    *
-   * @param {string} id - Id (PK) do envio.
-   * @param {TrailQueryDto} query - Janela opcional (`date_from`/`date_to`); idealmente a mesma do
+   * @param id - Id (PK) do envio.
+   * @param query - Janela opcional (`date_from`/`date_to`); idealmente a mesma do
    *   search/trilha que produziu o `id` — sem ela, o lookup pontual cai na janela default (~30 dias)
    *   e a varredura fria pode estourar timeout.
-   * @returns {Promise<RevealedPhoneInterface>} `{ shipping_id, phone_full }` (não mascarado).
+   *
+   * @returns `{ shipping_id, phone_full }` (não mascarado).
    */
   @Post(':id/reveal-phone')
-  @Requires('pii:reveal')
+  @Requires(PII_REVEAL)
   @Audit('reveal_phone', 'pii')
   revealPhone(
     @Param('id') id: string,
@@ -161,14 +171,15 @@ export class ShippingsController {
    *
    * Auditado como `reveal_content` (severidade `pii`).
    *
-   * @param {string} id - Id (PK) do envio.
-   * @param {TrailQueryDto} query - Janela opcional (`date_from`/`date_to`); idealmente a mesma do
+   * @param id - Id (PK) do envio.
+   * @param query - Janela opcional (`date_from`/`date_to`); idealmente a mesma do
    *   search/trilha que produziu o `id` — sem ela, o lookup pontual cai na janela default (~30 dias)
    *   e a varredura fria pode estourar timeout.
-   * @returns {Promise<RevealedContentInterface>} `{ shipping_id, content_preview }`.
+   *
+   * @returns `{ shipping_id, content_preview }`.
    */
   @Post(':id/reveal-content')
-  @Requires('pii:reveal')
+  @Requires(PII_REVEAL)
   @Audit('reveal_content', 'pii')
   revealContent(
     @Param('id') id: string,

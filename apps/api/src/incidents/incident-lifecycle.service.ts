@@ -50,10 +50,10 @@ const MIN_DESCRIPTION_AUTO = 10;
 @Injectable()
 export class IncidentLifecycleService {
   /**
-   * @param {PrismaService} prisma - Acesso a incidentes/atividades.
-   * @param {AuditService} audit - Gravação no audit log (append-only).
-   * @param {IncidentsService} incidents - Releitura/normalização do incidente atualizado.
-   * @param {SupportGateway} realtime - Push de `incident.updated` aos conectados (/ws/support).
+   * @param prisma - Acesso a incidentes/atividades.
+   * @param audit - Gravação no audit log (append-only).
+   * @param incidents - Releitura/normalização do incidente atualizado.
+   * @param realtime - Push de `incident.updated` aos conectados (/ws/support).
    */
   constructor(
     private readonly prisma: PrismaService,
@@ -65,10 +65,11 @@ export class IncidentLifecycleService {
   /**
    * Reconhece um incidente (`detected` → `acknowledged`).
    *
-   * @param {string} id - Id do incidente.
-   * @param {string | undefined} userId - Operador que reconhece (`sub`).
+   * @param id - Id do incidente.
+   * @param userId - Operador que reconhece (`sub`).
    *
-   * @returns {Promise<IncidentWithActivitiesType>} Incidente atualizado + atividades.
+   * @returns Incidente atualizado + atividades.
+   *
    * @throws {NotFoundException} Se o incidente não existir.
    * @throws {AppException} Se a transição de estado for inválida.
    */
@@ -130,11 +131,12 @@ export class IncidentLifecycleService {
    * Resolve um incidente manualmente (§D): valida transição + payload, persiste a
    * resolução, registra a atividade e audita.
    *
-   * @param {string} id - Id do incidente.
-   * @param {ResolveIncidentDto} dto - Categoria/descrição da ação (+ escalonamento/tags).
-   * @param {string | undefined} userId - Operador que resolve (`sub`).
+   * @param id - Id do incidente.
+   * @param dto - Categoria/descrição da ação (+ escalonamento/tags).
+   * @param userId - Operador que resolve (`sub`).
    *
-   * @returns {Promise<IncidentWithActivitiesType>} Incidente resolvido + atividades.
+   * @returns Incidente resolvido + atividades.
+   *
    * @throws {NotFoundException} Se o incidente não existir.
    * @throws {AppException} Se a transição for inválida ou o payload não cumprir §D.
    */
@@ -218,11 +220,12 @@ export class IncidentLifecycleService {
   /**
    * Adiciona um comentário ao incidente (não muda estado).
    *
-   * @param {string} id - Id do incidente.
-   * @param {string} text - Texto do comentário.
-   * @param {string | undefined} userId - Autor do comentário (`sub`).
+   * @param id - Id do incidente.
+   * @param text - Texto do comentário.
+   * @param userId - Autor do comentário (`sub`).
    *
-   * @returns {Promise<IncidentActivityInterface>} Atividade de comentário criada.
+   * @returns Atividade de comentário criada.
+   *
    * @throws {NotFoundException} Se o incidente não existir.
    */
   async addComment(
@@ -256,8 +259,8 @@ export class IncidentLifecycleService {
   /**
    * Valida o payload de resolução conforme §D, considerando o estado atual.
    *
-   * @param {ResolveIncidentDto} dto - Payload a validar.
-   * @param {IncidentStatusType} status - Estado atual do incidente.
+   * @param dto - Payload a validar.
+   * @param status - Estado atual do incidente.
    *
    * @throws {AppException} Se a descrição for curta ou faltar `escalated_to`.
    */
@@ -292,9 +295,10 @@ export class IncidentLifecycleService {
   /**
    * Busca um incidente ou lança 404 (mesmo shape de erro do read).
    *
-   * @param {string} id - Id do incidente.
+   * @param id - Id do incidente.
    *
-   * @returns {Promise<Incident>} Registro do incidente.
+   * @returns Registro do incidente.
+   *
    * @throws {NotFoundException} Se não existir.
    */
   private async findOrThrow(id: string): Promise<Incident> {
@@ -315,12 +319,12 @@ export class IncidentLifecycleService {
   /**
    * Registra uma atividade de mudança de estado (`status_change`) no incidente.
    *
-   * @param {string} incidentId - Id do incidente.
-   * @param {string | undefined} userId - Operador que gerou a atividade.
-   * @param {Record<string, unknown>} payload - Detalhe (from/to status, ação).
-   * @param {Date} occurredAt - Instante da atividade.
+   * @param incidentId - Id do incidente.
+   * @param userId - Operador que gerou a atividade.
+   * @param payload - Detalhe (from/to status, ação).
+   * @param occurredAt - Instante da atividade.
    *
-   * @returns {Promise<void>} Resolve quando a atividade é gravada.
+   * @returns Resolve quando a atividade é gravada.
    */
   private async recordActivity(
     incidentId: string,

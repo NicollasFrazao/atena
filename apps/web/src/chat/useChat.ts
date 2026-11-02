@@ -9,7 +9,7 @@ import { streamChatMessage } from './sse';
 const DEFAULT_SESSION_TITLE = 'Sessão';
 
 /** Andamento de uma tool em execução (etapa atual do motor + barra opcional de partições). */
-export interface ToolProgressInterface {
+interface ToolProgressInterface {
   phase: string;
   label: string;
   current?: number;
@@ -82,10 +82,11 @@ const nextId = (prefix: string): string => {
 /**
  * Aplica um patch ao incidente de qualquer cartão (`kind: 'incident'`) da mensagem cujo id casar.
  *
- * @param {DisplayMessageInterface} message - Mensagem da conversa.
- * @param {string} incidentId - Id do incidente a atualizar.
- * @param {Partial<IncidentInterface>} patch - Campos a sobrescrever (ex.: `status`, `assignee`).
- * @returns {DisplayMessageInterface} Mensagem com o cartão atualizado (ou inalterada).
+ * @param message - Mensagem da conversa.
+ * @param incidentId - Id do incidente a atualizar.
+ * @param patch - Campos a sobrescrever (ex.: `status`, `assignee`).
+ *
+ * @returns Mensagem com o cartão atualizado (ou inalterada).
  */
 function patchMessageIncident(
   message: DisplayMessageInterface,
@@ -106,33 +107,29 @@ function patchMessageIncident(
   };
 }
 
-/**
- * Estado e ações do chat, compartilhados via contexto (sobrevivem à navegação entre telas).
- *
- * @property {DisplayMessageInterface[]} messages - Conversa atual.
- * @property {(text: string) => void} send - Envia uma mensagem do usuário.
- * @property {boolean} sending - Há um turno em andamento.
- * @property {boolean} ready - A sessão está criada/carregada (pode enviar).
- * @property {() => void} reset - Inicia uma sessão nova (limpa a conversa).
- * @property {(sessionId: string, title: string) => void} resume - Carrega uma sessão existente para continuá-la.
- * @property {(incident: IncidentInterface) => void} pushIncident - Injeta um incidente detectado
- *   (realtime) como um cartão inline na conversa atual; ignora duplicatas pelo id.
- * @property {string | null} sessionId - Id (código) da sessão atual; `null` enquanto não criada/carregada.
- * @property {string} sessionTitle - Nome (editável) da sessão atual.
- * @property {(title: string) => void} rename - Renomeia a sessão atual (otimista + persiste).
- */
+/** Estado e ações do chat, compartilhados via contexto (sobrevivem à navegação entre telas). */
 export interface ChatStateInterface {
+  /** Conversa atual. */
   messages: DisplayMessageInterface[];
+  /** Envia uma mensagem do usuário. */
   send: (text: string) => void;
+  /** Há um turno em andamento. */
   sending: boolean;
+  /** A sessão está criada/carregada (pode enviar). */
   ready: boolean;
+  /** Inicia uma sessão nova (limpa a conversa). */
   reset: () => void;
+  /** Carrega uma sessão existente para continuá-la. */
   resume: (sessionId: string, title: string) => void;
+  /** Injeta um incidente detectado (realtime) como um cartão inline na conversa atual; ignora duplicatas pelo id. */
   pushIncident: (incident: IncidentInterface) => void;
   /** Atualiza (status/assignee) um cartão de incidente já na conversa — realtime. */
   updateIncident: (incidentId: string, patch: Partial<IncidentInterface>) => void;
+  /** Id (código) da sessão atual; `null` enquanto não criada/carregada. */
   sessionId: string | null;
+  /** Nome (editável) da sessão atual. */
   sessionTitle: string;
+  /** Renomeia a sessão atual (otimista + persiste). */
   rename: (title: string) => void;
 }
 
@@ -141,8 +138,9 @@ export interface ChatStateInterface {
  * histórico): cada turno do assistente vira as partes de tool (na ordem) + o texto final; o usuário
  * vira uma parte de texto. O raciocínio (thinking) não é persistido, então não é reconstruído.
  *
- * @param {ChatMessageInterface[]} persisted - Mensagens persistidas (ordem cronológica).
- * @returns {DisplayMessageInterface[]} Conversa para exibir/continuar.
+ * @param persisted - Mensagens persistidas (ordem cronológica).
+ *
+ * @returns Conversa para exibir/continuar.
  */
 function toDisplayMessages(persisted: ChatMessageInterface[]): DisplayMessageInterface[] {
   return persisted.map((message) => {
@@ -193,7 +191,7 @@ function toDisplayMessages(persisted: ChatMessageInterface[]): DisplayMessageInt
  * Estado e ações da tela de Chat: cria a sessão, mantém as mensagens e consome o stream SSE
  * (token-a-token), anexando cada evento como uma parte ORDENADA da mensagem do assistente.
  *
- * @returns {ChatStateInterface} Estado do chat e as ações (enviar / nova sessão / retomar).
+ * @returns Estado do chat e as ações (enviar / nova sessão / retomar).
  */
 export function useChat(): ChatStateInterface {
   const [
@@ -381,7 +379,7 @@ export function useChat(): ChatStateInterface {
             return;
           }
 
-          const latest = sessions[0];
+          const latest = sessions.at(0);
 
           if (latest) {
             resume(
@@ -538,7 +536,7 @@ export function useChat(): ChatStateInterface {
               setSessionTitle(event.data.session_title);
               queryClient.invalidateQueries({ queryKey: ['sessions'] }).catch(() => undefined);
             }
-          } else if (event.event === 'error') {
+          } else {
             patch((message) => ({
               ...message,
               streaming: false,
@@ -556,7 +554,7 @@ export function useChat(): ChatStateInterface {
               : 'Falha no stream',
           }));
         })
-        .finally(() => setSending(false));
+        .finally(() => { setSending(false); });
     },
     [
       sending,
@@ -598,22 +596,20 @@ function makePatcher(
  * Anexa um `delta` de `thinking`/`text`: estende a última parte se for do mesmo tipo, senão abre
  * uma nova parte — preservando a ordem cronológica relativa às tools.
  *
- * @param {DisplayPartInterface[]} parts - Partes atuais.
- * @param {'thinking' | 'text'} kind - Tipo do fragmento.
- * @param {string} delta - Fragmento de texto.
- * @returns {DisplayPartInterface[]} Novas partes.
+ * @param parts - Partes atuais.
+ * @param kind - Tipo do fragmento.
+ * @param delta - Fragmento de texto.
+ *
+ * @returns Novas partes.
  */
 export function appendText(
   parts: DisplayPartInterface[],
   kind: 'thinking' | 'text',
   delta: string,
 ): DisplayPartInterface[] {
-  const last = parts[parts.length - 1];
+  const last = parts.at(-1);
 
-  if (
-    last !== undefined
-    && last.kind === kind
-  ) {
+  if (last?.kind === kind) {
     return [
       ...parts.slice(
         0,

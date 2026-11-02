@@ -9,9 +9,8 @@ import { AuditInterceptor } from './audit.interceptor';
  *
  * Provê o `AuditService`, expõe a leitura via `AuditController` (`/audit`) e registra o
  * `AuditInterceptor` como interceptor global (princípio: tudo é auditado). Como o PrismaService
- * é @Global, o AuditService recebe a injeção sem importar o PrismaModule aqui.
+ * é `@Global`, o AuditService recebe a injeção sem importar o PrismaModule aqui.
  *
- * @module AuditModule
  */
 @Module({
   controllers: [AuditController],

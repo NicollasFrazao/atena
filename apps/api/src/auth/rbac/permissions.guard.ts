@@ -23,15 +23,17 @@ import { PERMISSIONS_KEY } from './requires.decorator';
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   /**
-   * @param {Reflector} reflector - Lê os metadados gravados por `@Requires(...)`.
+   * @param reflector - Lê os metadados gravados por `@Requires(...)`.
    */
   constructor(private readonly reflector: Reflector) {}
 
   /**
    * Autoriza a request conforme as permissões exigidas.
    *
-   * @param {ExecutionContext} context - Contexto de execução do NestJS.
-   * @returns {boolean} `true` se não houver exigência ou o usuário tiver todas as permissões.
+   * @param context - Contexto de execução do NestJS.
+   *
+   * @returns `true` se não houver exigência ou o usuário tiver todas as permissões.
+   *
    * @throws {ForbiddenException} `access_disabled` | `access_pending` | `forbidden`.
    */
   canActivate(context: ExecutionContext): boolean {

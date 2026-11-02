@@ -16,7 +16,7 @@ import { CatalogQueryDto } from './dto/catalog-query.dto';
 @Controller('providers')
 export class ProvidersController {
   /**
-   * @param {CatalogService} catalog - Serviço com a lógica das tools de catálogo.
+   * @param catalog - Serviço com a lógica das tools de catálogo.
    */
   constructor(private readonly catalog: CatalogService) {}
 
@@ -25,8 +25,9 @@ export class ProvidersController {
    *
    * Registrada no audit log via `@Audit('tool_call')`.
    *
-   * @param {CatalogQueryDto} query - Janela opcional (`date_from`/`date_to`/`date_range`).
-   * @returns {Promise<string[]>} Nomes de providers distintos, em ordem ascendente.
+   * @param query - Janela opcional (`date_from`/`date_to`/`date_range`).
+   *
+   * @returns Nomes de providers distintos, em ordem ascendente.
    */
   @Get()
   @Audit('tool_call', 'info')
