@@ -85,7 +85,7 @@ const EV_PROJECTION = `
   app_id AS app_id`;
 
 /**
- * Filtro de canal — o bucket é multi-canal. Cobrimos **SMS Short** (`campaign_type='sms'`, ex.: sinch)
+ * Filtro de canal — o bucket é multi-canal. Cobrimos **SMS Short** (`campaign_type='sms'`, ex.: provider-c)
  * **e SMS Flash** (`'sms_flash'`, ex.: zapsms) — decisão revista 2026-06-25 (antes era só SMS Short).
  * Demais canais (voz/RCS) ficam de fora. O `channel` (= `campaign_type`) é exposto nos fluxos para
  * o operador distinguir. Para incluir/remover um canal, edite a lista do IN.

@@ -1611,8 +1611,8 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
         : '',
       // Rótulo explícito: é o status code DO PROVEDOR (operadora/gateway), NÃO um HTTP status —
       // evita o LLM (e o leitor) lerem "401" como "Unauthorized". Mostra o código SEMPRE que houver,
-      // INCLUSIVE "0" (é o código real da Sinch p/ o erro genérico — o operador quer vê-lo); só omite
-      // quando ausente de fato (null/vazio, ex.: bounce). O `error_text` cru ("[sinch] SMS reported
+      // INCLUSIVE "0" (é o código real da Provider C p/ o erro genérico — o operador quer vê-lo); só omite
+      // quando ausente de fato (null/vazio, ex.: bounce). O `error_text` cru ("[provider-c] SMS reported
       // as 'generic_error'") NÃO entra: é redundante com o status (já legível no label).
       code
         ? `código de status do provedor ${code}`

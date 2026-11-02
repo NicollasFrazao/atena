@@ -15,7 +15,7 @@ describe('ReportsService', () => {
       },
       byProvider: [
         {
-          name: 'Twilio',
+          name: 'Provider D',
           sent: 2,
           delivered: 1,
           failed: 1,
@@ -24,7 +24,7 @@ describe('ReportsService', () => {
           rate: 50,
         },
         {
-          name: 'Sinch',
+          name: 'Provider C',
           sent: 1,
           delivered: 1,
           failed: 0,
@@ -49,7 +49,7 @@ describe('ReportsService', () => {
       topErrors: [{
         code: 'INSUFFICIENT_BALANCE',
         count: 1,
-        provider: 'Twilio',
+        provider: 'Provider D',
       }],
     };
 
@@ -76,9 +76,9 @@ describe('ReportsService', () => {
 
     expect(report.hourly).toHaveLength(24);
 
-    const twilio = report.by_provider.find((provider) => provider.name === 'Twilio');
+    const providerD = report.by_provider.find((provider) => provider.name === 'Provider D');
 
-    expect(twilio).toMatchObject({
+    expect(providerD).toMatchObject({
       sent: 2,
       delivered: 1,
       rate: 50,
@@ -87,7 +87,7 @@ describe('ReportsService', () => {
     expect(report.top_errors[0]).toMatchObject({
       code: 'INSUFFICIENT_BALANCE',
       count: 1,
-      provider: 'Twilio',
+      provider: 'Provider D',
     });
 
     // csv_url aponta para o export real (GET /reports/delivery/export), carregando a janela usada.
@@ -122,14 +122,14 @@ describe('ReportsService', () => {
       date_range: '24h',
       filters: {
         customer_id: '1001',
-        provider: 'Twilio',
+        provider: 'Provider D',
       },
     });
 
     // Só cliente+provedor foram informados → status fica de fora do eco.
     expect(report.filters).toEqual({
       customer_id: '1001',
-      provider: 'Twilio',
+      provider: 'Provider D',
     });
   });
 
@@ -245,14 +245,14 @@ describe('ReportsService', () => {
         severity: 'critical',
         status: 'resolved',
         dimensionType: 'provider',
-        dimensionValue: 'Twilio',
-        detectionPayload: { rule: 'Queda de entrega — Twilio' },
+        dimensionValue: 'Provider D',
+        detectionPayload: { rule: 'Queda de entrega — Provider D' },
         detectedAt: new Date('2026-05-28T14:00:00Z'),
         acknowledgedAt: new Date('2026-05-28T14:02:00Z'),
         resolvedAt: new Date('2026-05-28T14:38:00Z'),
         actionCategory: 'provider_escalated',
         resolvedBy: 'rafael',
-        escalatedTo: 'Twilio #91',
+        escalatedTo: 'Provider D #91',
         rule: { name: 'r-delivery' },
       },
       {
@@ -260,7 +260,7 @@ describe('ReportsService', () => {
         severity: 'warning',
         status: 'auto_resolved',
         dimensionType: 'provider',
-        dimensionValue: 'Twilio',
+        dimensionValue: 'Provider D',
         detectionPayload: {},
         detectedAt: new Date('2026-05-28T13:00:00Z'),
         acknowledgedAt: null,
@@ -295,11 +295,11 @@ describe('ReportsService', () => {
     const manual = report.resolved.find((incident) => incident.id === 'INC-1');
 
     expect(manual).toMatchObject({
-      rule: 'Queda de entrega — Twilio',
+      rule: 'Queda de entrega — Provider D',
       action: 'provider_escalated',
       analyst: 'rafael',
       duration: '38m',
-      escalated_to: 'Twilio #91',
+      escalated_to: 'Provider D #91',
     });
 
     const auto = report.resolved.find((incident) => incident.id === 'INC-2');
@@ -317,11 +317,11 @@ describe('ReportsService', () => {
     // Janela sem limite inferior (período inteiro) não tem período anterior → sem variação.
     expect(report.delta_vs_previous).toBeNull();
 
-    // Ambos no mesmo fornecedor (Twilio) → 1 dimensão, contagem 2, pior severidade = critical.
+    // Ambos no mesmo fornecedor (Provider D) → 1 dimensão, contagem 2, pior severidade = critical.
     expect(report.affected_dimensions).toEqual([
       {
         dimension: 'provider',
-        value: 'Twilio',
+        value: 'Provider D',
         count: 2,
         severity: 'critical',
       },
