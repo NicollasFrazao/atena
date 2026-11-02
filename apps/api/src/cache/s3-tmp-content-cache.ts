@@ -51,12 +51,13 @@ export class S3TmpContentCache implements ContentCacheInterface {
     }
 
     // 2) hidrata do S3 (origem durável) e popula o /tmp
-    const {
-      bucket,
-      key,
-    } = this.parseRef(ref);
-
     try {
+      // Inside the try: a malformed ref is a failed hydration too, so it returns null as documented.
+      const {
+        bucket,
+        key,
+      } = this.parseRef(ref);
+
       const res = await this.s3.send(new GetObjectCommand({
         Bucket: bucket,
         Key: key,
