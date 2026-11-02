@@ -76,9 +76,9 @@ describe('ReportsService', () => {
 
     expect(report.hourly).toHaveLength(24);
 
-    const provider-d = report.by_provider.find((provider) => provider.name === 'Provider D');
+    const providerD = report.by_provider.find((provider) => provider.name === 'Provider D');
 
-    expect(provider-d).toMatchObject({
+    expect(providerD).toMatchObject({
       sent: 2,
       delivered: 1,
       rate: 50,
