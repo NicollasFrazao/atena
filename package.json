@@ -45,6 +45,6 @@
     "knip": "^6.44.1",
     "lint-staged": "^17.6.0",
     "typescript-eslint": "^8.72.1",
-    "vitest": "^2.1.9"
+    "vitest": "^5.0.5"
   }
 }
