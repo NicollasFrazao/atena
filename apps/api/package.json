@@ -57,7 +57,7 @@
     "@types/supertest": "^7.2.0",
     "eslint": "^9.10.0",
     "jest": "^30.5.2",
-    "prisma": "^5.20.0",
+    "prisma": "^7.10.1",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.15",
     "tsx": "^4.19.0",
