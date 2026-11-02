@@ -10,64 +10,64 @@ scaffoldVersion: "2.0.0"
 ---
 ## Workflow
 
-Revisão de PR no Atena (backend NestJS/Prisma + frontend React/`atena-design-system`). Os 5 princípios não-negociáveis do `docs/design_handoff_atena/README.md` §5 são o eixo da revisão. Feedback em PT-BR informal.
+PR review in Atena (NestJS/Prisma backend + React frontend with in-house components on the `--at-*` tokens). The 5 non-negotiable principles of `docs/design_handoff_atena/README.md` §5 are the backbone of the review. Feedback in English, like everything in the repository (`development-conventions.md`, "Language"). The quality gate must be green and the Verification section must state results.
 
-1. **Entenda o objetivo do PR** e situe-o na sprint (Fundação / Fase 1 self-service / Fase 2 proativo).
-2. **Rode o checklist dos 5 princípios** sobre o diff (ver Quality Bar). Qualquer violação = request changes, não sugestão.
+1. **Understand the PR's goal** and place it in the sprint (Foundation / Phase 1 self-service / Phase 2 proactive).
+2. **Run the 5-principle checklist** over the diff (see the Quality Bar). Any violation = request changes, not a suggestion.
 3. **Backend (NestJS/Prisma):**
-   - O LLM nunca toca o banco — quem roda query/RBAC/dados é a app (princípio 1). Cheque que tools só montam input e a execução é server-side.
-   - Tool nova/alterada escreve audit `tool_call`; reveal escreve `reveal_phone`/`reveal_content` (princípio 4/5).
-   - `acknowledge`/`resolve`/`comment` são endpoints REST com guard + validação server-side, NUNCA expostos como tool do LLM (princípio 3).
-   - Resolve revalida tudo server-side (§D): `actionCategory` ∈ enum; `actionDescription` ≥ 20 chars (≥ 10 no `auto_resolved`); `escalatedTo` obrigatório se category ∈ {provider_escalated, internal_escalated}; só transição de detected|acknowledged|auto_resolved → resolved; escreve `incident_activity` (status_change) + audit.
-   - Guard de RBAC por endpoint: `support_analyst` (chat/busca/trilha/ack/resolve) vs `support_lead` (+ relatórios, editar regras, audit log). Endpoint sem guard = bloqueio.
-   - Prisma: snake_case no DB, camelCase na API — o mapeamento mora no ORM. Migration não quebra imutabilidade do `audit_log` (só INSERT+SELECT).
-4. **Frontend (React/design-system):**
-   - Usa componentes reais do `atena-design-system` (Button, Badge, Card, Table, Dialog, Tabs, Switch) — não reimplementa à mão como o protótipo, não copia JSX de `prototype/`.
-   - PII mascarada por padrão (`phoneMasked`, `contentPreview` oculto); reveal exige confirmação e dispara audit (princípio 5).
-   - UI desabilita campo inválido MAS não é fonte de verdade — a validação real é server-side (validação dupla).
-   - Estados de erro do `error-states.jsx`: ToolError inline + "tentar de novo", faixa de WS desconectado, overlay de sessão expirada (401 → re-login via login social institucional (OIDC)).
-5. **Shapes batem com o contrato:** todo response/payload confere com `prototype/data.jsx` e §C de `01-backend-api-contract.md` (ex.: `SearchResults` = §C.1 `MOCK.searchResults[]`).
-6. **Segredos:** nenhum `.env`/`.pem`/`.key`/`*secret*` no diff (bloqueado por `.context/harness/policy.json`); conteúdo bruto de SMS só no S3 via `contentRef`, nunca em coluna de texto nem em log; usar `phone_hash` para busca sem PII em logs.
-7. **Commits:** Conventional Commits (`AGENTS.md`).
-8. **Veredito:** approve, request changes ou comment, separando obrigatório de sugestão.
+   - The LLM never touches the database — the app runs query/RBAC/data (principle 1). Check that tools only build input and execution is server-side.
+   - A new/changed tool writes audit `tool_call`; reveal writes `reveal_phone`/`reveal_content` (principles 4/5).
+   - `acknowledge`/`resolve`/`comment` are REST endpoints with a guard + server-side validation, NEVER exposed as an LLM tool (principle 3).
+   - Resolve revalidates everything server-side (§D): `action_category` ∈ enum; `action_description` ≥ 20 chars (≥ 10 on `auto_resolved`); `escalated_to` required if category ∈ {provider_escalated, internal_escalated}; only the transition detected|acknowledged|auto_resolved → resolved; writes `incident_activity` (status_change) + audit.
+   - Per-endpoint permission guard (`@Requires(perm)`, map in `apps/api/src/auth/rbac/permissions.ts`): `viewer` reads (search/trail/reports/incidents/rules/audit/observability), `support_analyst` adds incident ack/resolve/comment, `support_lead` adds `pii:reveal`, `rules:edit` and `ops:run`, `admin` adds `users:manage`. An endpoint without a guard = blocker.
+   - Prisma: snake_case in the DB and snake_case at the API — Prisma Client's camelCase is mapped at the edge (services/serializers and DTOs). A migration must not break the immutability of `audit_log` (INSERT+SELECT only).
+4. **Frontend (React, in-house components):**
+   - Uses the in-house components of `apps/web/src/` (dialogs, tables, badges, tabs, switches) on the `--at-*` tokens — does not hand-reimplement primitives that already exist, does not copy prototype JSX (there is no external `atena-design-system` package).
+   - PII masked by default (`phone_masked`, content hidden); reveal requires confirmation and triggers an audit entry (principle 5).
+   - The UI disables an invalid field BUT is not the source of truth — the real validation is server-side (double validation).
+   - The design's error states: inline tool error + "tentar de novo" ("try again"), WS disconnected strip, expired session (401 → back to the OIDC login).
+5. **Shapes match the contract:** every response/payload agrees with `@atena/types` and `docs/openapi.yaml` (e.g. `SearchResultsCard` consumes `SearchResultRowInterface`, §C.1).
+6. **Secrets:** no `.env`/`.pem`/`.key`/`*secret*` in the diff (blocked by `.context/harness/policy.json`); raw SMS content only on S3 (the detailed report, read via DuckDB), never in a MySQL text column nor in a log; logs carry IDs/`phone_hash`, never the phone.
+7. **Commits:** Conventional Commits (`AGENTS.md`, `.context/docs/code-style.md`).
+8. **Verdict:** approve, request changes or comment, separating required from suggested.
 
 ## Examples
 
-**Request changes (violação de princípio):**
+**Request changes (principle violation):**
 ```
-Boa direção, mas tem bloqueio antes do merge:
+Good direction, but there are blockers before merge:
 
-1. [PRINCÍPIO 3] incidents.service.ts:88 — `resolve_incident` foi registrada como tool
-   do LLM. Ack/resolve NÃO são tools: têm que ser POST /api/incidents/{id}/resolve com
-   validação server-side (§D). Remover do catálogo de tools.
-2. [PRINCÍPIO 5] PhoneCell renderiza `phoneFull` direto do payload. Telefone é mascarado
-   por padrão; só revela com permissão + confirmação, e o reveal escreve audit
-   'reveal_phone' (RNF-1.4). Hoje não escreve nada no audit.
-3. [VALIDAÇÃO §D] o endpoint resolve confia no `disabled` do botão. Revalide server-side:
-   actionDescription ≥ 20 chars e escalatedTo obrigatório p/ provider_escalated.
+1. [PRINCIPLE 3] incidents.service.ts:88 — `resolve_incident` was registered as an LLM
+   tool. Ack/resolve are NOT tools: they have to be POST /api/incidents/{id}/resolve with
+   server-side validation (§D). Remove it from the tool catalog.
+2. [PRINCIPLE 5] RevealField renders `phone_full` straight from the payload. The phone is
+   masked by default; it is only revealed with permission + confirmation, and the reveal
+   writes audit 'reveal_phone' (RNF-1.4). Today nothing is written to the audit log.
+3. [VALIDATION §D] the resolve endpoint trusts the button's `disabled`. Revalidate
+   server-side: action_description ≥ 20 chars and escalated_to required for provider_escalated.
 
-Sugestão (não-bloqueante): extrair o mapeamento snake_case→camelCase pra um mapper.
+Suggestion (non-blocking): extract the camelCase→snake_case mapping into a serializer.
 ```
 
 **Approve:**
 ```
-Aprovado. search_messages roda 100% server-side (LLM só monta o input), shape bate com
-§C.1 / MOCK.searchResults[], guard RBAC no endpoint, audit 'tool_call' gravado, e a UI usa
-Table do atena-design-system. PII mascarada por padrão. 👍
+Approved. search_shippings runs 100% server-side (the LLM only builds the input), the shape
+matches SearchResultRowInterface (§C.1), the endpoint has its @Requires guard, audit
+'tool_call' is written, and the UI reuses the in-house table component. PII masked by default.
 ```
 
 ## Quality Bar
 
-- **Checklist dos 5 princípios em todo PR relevante:** (1) app roda query/RBAC/dados, LLM nunca toca o banco; (2) dado estruturado só vem de tool, senão recusa explícita (`RefusalCard`); (3) ack/resolve/comment via UI + validação server-side, jamais como tool; (4) tool call / reveal / mudança de incidente escreve audit log imutável; (5) PII mascarada por padrão, reveal gera audit.
-- Validação dupla: a UI desabilitar não basta — o backend SEMPRE revalida. Resolve cobre §D inteiro (enum, ≥20/≥10 chars, escalated_to, transições válidas, incident_activity + audit).
-- Shapes batem com `data.jsx`/§C — divergência de campo ou de nome (camelCase) é request changes.
-- Nenhum segredo no diff; conteúdo de SMS só no S3 (`contentRef`); `phone_hash` em buscas/logs; sem PII em log.
-- Frontend usa `atena-design-system` (não reimplementa componentes, não cola JSX do protótipo); estados de erro do `error-states.jsx` cobertos; strings em PT-BR informal.
-- `audit_log` permanece append-only (sem UPDATE/DELETE); migrations não afrouxam isso.
-- Conventional Commits. Feedback separa bloqueio de sugestão e aponta arquivo:linha.
+- **5-principle checklist on every relevant PR:** (1) the app runs query/RBAC/data, the LLM never touches the database; (2) structured data only comes from a tool, otherwise explicit refusal (`RefusalCard`); (3) ack/resolve/comment via UI + server-side validation, never as a tool; (4) tool call / reveal / incident change writes the immutable audit log; (5) PII masked by default, reveal generates audit.
+- Double validation: the UI disabling is not enough — the backend ALWAYS revalidates. Resolve covers all of §D (enum, ≥20/≥10 chars, escalated_to, valid transitions, incident_activity + audit).
+- Shapes match `@atena/types` / `docs/openapi.yaml` — a field or naming divergence (snake_case at the API) is request changes.
+- No secret in the diff; SMS content only on S3; IDs/`phone_hash` in logs; no PII in logs.
+- The frontend reuses the in-house components (does not reimplement them, does not paste prototype JSX); the design's error states covered; strings in informal PT-BR.
+- `audit_log` stays append-only (no UPDATE/DELETE); migrations do not loosen that.
+- Conventional Commits. Feedback separates blockers from suggestions and points to file:line.
 
 ## Resource Strategy
 
-- Sem `scripts/`/`references/`/`assets/` próprios: o checklist cabe em `SKILL.md` e os contratos vivem em `docs/design_handoff_atena/`.
-- Para shapes, referencie §C de `01-backend-api-contract.md` e os mocks de `prototype/data.jsx` por nome — não duplique JSON aqui.
-- Para regras de validação do resolve, aponte para §D do contrato e §5.3 de `02-data-model.md` em vez de recopiar o enum.
+- No `scripts/`/`references/`/`assets/` of its own: the checklist fits in `SKILL.md` and the contracts live in `@atena/types`, `docs/openapi.yaml` and `docs/design_handoff_atena/`.
+- For shapes, reference the types of `@atena/types` (origin: §C of `01-backend-api-contract.md`) by name — do not duplicate JSON here.
+- For the resolve validation rules, point to §D of the contract and to `apps/api/prisma/schema.prisma` (historically §5.3 of `02-data-model.md`) instead of re-copying the enum.

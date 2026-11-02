@@ -10,65 +10,66 @@ scaffoldVersion: "2.0.0"
 ---
 ## Workflow
 
-> ESTADO DO REPO: só specs + protótipo + scaffolding `.context/`. A documentação canônica do produto mora em `docs/design_handoff_atena/` (numerada 01–06 + spec + decisions); o contexto para agentes mora em `.context/docs/`. Manter os dois sincronizados é o trabalho. Tom: PT-BR informal (`você`). Seja honesto: produção não existe — descreva como DIREÇÃO, não como fato.
+> REPOSITORY STATE: the app is implemented (`apps/api`, `apps/web`, `packages/types`). The current HTTP contract is `docs/openapi.yaml`; the shapes live in `@atena/types`; the product's original design documentation lives in `docs/design_handoff_atena/` (numbered 01–06 + spec + decisions, now a historical reference); the context for agents lives in `.context/docs/`. Keeping them in sync with the code is the job. Language: English for docs and comments (`development-conventions.md`); informal Brazilian Portuguese (`você`) only in the product's UI copy. Be honest: describe what is implemented as fact and mark as DIRECTION only what does not exist yet (e.g. the deploy pipeline/IaC).
 
-1. Identifique o público: agentes (`.context/docs/`) ou humanos do time/handoff (`docs/design_handoff_atena/`).
-2. Determine o que mudou e qual doc é a fonte de verdade daquele tópico:
-   - Tools e endpoints → `01-backend-api-contract.md`
-   - Schema/tabelas/enums → `02-data-model.md`
-   - Eventos WS → `03-websocket-events.md`
-   - Mapa tela↔endpoint → `04-screen-to-endpoint-map.md`
+1. Identify the audience: agents (`.context/docs/`), API consumers (`docs/openapi.yaml`) or the team's humans/handoff (`docs/design_handoff_atena/`).
+2. Determine what changed and which doc is the source of truth for that topic:
+   - Tools and endpoints → `docs/openapi.yaml` (current) / `01-backend-api-contract.md` (historical)
+   - Schema/tables/enums → `apps/api/prisma/schema.prisma` (current) / `02-data-model.md` (historical)
+   - WS events → `03-websocket-events.md`
+   - Screen↔endpoint map → `04-screen-to-endpoint-map.md`
    - Design/tokens → `05-design-reference.md`
-   - Decisões batidas e pendentes → `decisions.md` / `06-pending-decisions.md`
-3. Escreva onde o tópico é canônico; nos outros docs, cross-linke em vez de duplicar.
-4. Use exemplos REAIS do Atena: tools (`search_messages`, `get_message_trail`), endpoints (`POST /api/incidents/{id}/resolve`), shapes do `data.jsx`, enums (`action_category`, `final_status`, `severity`).
-5. Marque claramente o que é direção vs. implementado. Só `prototype/*.jsx` é código real; backend/frontend não existem.
-6. Ao mudar uma decisão locked, atualize `decisions.md` (com rationale) e mova item de `06-pending-decisions.md` quando resolvido.
-7. Cross-linke novos scaffolds em `.context/docs/README.md` e `.context/agents/README.md` (AGENTS.md exige).
-8. Revise: links resolvem, exemplos batem com o contrato, terminologia consistente com o `glossary.md`.
+   - Settled and pending decisions → `decisions.md` / `06-pending-decisions.md`
+3. Write where the topic is canonical; in the other docs, cross-link instead of duplicating.
+4. Use REAL Atena examples: tools (`search_shippings`, `get_shipping_trail`), endpoints (`POST /api/incidents/{id}/resolve`), shapes from `@atena/types`, enums (`action_category`, `final_status`, `severity`).
+5. Clearly mark what is direction vs. implemented. The backend and frontend exist; check the code before describing a behavior.
+6. When changing a locked decision, update `decisions.md` (with the rationale) and move the item out of `06-pending-decisions.md` once resolved.
+7. Cross-link new scaffolds in `.context/docs/README.md` and `.context/agents/README.md` (AGENTS.md requires it).
+8. Review: links resolve, examples match the contract, terminology consistent with `glossary.md`.
 
 ## Examples
 
-**Documentar uma tool nova (no doc canônico 01):**
+**Document a new tool (in `docs/openapi.yaml` and the tools section of the context docs):**
 ```md
-### `correlate_incidents` (Fase 1.2 — proposta, NÃO implementada)
+### `correlate_incidents` (Phase 1.2 — proposal, NOT implemented)
 | Tool | Endpoint | Input | Output |
 |---|---|---|---|
-| `correlate_incidents` | `GET /api/incidents/correlate` | `{ dateRange, dimension }` | lista correlacionada |
+| `correlate_incidents` | `GET /api/incidents/correlate` | `{ date_range, dimension }` | correlated list |
 
-Espelha o padrão tool↔endpoint. Resposta no envelope `{ rows, page, totalPages, total, latencyMs }`.
-Não é mutação — não toca estado de incidente. Ver convenções no topo deste arquivo.
+Follows the tool↔endpoint pattern. Response in the envelope `{ rows, page, total_pages, total, latency_ms }`.
+Not a mutation — it does not touch incident state. See the conventions at the top of this file.
 ```
 
-**Cross-link em vez de duplicar:**
+**Cross-link instead of duplicating:**
 ```md
-> O enum `action_category` (provider_recovered, provider_escalated, …) é canônico em
-> [`02-data-model.md`](./02-data-model.md). As regras de validação no resolve estão em
-> [`01-backend-api-contract.md §D`](./01-backend-api-contract.md). Aqui só referenciamos.
+> The `action_category` enum (provider_recovered, provider_escalated, …) is canonical in
+> [`schema.prisma`](../../apps/api/prisma/schema.prisma) (historically [`02-data-model.md`](./02-data-model.md)).
+> The validation rules on resolve are in [`01-backend-api-contract.md §D`](./01-backend-api-contract.md).
+> Here we only reference them.
 ```
 
-**Registrar resolução de decisão pendente (`decisions.md`):**
+**Record the resolution of a pending decision (`decisions.md`):**
 ```md
-### Audit log: onde mora? — RESOLVIDO 12/06/2026
-Decisão: tabela append-only no mesmo MySQL, particionada por mês, role do app só
-INSERT + SELECT. Rationale: simplicidade operacional na v1; revisitar se volume crescer.
-(Movido de 06-pending-decisions.md.)
+### Audit log: where does it live? — RESOLVED 2026-06-12
+Decision: append-only table in the same MySQL, partitioned by month, app role with
+INSERT + SELECT only. Rationale: operational simplicity in v1; revisit if volume grows.
+(Moved from 06-pending-decisions.md.)
 ```
 
 ## Quality Bar
 
-- PT-BR informal (`você`), consistente com o resto do handoff.
-- Documente no doc canônico do tópico; nos demais, cross-linke (01–06 + decisions.md).
-- Exemplos reais do Atena: tools, endpoints, shapes do `data.jsx`, enums verdadeiros. Nada de "Users API" genérico.
-- Honestidade: marque direção vs. implementado. Único código real é `prototype/*.jsx`.
-- Mantenha `.context/docs/` e `docs/design_handoff_atena/` sincronizados; atualize doc na mesma mudança que o conteúdo.
-- Decisões mudadas atualizam `decisions.md` com rationale; pendências resolvidas saem de `06-pending-decisions.md`.
-- Sem PII em exemplos; telefone mascarado/fictício.
-- Cross-linke scaffolds novos em `.context/docs/README.md` e `.context/agents/README.md`.
+- English; the handoff in `docs/` is historical and still Portuguese (tech-debt item 15).
+- Document in the topic's canonical doc; in the others, cross-link (`docs/openapi.yaml`, 01–06 + decisions.md, `.context/docs/`).
+- Real Atena examples: tools, endpoints, shapes from `@atena/types`, true enums. No generic "Users API".
+- Honesty: mark direction vs. implemented. The code (`apps/`, `packages/`) is the source of truth for behavior.
+- Keep `.context/docs/`, `docs/openapi.yaml` and `docs/design_handoff_atena/` in sync; update the doc in the same change as the content.
+- Changed decisions update `decisions.md` with the rationale; resolved pending items leave `06-pending-decisions.md`.
+- No PII in examples; masked/fictitious phone numbers.
+- Cross-link new scaffolds in `.context/docs/README.md` and `.context/agents/README.md`.
 
 ## Resource Strategy
 
-- A documentação do produto já tem casa: `docs/design_handoff_atena/`. Não crie docs paralelos.
-- Adicione `references/` aqui só para um índice de "onde documentar o quê" se ficar grande.
-- Não crie `scripts/` (geradores de doc) enquanto não houver código que extrair; hoje a doc é escrita à mão.
-- Não toque `prototype/*.jsx` para documentar — leia e cite.
+- The product documentation already has a home: `docs/openapi.yaml`, `docs/design_handoff_atena/` and `.context/docs/`. Do not create parallel docs.
+- Add `references/` here only for a "where to document what" index if it grows large.
+- `scripts/` (doc generators) become possible now that there is code to extract from (e.g. checking `docs/openapi.yaml` against `@atena/types`); today the docs are written by hand.
+- Do not touch the code to document it — read it and cite it.

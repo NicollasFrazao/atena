@@ -10,81 +10,81 @@ scaffoldVersion: "2.0.0"
 ---
 ## Workflow
 
-> CONVENÇÃO (AGENTS.md): Conventional Commits, ex.: `feat(scaffolding): add doc links`. No Atena escrevemos o assunto em PT-BR, imperativo. O repo hoje é só specs + protótipo + scaffolding `.context/`, então escopos como `scaffolding`, `docs` e `design` são os mais frequentes por ora; os escopos de produção (backend, frontend, chat…) valem quando o código existir.
+> CONVENTION (AGENTS.md, `.context/docs/code-style.md`): Conventional Commits, e.g. `feat(scaffolding): add doc links`. Subject and body are in English (`development-conventions.md`, "Language"), imperative, lower case; commitlint checks the format in the `commit-msg` hook and in CI. The repo holds the implemented app (`apps/api`, `apps/web`, `packages/types`), so the scopes are the per-module ones listed in `code-style.md` (the delivery entity is `shipping`, not `message`). The type decides the version: `feat` → minor; `fix`/`perf`/`refactor` → patch; `!` or `BREAKING CHANGE:` → major.
 
-1. Revise o que está staged (`git diff --staged`) e isole uma mudança lógica por commit.
-2. Escolha o tipo: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `style`, `perf`.
-3. Escolha o escopo do Atena conforme a área tocada:
-   - `backend`, `frontend`, `chat`, `tools`, `incidents`, `rules`, `audit`, `ws`, `db` (produção, quando existir)
-   - `scaffolding`, `docs`, `design` (estado atual: specs, handoff, `.context/`, protótipo)
-4. Escreva o assunto em PT-BR, imperativo, ≤ 50 chars, sem ponto final ("adiciona", não "adicionado"/"adicionando").
-5. Use o corpo para o porquê, não o quê (o diff mostra o quê) — especialmente quando a mudança toca um dos 5 princípios ou o contrato de API.
-6. Referencie incidente/decisão quando fizer sentido (ex.: "ref decisions.md", "RF-2.4").
-7. Feche o trailer de co-autoria exigido pelo harness.
+1. Review what is staged (`git diff --staged`) and isolate one logical change per commit.
+2. Choose the type: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `style`, `perf`.
+3. Choose the Atena scope according to the area touched (list from `code-style.md`):
+   - `api`, `llm`, `chat`, `shippings`, `catalog`, `incidents`, `detector`, `rules`, `auth`, `audit`, `admin`, `observability`, `db`
+   - `make`, `context`, `deps` (Makefile, `.context/` knowledge base, dependencies)
+4. Write the subject in English, imperative, lower case, ≤ 72 chars, no trailing period ("add", not "added"/"adding").
+5. Use the body for the why, not the what (the diff shows the what) — especially when the change touches one of the 5 principles or the API contract.
+6. Reference an incident/decision when it makes sense (e.g. "ref decisions.md", "RF-2.4").
+7. Close with the co-authorship trailer required by the harness.
 
 ## Examples
 
-**Feature de tool/endpoint:**
+**Tool/endpoint feature:**
 ```
-feat(tools): adiciona search_messages com envelope paginado
+feat(shippings): add search_shippings with paginated envelope
 
-Espelha GET /api/messages/search no contrato 01-backend-api-contract.
-PhoneFull só sob reveal autorizado; resposta mascarada por padrão.
+Mirrors GET /api/shippings/search in docs/openapi.yaml.
+phone_full only under an authorized reveal; response masked by default.
 
 Co-Authored-By: Nova Pro <noreply@anthropic.com>
 ```
 
-**Fix respeitando princípio (LLM não fabrica dados):**
+**Fix respecting a principle (the LLM does not fabricate data):**
 ```
-fix(chat): impede contagem citada sem tool_result correspondente
+fix(chat): block counts cited without a matching tool_result
 
-A IA citava total fora do envelope retornado. Agora toda contagem
-referencia o campo `total` do último tool_result; senão, recusa.
+The AI cited a total outside the returned envelope. Now every count
+references the `total` field of the latest tool_result; otherwise, refusal.
 
 Co-Authored-By: Nova Pro <noreply@anthropic.com>
 ```
 
-**Validação server-side de incidente:**
+**Server-side incident validation:**
 ```
-feat(incidents): valida resolve no backend (categoria, descrição, escalonamento)
+feat(incidents): validate resolve in the backend (category, description, escalation)
 
-actionDescription >= 20 chars; escalatedTo obrigatório em *_escalated;
-transicao apenas de detected/acknowledged/auto_resolved -> resolved.
-Grava incident_activity + audit_log. Ref 01-backend-api-contract §D.
+action_description >= 20 chars; escalated_to required on *_escalated;
+transition only from detected/acknowledged/auto_resolved -> resolved.
+Writes incident_activity + audit_log. Ref 01-backend-api-contract §D.
 
 Co-Authored-By: Nova Pro <noreply@anthropic.com>
 ```
 
-**Tempo real e auditoria:**
+**Real time and audit:**
 ```
-fix(ws): repreenche incidentes via REST ao reconectar
+fix(incidents): refill incidents via REST on WS reconnect
 
-Backoff exponencial cap 30s; GET /api/incidents?status=detected,acknowledged
-no reconnect para não perder eventos durante a queda.
+Exponential backoff capped at 30s; GET /api/incidents?status=detected,acknowledged
+on reconnect so events lost during the drop are not missed.
 
 Co-Authored-By: Nova Pro <noreply@anthropic.com>
 ```
 
-**Estado atual do repo (docs/scaffolding):**
+**Knowledge base (`.context/`):**
 ```
-docs(design): registra decisao de banner persistente para incidentes
+docs(context): record the persistent-banner decision for incidents
 
 Co-Authored-By: Nova Pro <noreply@anthropic.com>
 ```
 
 ## Quality Bar
 
-- Conventional Commits sempre: `tipo(escopo): assunto`.
-- Assunto em PT-BR, imperativo, ≤ 50 chars, sem ponto final.
-- Escopo da lista do Atena (`backend|frontend|chat|tools|incidents|rules|audit|ws|db|docs|scaffolding|design`); não invente escopo solto.
-- Uma mudança lógica por commit.
-- Corpo explica o porquê; cite o princípio, RF/RNF ou doc do handoff quando relevante.
-- NUNCA inclua PII (telefone real, conteúdo de SMS) na mensagem.
-- Termine com o trailer `Co-Authored-By: Nova Pro <noreply@anthropic.com>`.
-- `breaking change` no contrato de API → use `feat!`/`fix!` ou rodapé `BREAKING CHANGE:`.
+- Conventional Commits always: `type(scope): subject`.
+- Subject in English, imperative, lower case, ≤ 72 chars, no trailing period.
+- Scope from the Atena list (`api|llm|chat|shippings|catalog|incidents|detector|rules|auth|audit|admin|observability|db|make|context|deps`); do not invent a loose scope.
+- One logical change per commit.
+- The body explains the why; cite the principle, RF/RNF or handoff doc when relevant.
+- NEVER include PII (real phone, SMS content) in the message.
+- End with the trailer `Co-Authored-By: Nova Pro <noreply@anthropic.com>`.
+- Breaking change in the API contract → use `feat!`/`fix!` or a `BREAKING CHANGE:` footer.
 
 ## Resource Strategy
 
-- A lista de escopos vive aqui; se crescer, mova para `references/scopes.md` e aponte.
-- Não crie `scripts/` de commit (hooks de commitlint) enquanto não houver toolchain; quando houver, é candidato.
-- Não duplique as convenções do AGENTS.md; cite-o.
+- The scope list is canonical in `.context/docs/code-style.md`; keep this file in sync with it (or move it to `references/scopes.md` and point there if it grows).
+- Do not create commit `scripts/` (commitlint hooks) unless the team adopts them; they are a candidate now that the toolchain exists.
+- Do not duplicate the conventions of AGENTS.md and `code-style.md`; cite them.

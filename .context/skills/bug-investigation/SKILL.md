@@ -10,73 +10,75 @@ scaffoldVersion: "2.0.0"
 ---
 ## Workflow
 
-> ESTADO DO REPO: só existe o protótipo de design (`docs/(protótipo original, não incluído)*.jsx`) e as specs. Não há backend nem app de produção ainda. Investigações hoje recaem sobre comportamento esperado vs. contrato/shape, não sobre stack traces de produção. Reproduza com mocks (`prototype/data.jsx`), nunca com PII real.
+> REPOSITORY STATE: the app is implemented — `apps/api` (NestJS 11 + Prisma/MySQL, DuckDB over S3), `apps/web` (React 18 + Vite) and `packages/types` (`@atena/types`). Investigations cover real code and logs as well as expected behavior vs. contract/shape (`@atena/types`, `docs/openapi.yaml`). The original design prototype is not included in the repo. Reproduce with fixtures/mocks (the existing specs and the seed), never with real PII.
 
-1. Reproduza com mock. Use os shapes de `prototype/data.jsx` (mesma fonte do `01-backend-api-contract.md` §C). Se o bug é de UI, abra o protótipo; se é de contrato, compare a resposta esperada com o shape documentado.
-2. Para um problema de entrega de SMS, siga a TRILHA: a tool `get_message_trail` (`GET /api/messages/{id}/trail`) devolve `events[]` na ordem `api_request → routing → provider_attempt → webhook_status → final`. O ponto onde a sequência quebra é a causa raiz (ex.: `provider_attempt` com `HTTP 402` → `INSUFFICIENT_BALANCE`).
-3. Para bug de chat/stream, valide a sequência SSE: `tool_call → tool_result → text_delta → done`, ou `refusal` quando fora de escopo. Um stream que pula `tool_result` e mesmo assim emite `text_delta` com dados é violação do princípio "LLM não fabrica dados".
-4. Para bug de tempo real, cheque os 3 estados de erro do protótipo (`prototype/error-states.jsx`): `ToolError` (tool falhou/timeout), `WebSocketStatusStrip` (WS desconectado/reconectando) e `SessionExpiredOverlay` (401, token rejeitado).
-5. Forme a hipótese checando o shape: campo faltando, snake_case vazando como camelCase, data relativa vindo do backend em vez de ISO, `phoneFull`/`contentPreview` vindo sem reveal.
-6. Verifique reconexão WS: ao reconectar, o cliente DEVE chamar `GET /api/incidents?status=detected,acknowledged` para repreencher estado — não confiar só no stream (eventos perdidos na queda).
-7. Documente a causa raiz e o princípio violado. Proponha o fix mais simples que respeita os 5 princípios.
-8. NUNCA logue PII (telefone em claro, conteúdo de SMS). Use `phoneMasked`/`phoneHash` em qualquer log ou nota de investigação.
+1. Reproduce with a fixture. Use the shapes of `@atena/types` (the same source as `docs/openapi.yaml`; `01-backend-api-contract.md` §C is their historical origin) and the existing specs' fixtures. If the bug is in the UI, run the web app (`apps/web`); if it is a contract bug, compare the actual response with the documented shape.
+2. For an SMS delivery problem, follow the TRAIL: the `get_shipping_trail` tool (`GET /api/shippings/{id}/trail`) returns `events[]` in the order `api_request → routing → provider_attempt → webhook_status → final`. The point where the sequence breaks is the root cause (e.g. a failed `provider_attempt` with `error_hint` `insufficient_credits`).
+3. For a chat/stream bug, validate the SSE sequence: `tool_call → tool_result → text_delta → done`, or `refusal` when out of scope. A stream that skips `tool_result` and still emits a `text_delta` with data is a violation of the "the LLM does not fabricate data" principle.
+4. For a real-time bug, check the 3 canonical error states: tool failure/timeout (the chat's tool row in `apps/web/src/chat/ChatPage.tsx`, and the retry state of `RevealField`), WS disconnected/reconnecting (`InfoStrip` in `apps/web/src/realtime/IncidentBanner.tsx`), and expired session (401 → the client's unauthorized handler in `apps/web/src/api/client.ts` sends the user back to the login).
+5. Form the hypothesis by checking the shape: a missing field, Prisma's camelCase leaking where the API must be snake_case, a relative date coming from the backend instead of ISO, `phone_full`/content arriving without reveal.
+6. Check the WS reconnection: per the handoff (`03-websocket-events.md`), on reconnect the client MUST refill its state from `GET /api/incidents?status=detected,acknowledged` — not rely on the stream alone (events are lost during the drop). The current client (`apps/web/src/realtime/useSupportEvents.ts`) only invalidates the `['incidents']` queries on WS events and polls the open-incident count every 30 s; there is no explicit re-fetch on reconnect, so treat that as a known gap.
+7. Document the root cause and the violated principle. Propose the simplest fix that respects the 5 principles.
+8. NEVER log PII (cleartext phone, SMS content). Use `phone_masked` or IDs (`phone_hash`, per the code-style convention) in any log or investigation note.
 
 ## Examples
 
-**Bug: chat mostra número de mensagens que a tool não retornou**
+**Bug: the chat shows a shipping count the tool did not return**
 ```
-## Bug: resposta da IA cita "184 envios" mas o tool_result trouxe 6
+## Bug: the AI's answer cites "184 shippings" but the tool_result returned 6
 
-### Reprodução (mock):
-1. Sessão de chat, pergunta "status do telefone +55 11 98765-1234 nas últimas 4h"
-2. Stream emite tool_call search_messages → tool_result com rows.length = 6
-3. text_delta diz "Encontrei 184 envios…"
+### Reproduction (fixture):
+1. Chat session, question "status of phone +55 11 98765-1234 in the last 4h"
+2. Stream emits tool_call search_shippings → tool_result with rows.length = 6
+3. text_delta says "Encontrei 184 envios…" ("I found 184 shippings…")
 
-### Investigação:
-- O 184 bate com relatedMessages do MOCK.incidents (INC-2401), não com search
-- LLM cruzou contexto e fabricou número fora do tool_result
+### Investigation:
+- The 184 matches the related_shippings of incident INC-2401, not the search
+- The LLM crossed context and fabricated a number outside the tool_result
 
-### Causa raiz:
-Violação do Princípio 2 (LLM não fabrica dados). O número tem de vir do
-envelope { total } do tool_result, não da memória do modelo.
+### Root cause:
+Violation of Principle 2 (the LLM does not fabricate data). The number has to come
+from the tool_result's { total } envelope, not from the model's memory.
 
 ### Fix:
-Prompt/guardrail: toda contagem citada referencia o campo `total` do último
-tool_result correspondente; senão, recusa explícita.
+Prompt/guardrail: every count cited references the `total` field of the latest
+matching tool_result; otherwise, explicit refusal.
 ```
 
-**Bug: WS não recupera incidentes após queda de rede**
+**Bug: WS does not recover incidents after a network drop**
 ```
-## Bug: incidente criado durante WS offline some da lista
+## Bug: an incident created while the WS was offline is missing from the list
 
-### Reprodução:
-1. Conexão WS cai (WebSocketStatusStrip mostra "Desconectado")
-2. Detector cria INC-2402 nesse intervalo (incident.created perdido)
-3. WS reconecta; lista de incidentes não mostra INC-2402
+### Reproduction:
+1. The WS connection drops (InfoStrip shows "Tempo real desconectado — reconectando…"
+   ("Real time disconnected — reconnecting…"))
+2. The detector creates INC-2402 in that interval (incident.created lost)
+3. The WS reconnects; the incident list does not show INC-2402
 
-### Causa raiz:
-Cliente confiou só no stream. Eventos durante a queda foram perdidos
-(03-websocket-events.md: "não confiar só no stream").
+### Root cause:
+The client relied on the stream alone. Events during the drop were lost
+(03-websocket-events.md: "do not rely on the stream alone").
 
 ### Fix:
-No reconnect, GET /api/incidents?status=detected,acknowledged e mesclar
-estado antes de voltar a escutar o WS. Backoff exponencial 1s→2s→…cap 30s.
+On reconnect, GET /api/incidents?status=detected,acknowledged (or invalidate the
+['incidents'] queries) and merge the state before listening to the WS again.
+Exponential backoff 1s→2s→…cap 30s.
 ```
 
 ## Quality Bar
 
-- Reproduza com mock antes de teorizar; `prototype/data.jsx` é a fonte de shapes.
-- NUNCA logue PII. Telefone vai mascarado (`+55 11 9****-1234`) ou como `phone_hash`; conteúdo de SMS nunca em claro.
-- Para entrega de SMS, ande pela trilha `message_events` na ordem canônica e localize o evento que quebra.
-- Para chat, a sequência SSE válida é `tool_call → tool_result → text_delta → done` (ou `refusal`); dado em `text_delta` sem `tool_result` é red flag.
-- Confirme contratos de shape: camelCase, ISO 8601 UTC, envelope paginado, `{ error: { code, message } }`.
-- Cheque os 3 estados de erro do protótipo antes de declarar bug novo — pode ser estado já previsto.
-- Reconexão WS deve repreencher via REST; eventos perdidos são esperados, perda de estado não.
-- Escreva nota de causa raiz que nomeie qual dos 5 princípios foi violado, quando aplicável.
+- Reproduce with a fixture before theorizing; `@atena/types` is the source of shapes.
+- NEVER log PII. The phone goes masked (`+55 11 9****-1234`) or as an ID/`phone_hash`; SMS content never in cleartext.
+- For SMS delivery, walk the shipping trail (`get_shipping_trail` events, read from the S3 detailed report — there is no `message_events` table) in the canonical order and find the event that breaks.
+- For chat, the valid SSE sequence is `tool_call → tool_result → text_delta → done` (or `refusal`); data in `text_delta` without a `tool_result` is a red flag.
+- Confirm shape contracts: snake_case, ISO 8601 UTC, paginated envelope, `{ error: { code, message } }`.
+- Check the 3 canonical error states before declaring a new bug — it may be an already-designed state.
+- WS reconnection must refill via REST; lost events are expected, lost state is not.
+- Write a root-cause note that names which of the 5 principles was violated, when applicable.
 
 ## Resource Strategy
 
-- Use os arquivos do protótipo como laboratório: `error-states.jsx`, `chat.jsx`, `tool-results.jsx`, `data.jsx`.
-- Adicione `references/` só se acumular um catálogo de erros de provider (ex.: mapa `INSUFFICIENT_BALANCE → HTTP 402`).
-- Não crie `scripts/` de repro automatizada enquanto não houver código executável; hoje a repro é manual sobre o protótipo.
-- Não crie arquivos de PII de exemplo; sempre dados mascarados/fictícios.
+- Use the real code and its specs as the lab: `apps/web/src/chat/` (`ChatPage.tsx`, `sse.ts`, `tool-cards/`), `apps/web/src/realtime/`, `apps/api/src/chat/orchestrator.service.ts`, and the types in `packages/types/src/index.ts`.
+- Add `references/` only if a catalog of provider errors builds up (e.g. a map of `error_hint` values such as `insufficient_credits`, `invalid_number`, `unreachable`).
+- `scripts/` for automated repro are now possible (there is executable code); prefer adding a regression spec (Jest/Vitest/Playwright) over a standalone script.
+- Do not create sample PII files; always masked/fictitious data.

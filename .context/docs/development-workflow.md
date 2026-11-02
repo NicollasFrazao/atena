@@ -10,61 +10,63 @@ scaffoldVersion: "2.0.0"
 
 ## Development Workflow
 
-**Estado atual: MVP implementado.** O repositório é um **monorepo npm** — `apps/api` (NestJS 11 + Prisma/MySQL), `apps/web` (React 18 + Vite) e `packages/types` (`@atena/types`). Auth OIDC, tools, orquestrador (Nova Pro/fake), busca/trilha/relatórios sobre o detailed report no S3, incidentes + detector + realtime, regras, reveal de PII, admin de usuários, audit log e observabilidade estão presentes. O handoff em [`docs/design_handoff_atena/`](../../docs/design_handoff_atena/) é **referência histórica** de design/contrato.
+**Current state: MVP implemented.** The repository is an **npm monorepo** — `apps/api` (NestJS 11 + Prisma/MySQL), `apps/web` (React 18 + Vite) and `packages/types` (`@atena/types`). OIDC auth, tools, orchestrator (Nova Pro/fake), search/trail/reports over the detailed report in S3, incidents + detector + realtime, rules, PII reveal, user admin, audit log and observability are all present. The handoff in [`docs/design_handoff_atena/`](../../docs/design_handoff_atena/) is a **historical reference** for design/contract.
 
-> Atenção: a API real serializa em **`snake_case`** na borda (revisão do handoff, que era camelCase). Ver [code-style.md](./code-style.md).
+> Note: the real API serializes in **`snake_case`** at the edge (a revision of the handoff, which was camelCase). See [code-style.md](./code-style.md).
 
-O trabalho hoje é evoluir o código existente seguindo os princípios não-negociáveis e o code style. Frentes residuais estão em [tech-debt.md](./tech-debt.md).
+Today's work is evolving the existing code while following the non-negotiable principles and the code style. Residual work is listed in [tech-debt.md](./tech-debt.md).
 
-### Mapa de implementação (o que já existe)
+### Implementation map (what already exists)
 
-- **Fundação:** auth OIDC Microsoft Entra (state/nonce/PKCE + sessão por cookie JWT) + RBAC gerenciado no app (papéis no banco, `@Requires`); schema MySQL + migrations Prisma; interceptor global de audit (`@Audit`).
-- **Self-service (read-only):** tools `search_shippings`/`get_shipping_trail`/`analyze_shipping_content`/`generate_delivery_report`/`list_providers`/`list_customers`; orquestrador LLM (chat, SSE, tool routing, recusa, `ThinkingSplitter`); mascaramento de PII + reveal auditado; frontend de chat + tool results.
-- **Proativo:** detector de anomalias (4 regras + shadow mode); gateway socket.io + push de incidente; ciclo de vida do incidente (`acknowledge`/`resolve`/`comment`) com validação server-side; telas de Regras, Relatórios, Audit, Observabilidade, Admin de usuários.
-- **Dado de entrega:** motor `AuditQueryService` (DuckDB sobre o detailed report no S3 + cache `/tmp`).
+- **Foundation:** Microsoft Entra OIDC auth (state/nonce/PKCE + JWT cookie session) + app-managed RBAC (roles in the database, `@Requires`); MySQL schema + Prisma migrations; global audit interceptor (`@Audit`).
+- **Self-service (read-only):** tools `search_shippings`/`get_shipping_trail`/`analyze_shipping_content`/`generate_delivery_report`/`list_providers`/`list_customers`; LLM orchestrator (chat, SSE, tool routing, refusal, `ThinkingSplitter`); PII masking + audited reveal; chat frontend + tool results.
+- **Proactive:** anomaly detector (4 rules + shadow mode); socket.io gateway + incident push; incident lifecycle (`acknowledge`/`resolve`/`comment`) with server-side validation; Rules, Reports, Audit, Observability and User admin screens.
+- **Delivery data:** the `AuditQueryService` engine (DuckDB over the detailed report in S3 + `/tmp` cache).
 
-### Como usar o handoff (referência histórica)
+### How to use the handoff (historical reference)
 
-- O protótipo (`prototype/*.jsx`) e os mocks de `prototype/data.jsx` foram a referência de design/contrato. O front de produção usa um **design-system próprio em CSS** (`apps/web/src/styles/design-system`), não styled-components nem o pacote `atena-design-system` externo.
-- Os shapes hoje vivem em `@atena/types`; a API serializa em `snake_case`. As telas e tokens de [05-design-reference.md](../../docs/design_handoff_atena/05-design-reference.md) (Plankton `#077E70`, semânticas, Phosphor Icons, sem emoji, PT-BR informal) ainda valem como paridade visual.
+- The prototype (`prototype/*.jsx`) and the mocks in `prototype/data.jsx` were the design/contract reference (that folder is no longer in the repository). The production front end uses its **own CSS design system** (`apps/web/src/styles/design-system`), not styled-components nor the external `atena-design-system` package.
+- The shapes now live in `@atena/types`; the API serializes in `snake_case`. The screens and tokens in [05-design-reference.md](../../docs/design_handoff_atena/05-design-reference.md) (Plankton `#077E70`, semantic colors, Phosphor Icons, no emoji, informal PT-BR) still apply for visual parity.
 
 ## Branching & Releases
 
-- **Branch principal:** `master`. PRs miram `master`. Trunk-based / feature branches curtas.
-- **Conventional Commits** obrigatórios. Escopos por módulo: `feat(chat)`, `feat(shippings)`, `feat(incidents)`, `feat(audit)`, `feat(rules)`, `feat(auth)`, `feat(detector)`, `fix(...)`, etc. (ver também [code-style.md](./code-style.md)).
-- Ao commitar/abrir PR, só faça quando o usuário pedir; se estiver em `master`, crie uma branch antes.
+- **Main branch:** `master`. PRs target `master`. Trunk-based / short-lived feature branches.
+- **Conventional Commits** are mandatory and checked by commitlint (hook and CI). Per-module scopes: `feat(chat)`, `feat(shippings)`, `feat(incidents)`, `feat(audit)`, `feat(rules)`, `feat(auth)`, `feat(detector)`, `fix(...)`, etc. Branch prefixes, the version each type implies and the PR rules are in [development-conventions.md](./development-conventions.md) and [CONTRIBUTING.md](../../CONTRIBUTING.md).
+- `master` is protected: work on a branch and open a pull request; the CI jobs are the required checks.
+- Commit/open a PR only when the user asks; if you are on `master`, create a branch first.
 
 ## Local Development
 
-Comandos reais (monorepo npm + Makefile; ver [tooling.md](./tooling.md)):
+Real commands (npm monorepo + Makefile; see [tooling.md](./tooling.md)):
 
-- Instalar: `npm install`
-- Gerar `.env`: `make env` (cria `apps/api/.env` a partir de `.env.example`)
-- Subir tudo no Docker: `make up ENV=local` (ou `make dev` com `AUTH_DEV_BYPASS=true`)
-- API no host (watch): `npm run dev` (ou `make api`); front: `make web` (Vite)
-- Migrar: `make migrate`; semear: `make seed`
-- Testes: `make test` (unit + e2e mock) / `make test-e2e` (MySQL real)
-- Lint: `npm run lint`; smoke do health: `make smoke`
-- Datadog (opcional): `make datadog`
+- Install: `npm install`
+- Generate `.env`: `make env` (creates `apps/api/.env` from `.env.example`)
+- Bring everything up in Docker: `make up ENV=local` (or `make dev` with `AUTH_DEV_BYPASS=true`)
+- API on the host (watch): `npm run dev` (or `make api`); front end: `make web` (Vite)
+- Migrate: `make migrate`; seed: `make seed`
+- Tests: `make test` (unit + mocked e2e) / `make test-e2e` (real MySQL)
+- Lint: `npm run lint`; health smoke test: `make smoke`
+- The full quality gate (lint, typecheck, layer rules, unused code, coverage, Playwright, context check), one command at a time: [development-conventions.md](./development-conventions.md), "Quality gate"
+- Datadog (optional): `make datadog`
 
-Em dev, use `LLM_PROVIDER=fake` (sem credencial Bedrock) e `AUTH_DEV_BYPASS=true` (sem login).
+In dev, use `LLM_PROVIDER=fake` (no Bedrock credentials) and `AUTH_DEV_BYPASS=true` (no login).
 
 ## Code Review Expectations
 
-- Conventional Commits respeitados; PR com amostra de output quando o comportamento muda.
-- **Princípios não-negociáveis** ([README §5](../../docs/design_handoff_atena/README.md)): o LLM não acessa o banco; nenhum dado estruturado fabricado pelo LLM (sem tool → recusa); `acknowledge`/`resolve` **nunca** como tool, só REST com validação server-side; toda ação auditável escrevendo no audit log; PII mascarada por padrão e reveal logado (`pii:reveal`).
-- **Validação dupla**: a UI desabilita o botão, mas o backend revalida (categoria/descrição/escalated_to/transição de estado).
-- **Code style** ([code-style.md](./code-style.md)): `snake_case` na borda da API; nomes semânticos; um item por linha; JSDoc; `@todo` para pendências; lint + Sonar limpos.
+- Conventional Commits respected; PR includes an output sample when behavior changes.
+- **Non-negotiable principles** ([README §5](../../docs/design_handoff_atena/README.md)): the LLM does not access the database; no structured data fabricated by the LLM (no tool → refusal); `acknowledge`/`resolve` **never** as a tool, only REST with server-side validation; every auditable action writes to the audit log; PII masked by default and reveal logged (`pii:reveal`).
+- **Double validation**: the UI disables the button, but the backend revalidates (category/description/escalated_to/state transition).
+- **Code style** ([code-style.md](./code-style.md)) and conventions ([development-conventions.md](./development-conventions.md)): `snake_case` at the API edge; semantic names; one item per line; TSDoc on exports; deferred work in [tech-debt.md](./tech-debt.md), not as `TODO` markers; the gate green.
 
 ## Onboarding Tasks
 
-Para quem está começando:
+For newcomers:
 
-1. Ler, nesta ordem: [project-overview.md](./project-overview.md) → [architecture.md](./architecture.md) → [data-flow.md](./data-flow.md) → [code-style.md](./code-style.md).
-2. Rodar local (`make env`, ajustar `apps/api/.env`, `make up` ou `npm run dev` + `make web`); abrir o chat e percorrer busca → tool result → reveal → incidentes.
-3. Decorar os 5 princípios não-negociáveis.
-4. Conferir o débito residual em [tech-debt.md](./tech-debt.md).
-5. Para histórico de design/contrato (telas, shapes originais), consultar o handoff em [docs/design_handoff_atena/](../../docs/design_handoff_atena/).
+1. Read, in this order: [project-overview.md](./project-overview.md) → [architecture.md](./architecture.md) → [data-flow.md](./data-flow.md) → [code-style.md](./code-style.md).
+2. Run it locally (`make env`, adjust `apps/api/.env`, `make up` or `npm run dev` + `make web`); open the chat and walk through search → tool result → reveal → incidents.
+3. Memorize the 5 non-negotiable principles.
+4. Review the residual debt in [tech-debt.md](./tech-debt.md).
+5. For design/contract history (screens, original shapes), consult the handoff in [docs/design_handoff_atena/](../../docs/design_handoff_atena/).
 
 ## Cross-References
 

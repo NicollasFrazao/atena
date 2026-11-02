@@ -10,53 +10,57 @@ scaffoldVersion: "2.0.0"
 
 # Testing Strategy
 
-> **Estado atual: há suíte de testes implementada.** Backend com **Jest** (`apps/api`, `*.spec.ts` + e2e), frontend com **Vitest** (`apps/web`). `make test` roda unit + e2e mockado; `make test-e2e` roda integração contra MySQL real. **Não há CI** (`.github/workflows`) ainda. A prioridade dos testes não é "cobrir tudo" — é blindar os invariantes dos 5 princípios.
+> **Current state: a test suite is implemented.** Backend with **Jest** (`apps/api`, `*.spec.ts` + e2e), frontend with **Vitest** (`apps/web`). `make test` runs unit + mocked e2e; `make test-e2e` runs integration against real MySQL. **CI exists** (`.github/workflows/ci.yml`: lint + tests for the API; lint + Vitest + Playwright e2e for the web). The priority of the tests is not "cover everything" — it is to armor the invariants of the 5 principles.
 
-A Atena é um sistema onde a corretude tem implicação de segurança e de confiança: ela lida com PII, registra audit logs imutáveis e deve **recusar** em vez de inventar dados. Prioridades, nesta ordem:
+Atena is a system where correctness has security and trust implications: it handles PII, records immutable audit logs and must **refuse** instead of inventing data. Priorities, in this order:
 
-1. **Contratos de shape** — a resposta de cada endpoint deve bater com `@atena/types` (serializados em `snake_case` na borda). Teste de contrato evita drift entre frontend e backend.
-2. **Tools determinísticas** — as tools read-only (`search_shippings`, `get_shipping_trail`, `analyze_shipping_content`, `generate_delivery_report`, `list_providers`, `list_customers`, `list_incidents`, `get_incident`, `generate_incident_report`) devem ser determinísticas: mesma entrada → mesma saída. Testar sem o LLM no loop.
-3. **Validação server-side do resolve de incidente** (§D, RF-2.4) — `action_category` obrigatório; `action_description` ≥ 20 chars (≥ 10 no `auto_resolved`); `escalated_to` obrigatório quando category ∈ {`internal_escalated`, `provider_escalated`}; só transições `detected`/`acknowledged`/`auto_resolved` → `resolved` (senão 409/422). Testar que o backend **rejeita** mesmo quando a UI deixaria passar (validação dupla).
-4. **Mascaramento de PII + audit no reveal** (RNF-1.4) — toda resposta de tool sai mascarada; reveal exige `pii:reveal` e **escreve** `reveal_phone`/`reveal_content`. Testar que não há caminho que devolva PII sem registro.
-5. **Recusa explícita do LLM (princípio 2)** — pedido sem tool aplicável → recusa estruturada, nunca um dado fabricado. Testar com prompts adversariais.
-6. **RBAC guards** — papel sem a permissão é negado (401 sem sessão, 403 sem permissão); guard `@Requires(perm)`.
-7. **Eventos socket.io + reconexão** — formato de `incident.created/updated/auto_resolved`; handshake rejeitado sem sessão.
-8. **Estados de erro** — tool timeout/failure (com retry), socket desconectado, sessão expirada (401 → overlay sem perder a conversa salva), idle timeout do stream Bedrock.
-9. **Motor de auditoria** — `DuckDbAuditQueryService` sobre fixtures locais do detailed report: grão `(campaign_id, phone)`, janela por envio, scan simétrico, canal `sms`/`sms_flash`.
+1. **Shape contracts** — each endpoint's response must match `@atena/types` (serialized in `snake_case` at the edge). Contract tests prevent drift between frontend and backend.
+2. **Deterministic tools** — the read-only tools (`search_shippings`, `get_shipping_trail`, `analyze_shipping_content`, `generate_delivery_report`, `list_providers`, `list_customers`, `list_incidents`, `get_incident`, `generate_incident_report`) must be deterministic: same input → same output. Test them without the LLM in the loop.
+3. **Server-side validation of incident resolve** (§D, RF-2.4) — `action_category` mandatory; `action_description` ≥ 20 chars (≥ 10 for `auto_resolved`); `escalated_to` mandatory when category ∈ {`internal_escalated`, `provider_escalated`}; only transitions `detected`/`acknowledged`/`auto_resolved` → `resolved` (otherwise 409/422). Test that the backend **rejects** even when the UI would let it through (double validation).
+4. **PII masking + audit on reveal** (RNF-1.4) — every tool response comes out masked; reveal requires `pii:reveal` and **writes** `reveal_phone`/`reveal_content`. Test that there is no path that returns PII without a record.
+5. **Explicit LLM refusal (principle 2)** — a request with no applicable tool → structured refusal, never fabricated data. Test with adversarial prompts.
+6. **RBAC guards** — a role without the permission is denied (401 without a session, 403 without the permission); guard `@Requires(perm)`.
+7. **socket.io events + reconnection** — format of `incident.created/updated/auto_resolved`; handshake rejected without a session.
+8. **Error states** — tool timeout/failure (with retry), disconnected socket, expired session (401 → overlay without losing the saved conversation), Bedrock stream idle timeout.
+9. **Audit engine** — `DuckDbAuditQueryService` over local detailed-report fixtures: `(campaign_id, phone)` grain, window by send, symmetric scan, `sms`/`sms_flash` channel.
 
 ## Test Types
 
-Stack de testes em uso:
+Test stack in use:
 
-- **Unit (backend)** — **Jest** (`apps/api/jest.config.js`, ts-jest), arquivos `*.spec.ts` (~45 suítes). Alvos: validadores do resolve, mascaramento de PII, tools determinísticas, detector, regras, motor de auditoria, orquestrador, guards.
-- **Unit (frontend)** — **Vitest** (`apps/web`), `*.spec.ts`/`*.spec.tsx` (~10 arquivos): auth, chat (useChat/SSE/reveal), realtime (banner), util (tempo/usuário), tool-cards.
-- **Integration / E2E (backend)** — `apps/api/src/http.e2e.spec.ts` (pipeline completo, Prisma mockado, roda no `make test`) e `apps/api/src/db.e2e-spec.ts` (**MySQL real** via `make test-e2e`: sobe banco, migra, semeia; valida search/trilha/providers/reveal+audit/report/chat-SSE, rules/incidents/lifecycle/observability/dev-detect sobre o seed).
-- **Contract** — shapes comparados contra `@atena/types` (compile-time + asserts nos specs).
+- **Unit (backend)** — **Jest** (`apps/api/jest.config.js`, ts-jest), `*.spec.ts` files (~45 suites). Targets: resolve validators, PII masking, deterministic tools, detector, rules, audit engine, orchestrator, guards.
+- **Unit (frontend)** — **Vitest** (`apps/web`), `*.spec.ts`/`*.spec.tsx` (~10 files): auth, chat (useChat/SSE/reveal), realtime (banner), util (time/user), tool-cards.
+- **Integration / E2E (backend)** — `apps/api/src/http.e2e.spec.ts` (full pipeline, mocked Prisma, runs in `make test`) and `apps/api/src/db.e2e-spec.ts` (**real MySQL** via `make test-e2e`: starts the database, migrates, seeds; validates search/trail/providers/reveal+audit/report/chat-SSE, rules/incidents/lifecycle/observability/dev-detect over the seed).
+- **Contract** — shapes compared against `@atena/types` (compile-time + asserts in the specs).
 
 ## Running Tests
 
-Comandos reais:
+Real commands:
 
-- Tudo (unit + e2e mock): `make test` (ou `npm test`).
-- Backend só: `npm test --workspace @atena/api`.
-- Frontend só: `npm run test --workspace @atena/web` (Vitest).
-- E2E de integração (MySQL real): `make test-e2e`.
+- Everything (unit + mocked e2e): `make test` (or `npm test`).
+- Backend only: `npm test --workspace @atena/api`.
+- Frontend only: `npm run test --workspace @atena/web` (Vitest).
+- Integration E2E (real MySQL): `make test-e2e`.
 - Lint: `npm run lint`.
+- With coverage: `npm run test:coverage` (both apps), or `npm run test:coverage -w @atena/api` / `-w @atena/web`.
+- Browser e2e (hermetic, mocked API): `npm run e2e -w @atena/web`.
+- Tooling (local ESLint rules, context script): `npm run test:tooling`.
 
 ## Quality Gates
 
-- **Invariantes de segurança sem exceção:** os testes de mascaramento de PII, audit no reveal, validação do resolve e recusa do LLM são tratados como **bloqueantes**.
-- **Lint/tipos antes do merge** — `npm run lint` sem erros nem avisos (flat config; também resolver SonarLint); `tsc` strict sem erros.
-- **CI** — pipeline ainda **não** configurado (`.github/workflows` ausente); a suíte é rodada localmente via `make test`/`make test-e2e`.
+- **Security invariants without exception:** the tests for PII masking, audit on reveal, resolve validation and LLM refusal are treated as **blocking**.
+- **Lint/types before merge** — `npm run lint` with no errors or warnings (type-aware, with the Sonar rules); `npm run typecheck` with no errors.
+- **Coverage** — `npm run test:coverage`. The API enforces **80%** on statements, branches, functions and lines over all of `src` (except the entry points `main.ts` and `tracing.ts`), in `apps/api/jest.config.js`; measured on 2026-11-01: statements 94.4%, branches 82.7%, functions 89.4%, lines 94.2% (395 tests). The web app's unit tests cover the logic modules only (16.7% statements, 54.7% branches, 43.7% functions), so its gate is a ratchet at that floor in `apps/web/vite.config.ts` until component tests exist ([tech-debt.md](./tech-debt.md) item 13). Never lower a threshold or widen an exclusion to pass.
+- **CI** — `.github/workflows/ci.yml`, one job per check: `lint`, `typecheck`, `architecture`, `unused`, `test-api`, `test-web`, `e2e-web` (Playwright), `tooling`, `audit`, `context`, `commitlint`, on pushes to `master` and on PRs; `make test-e2e` (real MySQL) is still run locally.
 
 ## Troubleshooting
 
-Pontos de fragilidade:
+Fragile spots:
 
-- **Não testar o LLM de forma não-determinística.** Use o `FakeLlmProvider`; teste o orquestrador, o tool routing e a recusa — não a saída livre do modelo. Isolar a IA dos testes de contrato evita flakiness.
-- **Socket.io e timers** — testes de reconexão/idle timeout precisam de fake timers; sockets reais geram flakiness.
-- **Audit log append-only** — em integration, a role de teste deve replicar INSERT+SELECT apenas; testar que UPDATE/DELETE falham é parte do gate de imutabilidade.
-- **Fuso/relativos** — UI mostra tempos relativos e janelas em BRT (`APP_TIMEZONE`); fixe o relógio nos testes que comparam esses valores.
-- **Motor de auditoria** — usar fixtures locais (diretório) em vez do S3 real; `ATENA_AUDIT_SOURCE_ROOT` aponta para um diretório nos testes.
+- **Do not test the LLM non-deterministically.** Use `FakeLlmProvider`; test the orchestrator, tool routing and refusal — not the model's free-form output. Isolating the AI from the contract tests avoids flakiness.
+- **socket.io and timers** — reconnection/idle-timeout tests need fake timers; real sockets cause flakiness.
+- **Append-only audit log** — in integration, the test role must replicate INSERT+SELECT only; testing that UPDATE/DELETE fail is part of the immutability gate.
+- **Time zone/relative times** — the UI shows relative times and windows in BRT (`APP_TIMEZONE`); pin the clock in tests that compare these values.
+- **Audit engine** — use local fixtures (a directory) instead of the real S3; `ATENA_AUDIT_SOURCE_ROOT` points to a directory in the tests.
 
-Ver [`development-workflow.md`](./development-workflow.md) para onde os testes encaixam no fluxo de contribuição.
+See [`development-workflow.md`](./development-workflow.md) for where tests fit into the contribution flow.
