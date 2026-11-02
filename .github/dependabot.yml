@@ -30,6 +30,10 @@ updates:
         update-types: ['version-update:semver-major']
       - dependency-name: 'eslint-plugin-react-hooks' # #38
         update-types: ['version-update:semver-major']
+      - dependency-name: 'prisma' # #44
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@prisma/client' # #44
+        update-types: ['version-update:semver-major']
     groups:
       nest:
         patterns:
