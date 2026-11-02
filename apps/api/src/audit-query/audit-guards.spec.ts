@@ -5,61 +5,75 @@ const MIN = '2026-06-18T20:40:00Z';
 
 describe('assertQueryWithinMinDate', () => {
   it('não barra nada quando minQueryDate é null (guarda desligada)', () => {
-    expect(() => assertQueryWithinMinDate(
-      undefined,
-      null,
-    )).not.toThrow();
+    expect(() => {
+      assertQueryWithinMinDate(
+        undefined,
+        null,
+      );
+    }).not.toThrow();
 
-    expect(() => assertQueryWithinMinDate(
-      {
-        from: new Date('2020-01-01T00:00:00Z'),
-        to: null,
-      },
-      null,
-    )).not.toThrow();
+    expect(() => {
+      assertQueryWithinMinDate(
+        {
+          from: new Date('2020-01-01T00:00:00Z'),
+          to: null,
+        },
+        null,
+      );
+    }).not.toThrow();
   });
 
   it('barra janela ausente ou aberta (from null) quando a guarda está ligada', () => {
-    expect(() => assertQueryWithinMinDate(
-      undefined,
-      MIN,
-    )).toThrow(BadRequestException);
+    expect(() => {
+      assertQueryWithinMinDate(
+        undefined,
+        MIN,
+      );
+    }).toThrow(BadRequestException);
 
-    expect(() => assertQueryWithinMinDate(
-      {
-        from: null,
-        to: new Date(),
-      },
-      MIN,
-    )).toThrow(BadRequestException);
+    expect(() => {
+      assertQueryWithinMinDate(
+        {
+          from: null,
+          to: new Date(),
+        },
+        MIN,
+      );
+    }).toThrow(BadRequestException);
   });
 
   it('barra janela que começa antes da data mínima', () => {
-    expect(() => assertQueryWithinMinDate(
-      {
-        from: new Date('2026-06-18T20:39:59Z'),
-        to: null,
-      },
-      MIN,
-    )).toThrow(BadRequestException);
+    expect(() => {
+      assertQueryWithinMinDate(
+        {
+          from: new Date('2026-06-18T20:39:59Z'),
+          to: null,
+        },
+        MIN,
+      );
+    }).toThrow(BadRequestException);
   });
 
   it('permite janela que começa em/depois da data mínima', () => {
-    expect(() => assertQueryWithinMinDate(
-      {
-        from: new Date(MIN),
-        to: null,
-      },
-      MIN,
-    )).not.toThrow();
+    expect(() => {
+      assertQueryWithinMinDate(
+        {
+          from: new Date(MIN),
+          to: null,
+        },
+        MIN,
+      );
+    }).not.toThrow();
 
-    expect(() => assertQueryWithinMinDate(
-      {
-        from: new Date('2026-06-18T21:00:00Z'),
-        to: new Date('2026-06-18T22:00:00Z'),
-      },
-      MIN,
-    )).not.toThrow();
+    expect(() => {
+      assertQueryWithinMinDate(
+        {
+          from: new Date('2026-06-18T21:00:00Z'),
+          to: new Date('2026-06-18T22:00:00Z'),
+        },
+        MIN,
+      );
+    }).not.toThrow();
   });
 
   it('o erro carrega o código acionável min_query_date', () => {

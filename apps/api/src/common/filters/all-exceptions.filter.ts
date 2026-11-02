@@ -9,32 +9,33 @@ import {
 import type { Request, Response } from 'express';
 import type { ApiErrorInterface } from '@atena/types';
 
+/** First status of the 5xx range, as a plain number (the status read from an exception is a number). */
+const SERVER_ERROR_STATUS: number = HttpStatus.INTERNAL_SERVER_ERROR;
+
+/** Default error code of each mapped HTTP status. */
+const CODE_BY_STATUS: Partial<Record<number, string>> = {
+  [HttpStatus.BAD_REQUEST]: 'bad_request',
+  [HttpStatus.UNAUTHORIZED]: 'unauthorized',
+  [HttpStatus.FORBIDDEN]: 'forbidden',
+  [HttpStatus.NOT_FOUND]: 'not_found',
+  [HttpStatus.CONFLICT]: 'conflict',
+  [HttpStatus.UNPROCESSABLE_ENTITY]: 'unprocessable_entity',
+};
+
 /**
  * Mapeia status HTTP → code default do erro (quando a exceção não traz um `error.code`).
  *
- * @param {number} status - Código de status HTTP.
- * @returns {string} Code estável correspondente (ex.: 404 → `'not_found'`); para 5xx sem mapeamento
+ * @param status - Código de status HTTP.
+ *
+ * @returns Code estável correspondente (ex.: 404 → `'not_found'`); para 5xx sem mapeamento
  *   retorna `'internal_error'`, demais não mapeados retornam `'error'`.
  */
 function codeFromStatus(status: number): string {
-  switch (status) {
-    case HttpStatus.BAD_REQUEST:
-      return 'bad_request';
-    case HttpStatus.UNAUTHORIZED:
-      return 'unauthorized';
-    case HttpStatus.FORBIDDEN:
-      return 'forbidden';
-    case HttpStatus.NOT_FOUND:
-      return 'not_found';
-    case HttpStatus.CONFLICT:
-      return 'conflict';
-    case HttpStatus.UNPROCESSABLE_ENTITY:
-      return 'unprocessable_entity';
-    default:
-      return status >= 500
-        ? 'internal_error'
-        : 'error';
-  }
+  const fallback = status >= SERVER_ERROR_STATUS
+    ? 'internal_error'
+    : 'error';
+
+  return CODE_BY_STATUS[status] ?? fallback;
 }
 
 /**
@@ -55,9 +56,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
    * Trata a exceção: resolve status + corpo `{ error: { code, message } }`, loga na borda
    * (sem PII) e envia a resposta JSON.
    *
-   * @param {unknown} exception - Exceção capturada (HttpException, AppException ou erro inesperado).
-   * @param {ArgumentsHost} host - Contexto de execução do Nest, usado para obter `req`/`res`.
-   * @returns {void}
+   * @param exception - Exceção capturada (HttpException, AppException ou erro inesperado).
+   * @param host - Contexto de execução do Nest, usado para obter `req`/`res`.
    */
   catch(
     exception: unknown,
@@ -67,7 +67,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<Request>();
 
-    let status = HttpStatus.INTERNAL_SERVER_ERROR;
+    let status: number = HttpStatus.INTERNAL_SERVER_ERROR;
 
     let body: ApiErrorInterface = {
       error: {
@@ -78,7 +78,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
-      const response = exception.getResponse();
+      // Typed `string | object`, but `new HttpException(null, ...)` (code outside this app) yields null.
+      const response = exception.getResponse() as string | object | null;
 
       if (
         typeof response === 'object'
@@ -109,7 +110,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // Borda: loga aqui (sem PII — só método + path, sem query string).
     const where = `${req.method} ${req.path}`;
 
-    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+    if (status >= SERVER_ERROR_STATUS) {
       this.logger.error(
         `${where} → ${status} ${body.error.code}`,
         exception instanceof Error

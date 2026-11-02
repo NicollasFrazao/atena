@@ -10,62 +10,62 @@ scaffoldVersion: "2.0.0"
 ---
 ## Workflow
 
-Auditoria de segurança do Atena. A superfície de risco do produto é PII de SMS (telefone + conteúdo) e a integridade do registro de incidentes. Antes de auditar, leia `README` §5 (5 princípios) e `02-data-model.md`. Além do OWASP top 10 genérico, rode os controles específicos do Atena abaixo.
+Atena security audit. The product's risk surface is SMS PII (phone + content) and the integrity of the incident record. Before auditing, read `README` §5 (5 principles), `.context/docs/security.md` and `apps/api/prisma/schema.prisma` (`02-data-model.md` is the historical reference). Besides the generic OWASP top 10, run the Atena-specific controls below.
 
-1. **PII mascarada por padrão (RNF-1.4):** confirme que telefone (`phoneMasked` por padrão; `phone_e164` nunca exposto sem reveal) e conteúdo de SMS (`contentPreview` oculto) chegam mascarados. Reveal de telefone ou conteúdo SEMPRE escreve no audit (`reveal_phone` / `reveal_content`, severity `pii`). Veja `PhoneCell` / `ContentRevealBox` no protótipo como referência do comportamento — na produção a decisão de revelar é server-side, não client-side.
-2. **Conteúdo bruto de SMS só no S3:** verifique que texto sensível não está em coluna do MySQL — `messages.content_ref` é só um ponteiro. Tools que precisam do texto buscam no S3 sob demanda, com log de acesso. Nada de PII em log de aplicação.
-3. **`phone_hash` para busca/log:** buscas e logs usam `phone_hash`, não `phone_e164`, para não vazar PII em índices/logs.
-4. **Audit log imutável (RNF-1.5):** `audit_log` só aceita INSERT + SELECT (sem UPDATE/DELETE); app role com permissão restrita; retenção 1 ano; idealmente append-only/particionado. Confirme que toda ação sensível gera entry (`tool_call`, `reveal_phone`, `reveal_content`, `incident_created`, `incident_ack`, `incident_resolve`, `session_start`, `export_report`, `rule_update`) via interceptor global NestJS.
-5. **RBAC por endpoint:** todo endpoint tem guard. `support_analyst` (chat/busca/trilha/ack/resolve) NÃO acessa relatórios gerenciais, edição de regras nem audit log — esses são só de `support_lead`. Endpoint sem guard, ou checagem de papel só na UI, é achado.
-6. **Validação dupla server-side (resolve §D):** a UI desabilita campos, mas o backend SEMPRE revalida — `actionCategory` ∈ enum; `actionDescription` ≥ 20 chars (≥ 10 no `auto_resolved`); `escalatedTo` obrigatório se category ∈ {provider_escalated, internal_escalated}; só transição detected|acknowledged|auto_resolved → resolved; cada mudança escreve `incident_activity` + audit. Garanta também que ack/resolve/comment NÃO são tools do LLM (mudança de estado fora do alcance do modelo — princípio 3).
-7. **LLM não fabrica nem executa:** o modelo nunca toca o banco; todo dado estruturado vem de retorno de tool; pedido fora de escopo → recusa explícita. LLM é o Nova Pro via Amazon Bedrock (Converse API), sem retenção de prompt.
-8. **Auth / sessão:** auth em todos os endpoints (login social institucional (OIDC, domínio restrito), Bearer token OIDC (login social institucional); WS valida token no handshake). OIDC via Microsoft 365 (Entra ID), atrás de uma abstração de auth para trocar de IdP facilmente (ex.: Google Workspace), restrito ao domínio `@example.com`, sem senha própria; RBAC mapeado após o login. Confirme que o domínio é validado server-side e que tokens de fora do domínio são rejeitados. Sessão expirada → 401 → overlay de re-login (`error-states.jsx`). Token também exigido no upgrade do WS `/ws/support`.
-9. **Segredos:** nenhum `.env`/`.pem`/`.key`/`*secret*` no repo — bloqueado por `.context/harness/policy.json`. Sem credenciais hardcoded.
-10. **Documente os achados** com severidade e correção (use a escala de severidade do audit_log como referência: info | warning | pii | config).
+1. **PII masked by default (RNF-1.4):** confirm that the phone (`phone_masked` by default; `phone_full` never exposed without reveal) and the SMS content (hidden until reveal) arrive masked. A phone or content reveal ALWAYS writes to the audit log (`reveal_phone` / `reveal_content`, severity `pii`) — `POST /api/shippings/{id}/reveal-phone|reveal-content` with `@Requires('pii:reveal')` + `@Audit(...)`. See `RevealField` (`apps/web/src/chat/tool-cards/RevealField.tsx`) as the UI side of the behavior — the decision to reveal is server-side, not client-side.
+2. **Raw SMS content only on S3:** verify that sensitive text is not in any MySQL column — there is no shipping/message table in MySQL; the content and the phone live in the S3 detailed report and are read on demand via DuckDB (with the transient `/tmp` cache), with audited access when revealed. No PII in application logs.
+3. **No phone in searches/logs:** logs carry IDs/`phone_hash` (code-style rule), never the phone; the search's E.164 `phone` filter is applied inside the DuckDB query over S3, and only `method + path` (no query string) is logged, so the phone does not leak into logs.
+4. **Immutable audit log (RNF-1.5):** `audit_log` only accepts INSERT + SELECT (no UPDATE/DELETE); app role with restricted permission (a database grant — not present in the migrations); 1-year retention; ideally append-only/partitioned. Confirm that every sensitive action generates an entry (`tool_call`, `reveal_phone`, `reveal_content`, `incident_created`, `incident_ack`, `incident_resolve`, `session_start`, `export_report`, `rule_update`, `user_role_update`, `user_status_update`) via the global NestJS interceptor (`@Audit`) or, for incident/rule changes, written by the service (`AuditService.record`).
+5. **Per-endpoint RBAC:** every endpoint has a `@Requires(perm)` guard (map in `apps/api/src/auth/rbac/permissions.ts`). `support_analyst` (chat/search/trail/reports/incidents incl. ack/resolve/comment) does NOT reveal PII, does NOT edit rules and does NOT run ops — `pii:reveal`, `rules:edit` and `ops:run` are `support_lead`+, and `users:manage` is `admin` only; reading reports (`reports:view`) and the audit log (`audit:view`) is granted to every role. An endpoint without a guard, or a permission check only in the UI, is a finding.
+6. **Double server-side validation (resolve §D):** the UI disables fields, but the backend ALWAYS revalidates — `action_category` ∈ enum; `action_description` ≥ 20 chars (≥ 10 on `auto_resolved`); `escalated_to` required if category ∈ {provider_escalated, internal_escalated}; only the transition detected|acknowledged|auto_resolved → resolved; each change writes `incident_activity` + audit. Also make sure ack/resolve/comment are NOT LLM tools (state changes out of the model's reach — principle 3).
+7. **The LLM neither fabricates nor executes:** the model never touches the database; all structured data comes from a tool's return; an out-of-scope request → explicit refusal. The LLM is Nova Pro via Amazon Bedrock (Converse API), with no prompt retention.
+8. **Auth / session:** auth on every endpoint (OIDC restricted to the `@example.com` domain, session in a JWT cookie `atena_session`; only `/health` and `/auth/*` are public; the WS validates the session cookie in the handshake). OIDC via Microsoft Entra ID, behind an auth abstraction (`IdentityProviderInterface`) so the IdP can be swapped easily, restricted to the `@example.com` domain, no password of our own; roles come from the app's database (`users`/`user_roles`), assigned by an admin, not from the IdP. Confirm that the domain is validated server-side and that identities from outside the domain are rejected. Expired session → 401 → back to the login. The session is also required on the WS `/ws/support` upgrade. `AUTH_DEV_BYPASS` must be off in production.
+9. **Secrets:** no `.env`/`.pem`/`.key`/`*secret*` in the repo — blocked by `.context/harness/policy.json`. No hardcoded credentials.
+10. **Document the findings** with severity and fix (use the audit_log severity scale as a reference: info | warning | pii | config).
 
 ## Examples
 
-**Relatório de auditoria (achados específicos do Atena):**
+**Audit report (Atena-specific findings):**
 ```
-## Auditoria de Segurança — Atena
+## Security Audit — Atena
 
-### Crítico
-1. [PII] Endpoint GET /api/messages/search retorna phoneFull sem reveal nem audit
-   - Telefone deve vir mascarado por padrão; só revela com permissão + reveal,
-     que escreve audit 'reveal_phone' (severity pii, RNF-1.4).
-   - Correção: mascarar no serializer; rota de reveal separada que grava audit.
+### Critical
+1. [PII] Endpoint GET /api/shippings/search returns phone_full without reveal or audit
+   - The phone must come masked by default; it is only revealed with permission + reveal,
+     which writes audit 'reveal_phone' (severity pii, RNF-1.4).
+   - Fix: mask in the serializer; separate reveal route that writes the audit entry.
 
-### Alto
-2. [RBAC] PUT /api/rules sem guard de support_lead
-   - Qualquer support_analyst edita thresholds das regras de anomalia.
-   - Correção: guard de papel no endpoint; rule_update gera audit 'rule_update'.
-3. [VALIDAÇÃO §D] POST /api/incidents/{id}/resolve confia na UI
-   - Backend não revalida actionDescription ≥ 20 chars nem escalatedTo p/
-     provider_escalated; aceita transição resolved→resolved.
-   - Correção: validação dupla server-side conforme §D + incident_activity + audit.
+### High
+2. [RBAC] PUT /api/rules/{id} without @Requires('rules:edit')
+   - Any support_analyst edits the anomaly rules' thresholds.
+   - Fix: permission guard on the endpoint; rule_update generates audit 'rule_update'.
+3. [VALIDATION §D] POST /api/incidents/{id}/resolve trusts the UI
+   - The backend does not revalidate action_description ≥ 20 chars nor escalated_to for
+     provider_escalated; it accepts the transition resolved→resolved.
+   - Fix: double server-side validation per §D + incident_activity + audit.
 
-### Médio
-4. [PII em log] phone_e164 logado na query de busca
-   - Correção: logar phone_hash; nunca PII em logs/índices. Conteúdo de SMS só no S3.
+### Medium
+4. [PII in logs] the E.164 phone logged with the search query string
+   - Fix: log only method + path and IDs/phone_hash; never PII in logs/indexes. SMS content only on S3.
 
 ### config
-5. [Audit] audit_log com permissão de UPDATE concedida ao app role
-   - Quebra imutabilidade (RNF-1.5). Correção: revogar UPDATE/DELETE; só INSERT+SELECT.
+5. [Audit] audit_log with UPDATE permission granted to the app role
+   - Breaks immutability (RNF-1.5). Fix: revoke UPDATE/DELETE; INSERT+SELECT only.
 ```
 
 ## Quality Bar
 
-- PII mascarada por padrão; reveal de telefone/conteúdo SEMPRE gera audit (`reveal_phone`/`reveal_content`, severity `pii`). Decisão de revelar é server-side.
-- Conteúdo bruto de SMS só no S3 (`content_ref` é ponteiro); `phone_hash` em buscas/logs; zero PII em log de aplicação.
-- `audit_log` imutável: só INSERT+SELECT, retenção 1 ano; toda ação sensível registrada via interceptor global.
-- RBAC por endpoint com guard server-side (`support_analyst` vs `support_lead`) — checagem só na UI não conta. Auth em todos os endpoints (login social institucional (OIDC, domínio restrito) — domínio `@example.com` validado server-side); WS valida token no handshake; 401 → re-login.
-- Validação dupla: backend revalida o resolve (§D) inteiro independente da UI. Ack/resolve/comment fora do catálogo de tools do LLM.
-- LLM nunca toca o banco; todo dado estruturado vem de tool; fora de escopo → recusa. Nova Pro via Amazon Bedrock (Converse API), sem retenção de prompt.
-- Sem segredos no repo (`policy.json` bloqueia `.env`/`.pem`/`.key`/`*secret*`); sem credenciais hardcoded.
-- Achados com severidade e correção concreta (arquivo:linha quando houver código). Cobrir também OWASP top 10 (injection, authz quebrada, exposição de dado sensível, deps vulneráveis).
+- PII masked by default; phone/content reveal ALWAYS generates audit (`reveal_phone`/`reveal_content`, severity `pii`). The decision to reveal is server-side.
+- Raw SMS content and phone only on S3 (read via DuckDB, never stored in MySQL); IDs/`phone_hash` in logs; zero PII in application logs.
+- Immutable `audit_log`: INSERT+SELECT only, 1-year retention; every sensitive action recorded via the global interceptor or the owning service.
+- Per-endpoint RBAC with a server-side `@Requires(perm)` guard (permissions per role in `permissions.ts`) — a UI-only check does not count. Auth on every endpoint (OIDC restricted to the `@example.com` domain, validated server-side); the WS validates the session in the handshake; 401 → re-login.
+- Double validation: the backend revalidates the whole resolve (§D) regardless of the UI. Ack/resolve/comment outside the LLM tool catalog.
+- The LLM never touches the database; all structured data comes from a tool; out of scope → refusal. Nova Pro via Amazon Bedrock (Converse API), with no prompt retention.
+- No secrets in the repo (`policy.json` blocks `.env`/`.pem`/`.key`/`*secret*`); no hardcoded credentials.
+- Findings with severity and a concrete fix (file:line). Also cover the OWASP top 10 (injection, broken authz, sensitive data exposure, vulnerable deps).
 
 ## Resource Strategy
 
-- Sem `scripts/`/`references/`/`assets/` próprios: os controles cabem em `SKILL.md` e o modelo de dados/regras vive em `02-data-model.md` e no `README` §5.
-- Referencie §D do `01-backend-api-contract.md` e os enums de `02-data-model.md` (action_category, action do audit_log) em vez de duplicá-los.
-- O escopo de segredos é definido por `.context/harness/policy.json` — consulte-o, não recopie a lista.
+- No `scripts/`/`references/`/`assets/` of its own: the controls fit in `SKILL.md`, and the data model/rules live in `apps/api/prisma/schema.prisma`, `.context/docs/security.md` and the `README` §5.
+- Reference §D of `01-backend-api-contract.md` and the enums of `schema.prisma` (action_category, the audit_log action) instead of duplicating them.
+- The secrets scope is defined by `.context/harness/policy.json` — consult it, do not re-copy the list.

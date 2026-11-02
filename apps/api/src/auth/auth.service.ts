@@ -2,6 +2,8 @@ import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { generators } from 'openid-client';
 import { sign, verify, type JwtPayload } from 'jsonwebtoken';
+import { MINUTES_PER_HOUR, SECONDS_PER_MINUTE } from '../common/units';
+import { DEFAULT_SESSION_TTL_HOURS } from '../config/configuration';
 import { UsersService } from '../users/users.service';
 import {
   IDENTITY_PROVIDER,
@@ -10,14 +12,14 @@ import {
   type IdentityProviderInterface,
 } from './identity-provider.interface';
 
-/** Janela padrão (horas) de validade do cookie de sessão, se a config não vier. */
-const DEFAULT_TTL_HOURS = 8;
+/** Validity in minutes of the short-lived OIDC challenge cookie: the login must complete within it. */
+export const CHALLENGE_TTL_MINUTES = 10;
 
 /** Segundos em uma hora (TTL do JWT em segundos). */
-const HOUR_SECONDS = 60 * 60;
+const HOUR_SECONDS = MINUTES_PER_HOUR * SECONDS_PER_MINUTE;
 
 /** Validade (segundos) do cookie curto de desafio OIDC: o login deve concluir nesse prazo. */
-const CHALLENGE_TTL_SECONDS = 10 * 60;
+const CHALLENGE_TTL_SECONDS = CHALLENGE_TTL_MINUTES * SECONDS_PER_MINUTE;
 
 /**
  * Orquestra o fluxo de login social institucional (OIDC) e a sessão (stateless) da Atena.
@@ -30,9 +32,9 @@ const CHALLENGE_TTL_SECONDS = 10 * 60;
 @Injectable()
 export class AuthService {
   /**
-   * @param {IdentityProviderInterface} identityProvider - Provedor de identidade plugável.
-   * @param {ConfigService} config - Segredo de sessão, TTL do cookie e allowlist de admin.
-   * @param {UsersService} users - Persiste o usuário no login e faz o bootstrap de admin.
+   * @param identityProvider - Provedor de identidade plugável.
+   * @param config - Segredo de sessão, TTL do cookie e allowlist de admin.
+   * @param users - Persiste o usuário no login e faz o bootstrap de admin.
    */
   constructor(
     @Inject(IDENTITY_PROVIDER)
@@ -46,7 +48,7 @@ export class AuthService {
    * autorização do IdP. O `challenge` deve ser persistido pelo controller (cookie curto) para
    * ser validado no callback.
    *
-   * @returns {Promise<{ url: string; challenge: CallbackChallengeInterface }>} URL do IdP e o
+   * @returns URL do IdP e o
    *   desafio (state/nonce/codeVerifier) a guardar até o callback.
    */
   async getLoginUrl(): Promise<{
@@ -79,9 +81,11 @@ export class AuthService {
    * **persiste o usuário** (upsert + bootstrap de admin pela allowlist) e devolve a identidade.
    * Os papéis NÃO são resolvidos aqui — o guard os lê do banco a cada requisição.
    *
-   * @param {Record<string, string>} params - Query params do callback (`code`, `state`, …).
-   * @param {CallbackChallengeInterface} challenge - Desafio original recuperado do cookie.
-   * @returns {Promise<AuthenticatedIdentityInterface>} Identidade autenticada e normalizada.
+   * @param params - Query params do callback (`code`, `state`, …).
+   * @param challenge - Desafio original recuperado do cookie.
+   *
+   * @returns Identidade autenticada e normalizada.
+   *
    * @throws {UnauthorizedException} Propagada pelo provider se domínio/claims forem inválidos.
    */
   async completeLogin(
@@ -102,8 +106,9 @@ export class AuthService {
    * Assina o desafio OIDC (`state`/`nonce`/`codeVerifier`) num JWT curto, para o controller
    * guardar no cookie `atena_oidc` entre o `login` e o `callback`.
    *
-   * @param {CallbackChallengeInterface} challenge - Desafio gerado em {@link getLoginUrl}.
-   * @returns {string} JWT assinado (valor do cookie de desafio).
+   * @param challenge - Desafio gerado em {@link getLoginUrl}.
+   *
+   * @returns JWT assinado (valor do cookie de desafio).
    */
   issueChallengeToken(challenge: CallbackChallengeInterface): string {
     return sign(
@@ -116,8 +121,10 @@ export class AuthService {
   /**
    * Verifica o cookie de desafio e reconstrói o `state`/`nonce`/`codeVerifier`.
    *
-   * @param {string | undefined} token - Valor do cookie `atena_oidc`.
-   * @returns {CallbackChallengeInterface} Desafio original.
+   * @param token - Valor do cookie `atena_oidc`.
+   *
+   * @returns Desafio original.
+   *
    * @throws {UnauthorizedException} Se ausente, inválido, expirado ou malformado.
    */
   readChallengeToken(token: string | undefined): CallbackChallengeInterface {
@@ -156,8 +163,9 @@ export class AuthService {
    * Emite a sessão: assina um JWT com a **identidade** (`{ sub, email, name }`) e validade
    * `ttlHours`. Papéis NÃO entram no cookie (são resolvidos do banco a cada requisição).
    *
-   * @param {AuthenticatedIdentityInterface} identity - Identidade a serializar na sessão.
-   * @returns {string} JWT assinado (valor do cookie de sessão).
+   * @param identity - Identidade a serializar na sessão.
+   *
+   * @returns JWT assinado (valor do cookie de sessão).
    */
   issueSession(identity: AuthenticatedIdentityInterface): string {
     return sign(
@@ -174,8 +182,10 @@ export class AuthService {
   /**
    * Verifica o JWT do cookie de sessão e reconstrói a identidade.
    *
-   * @param {string} token - Valor do cookie de sessão (JWT assinado).
-   * @returns {AuthenticatedIdentityInterface} Identidade da sessão.
+   * @param token - Valor do cookie de sessão (JWT assinado).
+   *
+   * @returns Identidade da sessão.
+   *
    * @throws {UnauthorizedException} Se o token for inválido, expirado ou malformado.
    */
   verifySession(token: string): AuthenticatedIdentityInterface {
@@ -209,7 +219,8 @@ export class AuthService {
   /**
    * Segredo de assinatura do JWT de sessão.
    *
-   * @returns {string} Segredo configurado (`auth.sessionSecret`).
+   * @returns Segredo configurado (`auth.sessionSecret`).
+   *
    * @throws {UnauthorizedException} Se o segredo não estiver configurado (evita assinar com '').
    */
   private sessionSecret(): string {
@@ -225,9 +236,9 @@ export class AuthService {
   /**
    * Janela de validade (horas) do cookie de sessão.
    *
-   * @returns {number} `auth.session.ttlHours` ou o default.
+   * @returns `auth.session.ttlHours` ou o default.
    */
   private ttlHours(): number {
-    return this.config.get<number>('auth.session.ttlHours') ?? DEFAULT_TTL_HOURS;
+    return this.config.get<number>('auth.session.ttlHours') ?? DEFAULT_SESSION_TTL_HOURS;
   }
 }

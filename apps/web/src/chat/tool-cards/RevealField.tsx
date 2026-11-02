@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { CircleNotch, Eye, ShieldWarning } from '@phosphor-icons/react';
+import { useEffect, useState, type JSX } from 'react';
+import { CircleNotchIcon as CircleNotch, EyeIcon as Eye, ShieldWarningIcon as ShieldWarning } from '@phosphor-icons/react';
 import { ApiError } from '../../api/client';
 import { revealContent, revealPhone, type RevealWindowInterface } from '../reveal';
 import { formatPhone } from './format';
+import { cssValue, cssVar } from '../../styles/tokens';
 
 /** Tipo de PII a revelar: telefone completo ou conteúdo bruto do envio. */
 type RevealKindType = 'phone' | 'content';
@@ -15,8 +16,8 @@ type RevealKindType = 'phone' | 'content';
 type RevealStateType = 'idle' | 'confirming' | 'loading' | 'revealed' | 'error' | 'unavailable';
 
 const MONO = {
-  fontFamily: 'ui-monospace, Menlo, monospace',
-  fontVariantNumeric: 'tabular-nums',
+  fontFamily: cssValue.fontMono,
+  fontVariantNumeric: cssValue.tabularNums,
 } as const;
 
 /** Botão-ícone do olho (gatilho do reveal): só o ícone, sem moldura, alinhado ao texto ao lado. */
@@ -27,10 +28,10 @@ const EYE_BUTTON = {
   padding: 2,
   margin: 0,
   cursor: 'pointer',
-  display: 'inline-flex',
+  display: cssValue.inlineFlex,
   alignItems: 'center',
-  borderRadius: 'var(--at-radius-4)',
-  color: 'var(--at-fg-subtle)',
+  borderRadius: cssVar.radius4,
+  color: cssVar.fgSubtle,
 } as const;
 
 /**
@@ -38,24 +39,25 @@ const EYE_BUTTON = {
  * modal de confirmação (a ação é auditada). Só após confirmar é que o endpoint auditado é chamado e o
  * valor aparece em claro. O valor revelado vive só no estado local (efêmero, nunca logado).
  *
- * @param {object} props - Propriedades do campo.
- * @param {string} props.shippingId - Id do envio (id da linha de busca / shipping_id da trilha).
- * @param {RevealKindType} props.kind - `phone` (mostra o mascarado + olho) ou `content` (só o olho).
- * @param {string} [props.masked] - Valor mascarado exibido enquanto não revelado (telefone).
- * @param {RevealWindowInterface} [props.window] - Janela do contexto (search/trilha) que escopa o lookup.
- * @returns {JSX.Element} O campo de reveal no estado atual.
+ * @param props - Propriedades do campo.
+ * @param props.shippingId - Id do envio (id da linha de busca / shipping_id da trilha).
+ * @param props.kind - `phone` (mostra o mascarado + olho) ou `content` (só o olho).
+ * @param [props.masked] - Valor mascarado exibido enquanto não revelado (telefone).
+ * @param [props.window] - Janela do contexto (search/trilha) que escopa o lookup.
+ *
+ * @returns O campo de reveal no estado atual.
  */
 export function RevealField({
   shippingId,
   kind,
   masked,
   window,
-}: {
+}: Readonly<{
   shippingId: string;
   kind: RevealKindType;
   masked?: string;
   window?: RevealWindowInterface
-}): JSX.Element {
+}>): JSX.Element {
   const [
     state,
     setState,
@@ -106,10 +108,10 @@ export function RevealField({
       <span
         title="PII revelada — ação auditada"
         style={{
-          display: 'inline-flex',
+          display: cssValue.inlineFlex,
           alignItems: 'center',
-          gap: 'var(--at-space-4)',
-          color: 'var(--at-fg)',
+          gap: cssVar.space4,
+          color: cssVar.fg,
           ...(kind === 'phone'
             ? MONO
             : {}),
@@ -118,7 +120,7 @@ export function RevealField({
         <Eye
           size={13}
           style={{
-            color: 'var(--at-primary)',
+            color: cssVar.primary,
             flexShrink: 0,
           }}
         />
@@ -133,9 +135,9 @@ export function RevealField({
         title="Revelando…"
         aria-label="Revelando…"
         style={{
-          display: 'inline-flex',
+          display: cssValue.inlineFlex,
           alignItems: 'center',
-          color: 'var(--at-fg-subtle)',
+          color: cssVar.fgSubtle,
         }}
       >
         <CircleNotch
@@ -160,7 +162,7 @@ export function RevealField({
         title={unavailableTitle}
         style={{
           fontSize: 11,
-          color: 'var(--at-fg-subtle)',
+          color: cssVar.fgSubtle,
           fontStyle: 'italic',
         }}
       >
@@ -177,9 +179,9 @@ export function RevealField({
 
   return (
     <span style={{
-      display: 'inline-flex',
+      display: cssValue.inlineFlex,
       alignItems: 'center',
-      gap: 'var(--at-space-4)',
+      gap: cssVar.space4,
     }}
     >
       {masked
@@ -187,7 +189,7 @@ export function RevealField({
         : null}
       <button
         type="button"
-        onClick={() => setState('confirming')}
+        onClick={() => { setState('confirming'); }}
         aria-label={`Revelar ${kindLabel}`}
         title={failed
           ? 'Não foi possível revelar — clique para tentar de novo'
@@ -195,8 +197,8 @@ export function RevealField({
         style={{
           ...EYE_BUTTON,
           color: failed
-            ? 'var(--at-danger-300)'
-            : 'var(--at-fg-subtle)',
+            ? cssVar.danger300
+            : cssVar.fgSubtle,
         }}
       >
         <Eye size={14} />
@@ -206,7 +208,7 @@ export function RevealField({
           <ConfirmRevealModal
             kind={kind}
             onConfirm={() => void reveal()}
-            onCancel={() => setState('idle')}
+            onCancel={() => { setState('idle'); }}
           />
         )
         : null}
@@ -218,21 +220,22 @@ export function RevealField({
  * Modal de confirmação do reveal: explica que a ação é auditada e pede confirmação explícita antes de
  * expor a PII. Fecha no backdrop, no "Cancelar" ou com Esc.
  *
- * @param {object} props - Propriedades do modal.
- * @param {RevealKindType} props.kind - O que será revelado (telefone/conteúdo), para o texto.
- * @param {() => void} props.onConfirm - Confirma e dispara o reveal auditado.
- * @param {() => void} props.onCancel - Cancela e fecha o modal.
- * @returns {JSX.Element} O modal.
+ * @param props - Propriedades do modal.
+ * @param props.kind - O que será revelado (telefone/conteúdo), para o texto.
+ * @param props.onConfirm - Confirma e dispara o reveal auditado.
+ * @param props.onCancel - Cancela e fecha o modal.
+ *
+ * @returns O modal.
  */
 function ConfirmRevealModal({
   kind,
   onConfirm,
   onCancel,
-}: {
+}: Readonly<{
   kind: RevealKindType;
   onConfirm: () => void;
   onCancel: () => void
-}): JSX.Element {
+}>): JSX.Element {
   useEffect(
     () => {
       const onKey = (event: KeyboardEvent): void => {
@@ -246,10 +249,12 @@ function ConfirmRevealModal({
         onKey,
       );
 
-      return () => document.removeEventListener(
-        'keydown',
-        onKey,
-      );
+      return () => {
+        document.removeEventListener(
+          'keydown',
+          onKey,
+        );
+      };
     },
     [onCancel],
   );
@@ -271,35 +276,35 @@ function ConfirmRevealModal({
         background: 'rgba(0, 0, 0, 0.4)',
         display: 'grid',
         placeItems: 'center',
-        padding: 'var(--at-space-16)',
+        padding: cssVar.space16,
       }}
     >
       <div
-        onClick={(event) => event.stopPropagation()}
+        onClick={(event) => { event.stopPropagation(); }}
         style={{
           width: '100%',
           maxWidth: 380,
-          background: 'var(--at-white)',
-          border: '1px solid var(--at-border)',
+          background: cssVar.white,
+          border: cssVar.borderLine,
           borderRadius: 8,
           boxShadow: '0 16px 40px rgba(0, 0, 0, 0.18)',
-          padding: 'var(--at-space-20)',
+          padding: cssVar.space20,
           textAlign: 'left',
         }}
       >
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 'var(--at-space-8)',
-          marginBottom: 'var(--at-space-12)',
+          gap: cssVar.space8,
+          marginBottom: cssVar.space12,
         }}
         >
           <span style={{
             width: 28,
             height: 28,
-            borderRadius: 'var(--at-radius-4)',
-            background: 'var(--at-warning-50)',
-            color: 'var(--at-warning-200)',
+            borderRadius: cssVar.radius4,
+            background: cssVar.warning50,
+            color: cssVar.warning200,
             display: 'grid',
             placeItems: 'center',
             flexShrink: 0,
@@ -308,9 +313,9 @@ function ConfirmRevealModal({
             <ShieldWarning size={16} />
           </span>
           <span style={{
-            fontSize: 'var(--at-fs-14)',
+            fontSize: cssVar.fs14,
             fontWeight: 600,
-            color: 'var(--at-fg)',
+            color: cssVar.fg,
           }}
           >
             Revelar PII · ação auditada
@@ -318,9 +323,9 @@ function ConfirmRevealModal({
         </div>
         <p style={{
           margin: 0,
-          fontSize: 'var(--at-fs-12)',
-          color: 'var(--at-fg-muted)',
-          lineHeight: 'var(--at-lh-22)',
+          fontSize: cssVar.fs12,
+          color: cssVar.fgMuted,
+          lineHeight: cssVar.lh22,
         }}
         >
           Você vai revelar {target}. Esta ação é registrada no audit log (usuário, horário e
@@ -329,8 +334,8 @@ function ConfirmRevealModal({
         <div style={{
           display: 'flex',
           justifyContent: 'flex-end',
-          gap: 'var(--at-space-8)',
-          marginTop: 'var(--at-space-20)',
+          gap: cssVar.space8,
+          marginTop: cssVar.space20,
         }}
         >
           <button
@@ -338,12 +343,12 @@ function ConfirmRevealModal({
             onClick={onCancel}
             style={{
               height: 32,
-              padding: '0 var(--at-space-12)',
-              borderRadius: 'var(--at-radius-4)',
-              border: '1px solid var(--at-border)',
-              background: 'var(--at-white)',
-              color: 'var(--at-fg)',
-              fontSize: 'var(--at-fs-12)',
+              padding: cssVar.paddingInline12,
+              borderRadius: cssVar.radius4,
+              border: cssVar.borderLine,
+              background: cssVar.white,
+              color: cssVar.fg,
+              fontSize: cssVar.fs12,
               fontWeight: 600,
               cursor: 'pointer',
             }}
@@ -354,16 +359,16 @@ function ConfirmRevealModal({
             type="button"
             onClick={onConfirm}
             style={{
-              display: 'inline-flex',
+              display: cssValue.inlineFlex,
               alignItems: 'center',
-              gap: 'var(--at-space-4)',
+              gap: cssVar.space4,
               height: 32,
-              padding: '0 var(--at-space-12)',
-              borderRadius: 'var(--at-radius-4)',
+              padding: cssVar.paddingInline12,
+              borderRadius: cssVar.radius4,
               border: 'none',
-              background: 'var(--at-primary)',
-              color: 'var(--at-white)',
-              fontSize: 'var(--at-fs-12)',
+              background: cssVar.primary,
+              color: cssVar.white,
+              fontSize: cssVar.fs12,
               fontWeight: 600,
               cursor: 'pointer',
             }}

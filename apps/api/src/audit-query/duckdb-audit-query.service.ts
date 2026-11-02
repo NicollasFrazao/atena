@@ -19,7 +19,9 @@ import { AUDIT_QUERY_DEFAULTS } from '../config/configuration';
 import { MetricsService } from '../observability/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhone } from '../common/pii.util';
+import { nonEmpty } from '../common/text.util';
 import { statusDisplayLabel } from '../common/status-labels';
+import { MS_PER_DAY, MS_PER_HOUR, MS_PER_MINUTE, MS_PER_SECOND } from '../common/units';
 import type { ShippingSampleInterface } from '../detector/detection.types';
 import type { AuditQueryServiceInterface } from './audit-query.interface';
 import type {
@@ -77,14 +79,41 @@ interface PartitionManifestInterface {
   shardParquet: string | null;
 }
 
+/** How a query scans the partitions of its window. */
+interface ScanOptionsInterface {
+  /** Window that defines the candidate partitions. */
+  window: AuditWindowInterface;
+  /** Progress callback (mapping → reading → querying). */
+  onProgress?: AuditProgressCallback;
+  /** Aborts the scan between partitions and the DuckDB query in progress. */
+  signal?: AbortSignal;
+  /**
+   * Override of the window's forward-only expansion buffer. Default `lateStatusBufferMs` (covers
+   * statuses that finalize after the window). Pass `0` in a single lookup by id (reveal) to scan ONLY
+   * the window/filters: the `queued` event (with the phone) is on the same day, so there is no need
+   * to expand, and the cold scan drops from ~6 days to ~1.
+   */
+  bufferMs?: number;
+}
+
+/** A scan plus what {@link DuckDbAuditQueryService.materialize} builds from it. */
+interface MaterializeOptionsInterface extends ScanOptionsInterface {
+  /**
+   * `true` materializes `atena_ev` (raw events) for the trail; `false` (default) aggregates
+   * `atena_records` straight from the source.
+   */
+  withRawEvents?: boolean;
+  /** Trail: filters `atena_ev` to ONE recipient (md5) at build time (see `evDdlFromSources`). */
+  recipientId?: string;
+}
+
 /** Valor aceito no bind posicional (`$1..`) do DuckDB nesta camada. */
 type BindValue = string | number;
 
-/** Milissegundos em um dia (janela default de `search`/`getShipping`/`getTrail`). */
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Janela máxima (dias) aceita p/ a trilha de um id DESCONHECIDO (sem cache/índice): acima disto,
- *  exige a data (em vez de varrer ~30 dias). ~1-2 dias cobrem o ciclo de vida de um envio. */
+/**
+ * Janela máxima (dias) aceita p/ a trilha de um id DESCONHECIDO (sem cache/índice): acima disto,
+ *  exige a data (em vez de varrer ~30 dias). ~1-2 dias cobrem o ciclo de vida de um envio.
+ */
 const TRAIL_MAX_WINDOW_DAYS = 3;
 
 /**
@@ -93,21 +122,43 @@ const TRAIL_MAX_WINDOW_DAYS = 3;
  */
 const PHONE_SUFFIX_MIN_DIGITS = 10;
 
-/** Versão do cache de eventos no `/tmp`; bump invalida os Parquets antigos se a normalização — ou o
+/**
+ * Versão do cache de eventos no `/tmp`; bump invalida os Parquets antigos se a normalização — ou o
  *  LAYOUT do cache — mudar. v11: phone canônico com DDI (grão do destinatário mudou; ver PHONE_CANONICAL).
- *  v10: layout manifesto+shards (antes: 1 Parquet/partição + sidecar sha256). */
+ *  v10: layout manifesto+shards (antes: 1 Parquet/partição + sidecar sha256).
+ */
 const EV_CACHE_VERSION = 'v11';
 
-/** Período da eviction agendada do cache de eventos (1h) — varre idade + teto de tamanho. Fixo aqui
+/**
+ * Período da eviction agendada do cache de eventos (1h) — varre idade + teto de tamanho. Fixo aqui
  *  por ser argumento do decorator `@Interval` (exige constante de compilação); os demais TTLs/tetos do
- *  cache são tunáveis por env (ver AUDIT_QUERY_DEFAULTS / `configuration.ts`). */
-const EVICT_INTERVAL_MS = 60 * 60 * 1000;
+ *  cache são tunáveis por env (ver AUDIT_QUERY_DEFAULTS / `configuration.ts`).
+ */
+const EVICT_INTERVAL_MS = MS_PER_HOUR;
 
-/** Milissegundos em uma hora (converte os limites de idade da config). */
-const HOUR_MS = 60 * 60 * 1000;
+/** Bytes in one kibibyte (binary multiple, as the size cap is configured). */
+const BYTES_PER_KB = 1024;
 
 /** Bytes em um megabyte (converte o teto de tamanho da config). */
-const MB_BYTES = 1024 * 1024;
+const MB_BYTES = BYTES_PER_KB * BYTES_PER_KB;
+
+/** Microseconds in one millisecond (DuckDB timestamps come as `{ micros: bigint }`). */
+const MICROS_PER_MS = 1000n;
+
+/** Approximate S3 price (USD) per 1k GET requests — one per object read. */
+const S3_GET_USD_PER_1K = 0.0004;
+
+/** Approximate S3 price (USD) per 1k LIST requests — one glob per partition read from S3. */
+const S3_LIST_USD_PER_1K = 0.005;
+
+/** Request count the S3 prices above refer to. */
+const REQUESTS_PER_PRICE_UNIT = 1000;
+
+/** Rounding scale of the cache hit rate: 3 decimal places. */
+const HIT_RATE_PRECISION = 1000;
+
+/** Rounds the estimated cost to 4 decimal places (USD). */
+const COST_ROUNDING_FACTOR = 10_000;
 
 /** Converte um valor de timestamp do DuckDB (Date | string | {micros}) em `Date`, ou `null`. */
 function toDate(value: unknown): Date | null {
@@ -129,7 +180,7 @@ function toDate(value: unknown): Date | null {
   const micros = (value as { micros?: bigint }).micros;
 
   if (typeof micros === 'bigint') {
-    return new Date(Number(micros / 1000n));
+    return new Date(Number(micros / MICROS_PER_MS));
   }
 
   return null;
@@ -142,11 +193,29 @@ function toNumber(value: unknown): number {
     : Number(value ?? 0);
 }
 
+/**
+ * Text of a DuckDB value: a string as it is, a number, bigint or boolean through `String()`, and
+ * anything else (a struct, list or date) as JSON. The columns read through it are VARCHAR or numeric,
+ * so the JSON branch only guards against a schema change.
+ */
+function scalarText(value: unknown): string {
+  switch (typeof value) {
+    case 'string':
+      return value;
+    case 'number':
+    case 'bigint':
+    case 'boolean':
+      return String(value);
+    default:
+      return JSON.stringify(value);
+  }
+}
+
 /** String ou `null` a partir de um valor do DuckDB. */
 function toText(value: unknown): string | null {
   return value === null || value === undefined
     ? null
-    : String(value);
+    : scalarText(value);
 }
 
 /**
@@ -157,10 +226,11 @@ function toText(value: unknown): string | null {
  * o `queued` de um envio in-window está, por definição, dentro de `[from, to]`. Varrer antes de `from`
  * só traria envios de fora da janela (descartados no filtro) — puro custo.
  *
- * @param {AuditWindowInterface} window - Janela base (do usuário ou default).
- * @param {number} bufferMs - Buffer (ms) aplicado SÓ no fim (captura de desfecho atrasado).
- * @param {Date} now - Teto do fim (partições futuras não existem → evita globs vazios e lentos).
- * @returns {AuditWindowInterface} Janela alargada só pra frente.
+ * @param window - Janela base (do usuário ou default).
+ * @param bufferMs - Buffer (ms) aplicado SÓ no fim (captura de desfecho atrasado).
+ * @param now - Teto do fim (partições futuras não existem → evita globs vazios e lentos).
+ *
+ * @returns Janela alargada só pra frente.
  */
 function forwardScanWindow(
   window: AuditWindowInterface,
@@ -178,8 +248,10 @@ function forwardScanWindow(
   };
 }
 
-/** Início do dia UTC de um instante (00:00:00.000Z). Usado p/ ancorar a janela da trilha no DIA do
- *  envio — tolerante a skew partição×tempo-lógico (fuso/buffering do firehose), sem cair em minutos. */
+/**
+ * Início do dia UTC de um instante (00:00:00.000Z). Usado p/ ancorar a janela da trilha no DIA do
+ *  envio — tolerante a skew partição×tempo-lógico (fuso/buffering do firehose), sem cair em minutos.
+ */
 function startOfUtcDay(date: Date): Date {
   return new Date(Date.UTC(
     date.getUTCFullYear(),
@@ -278,8 +350,10 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   /** Retenção (ms) dos eventos de scan persistidos (observabilidade) — poda no eviction. */
   private readonly scanEventRetentionMs: number;
 
-  /** Cache de registros por id (TTL curto): reveal/análise logo após a busca não re-varrem o S3.
-   *  Inicializado no constructor (TTL/teto vêm da config). */
+  /**
+   * Cache de registros por id (TTL curto): reveal/análise logo após a busca não re-varrem o S3.
+   *  Inicializado no constructor (TTL/teto vêm da config).
+   */
   private readonly recordCache: RecordCache;
 
   /** Índice persistente `shipping_id → datas` (atalho durável de janela p/ a trilha). Vide constructor. */
@@ -299,9 +373,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   private instance: DuckDBInstance | null = null;
 
   /**
-   * @param {ConfigService} config - Fonte de `auditQuery.sourceRoot`, `aws.region` e janela default.
-   * @param {MetricsService} [metrics] - Emissão best-effort de métricas de scan do S3 (DogStatsD).
-   * @param {PrismaService} [prisma] - Persistência best-effort dos eventos de scan (janela temporal).
+   * @param config - Fonte de `auditQuery.sourceRoot`, `aws.region` e janela default.
+   * @param [metrics] - Emissão best-effort de métricas de scan do S3 (DogStatsD).
+   * @param [prisma] - Persistência best-effort dos eventos de scan (janela temporal).
    */
   constructor(
     config: ConfigService,
@@ -310,8 +384,8 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   ) {
     const logsBucket = config.get<string>('s3.logsBucket') ?? '';
 
-    this.sourceRoot = config.get<string>('auditQuery.sourceRoot')
-      || (logsBucket
+    this.sourceRoot = nonEmpty(config.get<string>('auditQuery.sourceRoot'))
+      ?? (logsBucket
         ? `s3://${logsBucket}`
         : '');
 
@@ -320,7 +394,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     const days = config.get<number>('auditQuery.defaultWindowDays')
       ?? AUDIT_QUERY_DEFAULTS.defaultWindowDays;
 
-    this.defaultWindowMs = days * DAY_MS;
+    this.defaultWindowMs = days * MS_PER_DAY;
 
     // eslint-disable-next-line sonarjs/publicly-writable-directories -- /tmp = cache transitório read-through por design (decisão #8); sobrescrevível via ATENA_TMP_CACHE_DIR.
     const tmpDir = config.get<string>('cache.tmpDir') ?? '/tmp/atena-cache';
@@ -380,28 +454,28 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     const settleMinutes = config.get<number>('auditQuery.cacheSettleMinutes')
       ?? AUDIT_QUERY_DEFAULTS.cacheSettleMinutes;
 
-    this.settleMs = settleMinutes * 60 * 1000;
+    this.settleMs = settleMinutes * MS_PER_MINUTE;
 
     const liveCacheTtlSeconds = config.get<number>('auditQuery.liveCacheTtlSeconds')
       ?? AUDIT_QUERY_DEFAULTS.liveCacheTtlSeconds;
 
-    this.liveCacheTtlMs = liveCacheTtlSeconds * 1000;
+    this.liveCacheTtlMs = liveCacheTtlSeconds * MS_PER_SECOND;
 
     const bufferHours = config.get<number>('auditQuery.lateStatusBufferHours')
       ?? AUDIT_QUERY_DEFAULTS.lateStatusBufferHours;
 
-    this.lateStatusBufferMs = bufferHours * 60 * 60 * 1000;
+    this.lateStatusBufferMs = bufferHours * MS_PER_HOUR;
 
     const lagHours = config.get<number>('auditQuery.lagHours')
       ?? AUDIT_QUERY_DEFAULTS.lagHours;
 
-    this.lagMs = lagHours * 60 * 60 * 1000;
+    this.lagMs = lagHours * MS_PER_HOUR;
 
     this.snapshotTtlMs = (config.get<number>('auditQuery.snapshotTtlMinutes')
-      ?? AUDIT_QUERY_DEFAULTS.snapshotTtlMinutes) * 60 * 1000;
+      ?? AUDIT_QUERY_DEFAULTS.snapshotTtlMinutes) * MS_PER_MINUTE;
 
     this.scanEventRetentionMs = (config.get<number>('auditQuery.scanEventRetentionDays')
-      ?? AUDIT_QUERY_DEFAULTS.scanEventRetentionDays) * DAY_MS;
+      ?? AUDIT_QUERY_DEFAULTS.scanEventRetentionDays) * MS_PER_DAY;
 
     const cacheMaxMb = config.get<number>('auditQuery.cacheMaxMb')
       ?? AUDIT_QUERY_DEFAULTS.cacheMaxMb;
@@ -414,12 +488,12 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       ?? AUDIT_QUERY_DEFAULTS.cacheMaxAgeHours;
 
     this.cacheMaxAgeMs = cacheMaxAgeHours > 0
-      ? cacheMaxAgeHours * HOUR_MS
+      ? cacheMaxAgeHours * MS_PER_HOUR
       : 0;
 
     this.recordCache = new RecordCache(
       (config.get<number>('auditQuery.recordCacheTtlMinutes')
-        ?? AUDIT_QUERY_DEFAULTS.recordCacheTtlMinutes) * 60 * 1000,
+        ?? AUDIT_QUERY_DEFAULTS.recordCacheTtlMinutes) * MS_PER_MINUTE,
       config.get<number>('auditQuery.recordCacheMax')
         ?? AUDIT_QUERY_DEFAULTS.recordCacheMax,
     );
@@ -462,7 +536,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     );
 
     if (snapshots.removed > 0) {
-      this.logger.log(`Snapshots: eviction removeu ${snapshots.removed} (> ${this.snapshotTtlMs / 60000} min).`);
+      this.logger.log(`Snapshots: eviction removeu ${snapshots.removed} (> ${this.snapshotTtlMs / MS_PER_MINUTE} min).`);
     }
 
     // Poda os eventos de scan persistidos além da retenção (best-effort, fire-and-forget).
@@ -506,7 +580,10 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     };
 
     return this.withRecords(
-      window,
+      {
+        window,
+        onProgress,
+      },
       async (connection) => {
         const baseParams: BindValue[] = [];
 
@@ -519,9 +596,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
         const queryStartedAt = Date.now();
 
-        // Agregado (total + breakdown) sobre TODO o conjunto, SEM bufferizar linhas/PII. Antes, o
-        // `count(*) OVER ()`/FILTER no MESMO SELECT das linhas obrigava o operador de window a
-        // bufferizar TODAS as linhas com todas as colunas (incl. `message`) → ~150s com spill em disco.
+        // Aggregate (total + breakdown) over the whole set, WITHOUT buffering rows/PII. Before, the
+        // `count(*) OVER ()`/FILTER in the SAME SELECT as the rows forced the window operator to
+        // buffer EVERY row with every column (incl. `message`) → ~150s spilling to disk.
         const aggRows = await this.query(
           connection,
           `SELECT count(*)::INTEGER AS total,
@@ -555,7 +632,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
 
         // Aquece o cache por id + índice de datas: reveal/análise logo após a busca lê daqui, e a
         // trilha de um desses ids estreita a janela pelo índice (sem re-varrer o S3 / 30 dias).
-        records.forEach((record) => this.rememberShipping(record));
+        records.forEach((record) => {
+          this.rememberShipping(record);
+        });
 
         const head = aggRows[0] ?? {};
 
@@ -600,7 +679,6 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
           snapshotToken,
         };
       },
-      onProgress,
     );
   }
 
@@ -608,8 +686,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * Memoriza um envio: cache quente por id (reveal/análise logo após sem re-varrer o S3) + índice
    * PERSISTENTE de datas (atalho durável da janela da trilha — sobrevive a restart, vide {@link ShippingDateIndex}).
    *
-   * @param {DeliveryRecordInterface} record - Registro do envio.
-   * @returns {void}
+   * @param record - Registro do envio.
    */
   private rememberShipping(record: DeliveryRecordInterface): void {
     this.recordCache.set(record);
@@ -625,8 +702,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * Datas de um envio conhecido — cache quente (`recordCache`, sessão atual) OU índice persistente
    * (`shippingIndex`, durável). Base p/ estreitar a janela da trilha. `null` se nunca visto.
    *
-   * @param {string} id - Shipping_id (md5).
-   * @returns {ShippingDatesInterface | null} Datas do envio, ou `null` se desconhecido.
+   * @param id - Shipping_id (md5).
+   *
+   * @returns Datas do envio, ou `null` se desconhecido.
    */
   private shippingDatesFor(id: string): ShippingDatesInterface | null {
     const cached = this.recordCache.get(id);
@@ -653,7 +731,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       return false;
     }
 
-    return window.to.getTime() - window.from.getTime() <= TRAIL_MAX_WINDOW_DAYS * DAY_MS;
+    return window.to.getTime() - window.from.getTime() <= TRAIL_MAX_WINDOW_DAYS * MS_PER_DAY;
   }
 
   /** @inheritdoc */
@@ -670,7 +748,14 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     }
 
     const record = await this.withRecords(
-      window ?? this.defaultWindow(),
+      {
+        window: window ?? this.defaultWindow(),
+        // `expand: false` (reveal) → buffer 0 → scans ONLY the window/filters (~1 day), not ±lateStatusBuffer
+        // (~6 days). Safe for the single lookup: the phone/content is in the event of the same day.
+        bufferMs: expand
+          ? undefined
+          : 0,
+      },
       async (connection) => {
         const rows = await this.query(
           connection,
@@ -683,13 +768,6 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
           ? this.toRecord(rows[0])
           : null;
       },
-      undefined,
-      undefined,
-      // `expand: false` (reveal) → buffer 0 → varre SÓ a janela/filtros (~1 dia), não ±lateStatusBuffer
-      // (~6 dias). Seguro p/ o lookup pontual: o telefone/conteúdo está no evento do próprio dia.
-      expand
-        ? undefined
-        : 0,
     );
 
     if (record) {
@@ -735,7 +813,14 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       : window ?? this.defaultWindow();
 
     return this.withRecords(
-      trailWindow,
+      {
+        window: trailWindow,
+        onProgress,
+        // The trail reads `atena_ev` (raw events) for the timeline.
+        withRawEvents: true,
+        // Filters `atena_ev` to THIS recipient at build time → the whole day is not materialized.
+        recipientId: messageId,
+      },
       async (connection) => {
         const rows = await this.query(
           connection,
@@ -765,11 +850,6 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
           events: eventRows.map((row) => this.toTrailEvent(row)),
         };
       },
-      onProgress,
-      undefined, // signal
-      undefined, // bufferMs
-      true, // withRawEvents: a trilha lê `atena_ev` (eventos crus) p/ a linha do tempo
-      messageId, // filtra o `atena_ev` a ESTE destinatário já no build → sem materializar o dia inteiro
     );
   }
 
@@ -787,7 +867,11 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     };
 
     return this.withRecords(
-      window,
+      {
+        window,
+        onProgress,
+        signal,
+      },
       async (connection) => {
         const totals = await this.reportTotals(
           connection,
@@ -816,8 +900,6 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
           topErrors,
         };
       },
-      onProgress,
-      signal,
     );
   }
 
@@ -827,7 +909,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     // destinatário (`atena_records`). Lista todo provedor que aparece na janela (⊇ o derivado de
     // records, que usa max(provider)/destinatário).
     return this.withSources(
-      window ?? this.defaultWindow(),
+      { window: window ?? this.defaultWindow() },
       async (
         connection,
         {
@@ -870,7 +952,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   }> {
     // Catálogo: agrega direto da fonte (vide {@link withSources}) — sem materializar `atena_records`.
     return this.withSources(
-      window ?? this.defaultWindow(),
+      { window: window ?? this.defaultWindow() },
       async (
         connection,
         {
@@ -938,7 +1020,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   /** @inheritdoc */
   async terminalSamples(window: AuditWindowInterface): Promise<ShippingSampleInterface[]> {
     return this.withRecords(
-      window,
+      { window },
       async (connection) => {
         const params: BindValue[] = [];
 
@@ -957,8 +1039,8 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
         );
 
         return rows.map((row) => ({
-          id: String(row.id ?? ''),
-          customerId: String(row.customer ?? ''),
+          id: scalarText(row.id ?? ''),
+          customerId: scalarText(row.customer ?? ''),
           provider: toText(row.provider),
           finalStatus: row.final_status as ShippingStatusType,
           occurredAt: toDate(row.finalized_at) ?? new Date(0),
@@ -971,7 +1053,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   /** @inheritdoc */
   async sendSamples(window: AuditWindowInterface): Promise<ShippingSampleInterface[]> {
     return this.withRecords(
-      window,
+      { window },
       async (connection) => {
         const params: BindValue[] = [];
 
@@ -991,8 +1073,8 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
         );
 
         return rows.map((row) => ({
-          id: String(row.id ?? ''),
-          customerId: String(row.customer ?? ''),
+          id: scalarText(row.id ?? ''),
+          customerId: scalarText(row.customer ?? ''),
           finalStatus: row.final_status as ShippingStatusType,
           occurredAt: toDate(row.finalized_at) ?? toDate(row.requested_at) ?? new Date(0),
           provider: toText(row.provider),
@@ -1013,7 +1095,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     }
 
     return this.withRecords(
-      window,
+      { window },
       async (connection) => {
         const params: BindValue[] = [];
         const placeholders = ids.map((id) => `$${params.push(id)}`).join(', ');
@@ -1040,7 +1122,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     };
 
     return this.withRecords(
-      window,
+      { window },
       async (connection) => {
         const params: BindValue[] = [];
 
@@ -1065,7 +1147,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     window: AuditWindowInterface,
   ): Promise<string> {
     return this.withRecords(
-      window,
+      { window },
       async (connection) => {
         const params: BindValue[] = [];
         const placeholders = ids.map((id) => `$${params.push(id)}`).join(', ');
@@ -1091,11 +1173,12 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * CLARO (exports auditados, severidade `pii`); aliases = header snake_case do contrato; delimitador
    * `;` p/ o Excel pt-BR (o BOM UTF-8 é prefixado no stream pela borda). Sem LIMIT: TODAS as linhas.
    *
-   * @param {DuckDBConnection} connection - Conexão com a TEMP TABLE de records materializada.
-   * @param {string} conditions - Cláusula `WHERE` (já com os `$n` ligados a `params`).
-   * @param {BindValue[]} params - Valores de bind do `WHERE`.
-   * @param {string} prefix - Prefixo do nome do arquivo (`shippings`/`incident`).
-   * @returns {Promise<string>} Caminho do CSV gerado.
+   * @param connection - Conexão com a TEMP TABLE de records materializada.
+   * @param conditions - Cláusula `WHERE` (já com os `$n` ligados a `params`).
+   * @param params - Valores de bind do `WHERE`.
+   * @param prefix - Prefixo do nome do arquivo (`shippings`/`incident`).
+   *
+   * @returns Caminho do CSV gerado.
    */
   private async copyToCsv(
     connection: DuckDBConnection,
@@ -1137,11 +1220,10 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * download é byte-exato com o `total` exibido (sem re-escanear o S3, que ainda recebe dado tardio).
    * Roda na MESMA conexão da busca (a TEMP TABLE de records já está materializada).
    *
-   * @param {DuckDBConnection} connection - Conexão com a TEMP TABLE de records da busca.
-   * @param {string} conditions - `WHERE` da busca (mesmos `$n`/params).
-   * @param {BindValue[]} params - Binds do `WHERE`.
-   * @param {string} token - Id do snapshot (compõe o nome do Parquet).
-   * @returns {Promise<void>}
+   * @param connection - Conexão com a TEMP TABLE de records da busca.
+   * @param conditions - `WHERE` da busca (mesmos `$n`/params).
+   * @param params - Binds do `WHERE`.
+   * @param token - Id do snapshot (compõe o nome do Parquet).
    */
   private async writeSearchSnapshot(
     connection: DuckDBConnection,
@@ -1283,7 +1365,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     );
 
     return rows.map((row) => ({
-      name: String(row.name ?? 'desconhecido'),
+      name: scalarText(row.name ?? 'desconhecido'),
       sent: toNumber(row.sent),
       delivered: toNumber(row.delivered),
       failed: toNumber(row.failed),
@@ -1297,10 +1379,10 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   private async reportHourly(
     connection: DuckDBConnection,
     filter: AuditSearchFilterInterface,
-  ): Promise<Array<{
+  ): Promise<{
     at: string;
     rate: number
-  }>> {
+  }[]> {
     const params: BindValue[] = [];
 
     const conditions = this.filterConditions(
@@ -1349,9 +1431,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     );
 
     return rows.map((row) => ({
-      code: String(row.code ?? ''),
+      code: scalarText(row.code ?? ''),
       count: toNumber(row.count),
-      provider: String(row.provider ?? 'mix'),
+      provider: scalarText(row.provider ?? 'mix'),
     }));
   }
 
@@ -1369,9 +1451,10 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * Constrói as condições de filtro de `search`/`deliveryReport` (janela por `requested_at` +
    * phone/status/provider/customer), empurrando os valores em `params`.
    *
-   * @param {AuditSearchFilterInterface} filter - Filtros da consulta.
-   * @param {BindValue[]} params - Acumulador de valores de bind (mutável).
-   * @returns {string} Cláusula booleana (sempre verdadeira se não houver filtro).
+   * @param filter - Filtros da consulta.
+   * @param params - Acumulador de valores de bind (mutável).
+   *
+   * @returns Cláusula booleana (sempre verdadeira se não houver filtro).
    */
   private filterConditions(
     filter: AuditSearchFilterInterface,
@@ -1430,11 +1513,12 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   /**
    * Condição de janela sobre uma coluna de timestamp, empurrando os bounds (ISO) em `params`.
    *
-   * @param {AuditWindowInterface} window - Janela `[from, to)`.
-   * @param {string} column - Coluna de timestamp (`requested_at`/`finalized_at`).
-   * @param {BindValue[]} params - Acumulador de valores de bind (mutável).
-   * @param {boolean} [bare] - Se `true`, devolve só a cláusula (sem ` AND ` à frente).
-   * @returns {string} Cláusula da janela (ou vazia se a janela for aberta dos dois lados).
+   * @param window - Janela `[from, to)`.
+   * @param column - Coluna de timestamp (`requested_at`/`finalized_at`).
+   * @param params - Acumulador de valores de bind (mutável).
+   * @param [bare] - Se `true`, devolve só a cláusula (sem ` AND ` à frente).
+   *
+   * @returns Cláusula da janela (ou vazia se a janela for aberta dos dois lados).
    */
   private windowConditions(
     window: AuditWindowInterface | undefined,
@@ -1474,9 +1558,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   /** Mapeia uma linha do DuckDB para o registro de entrega de domínio. */
   private toRecord(row: Record<string, unknown>): DeliveryRecordInterface {
     return {
-      id: String(row.id ?? ''),
-      customerId: String(row.customer ?? ''),
-      phoneE164: String(row.phone ?? ''),
+      id: scalarText(row.id ?? ''),
+      customerId: scalarText(row.customer ?? ''),
+      phoneE164: scalarText(row.phone ?? ''),
       provider: toText(row.provider),
       correlationId: toText(row.correlation_id),
       channel: toText(row.channel),
@@ -1495,8 +1579,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * intermediário (`queued`/`sent`/`in_progress`) vira `webhook_status`; o restante (delivered/falhas)
    * vira `final`. `detail` agrega fornecedor + código + mensagem de erro, quando presentes.
    *
-   * @param {Record<string, unknown>} row - Linha de evento cru (`atena_ev`).
-   * @returns {DeliveryTrailEventInterface} Evento normalizado para a timeline.
+   * @param row - Linha de evento cru (`atena_ev`).
+   *
+   * @returns Evento normalizado para a timeline.
    */
   private toTrailEvent(row: Record<string, unknown>): DeliveryTrailEventInterface {
     const at = toDate(row.processed_at) ?? toDate(row.sent_at) ?? new Date(0);
@@ -1545,14 +1630,15 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Abre uma conexão, materializa os registros da janela numa TEMP TABLE e executa `run`.
-   * Fecha a conexão ao final. Janela sem objetos → TEMP TABLE vazia (resultado vazio, sem erro).
+   * Opens a connection, runs `run` on it and closes it at the end. An abort of `signal` interrupts
+   * the DuckDB query in progress.
    *
-   * @template T - Tipo do resultado de `run`.
-   * @param {AuditWindowInterface} window - Janela que define as partições varridas.
-   * @param {(connection: DuckDBConnection) => Promise<T>} run - Trabalho sobre a TEMP TABLE.
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento da materialização.
-   * @returns {Promise<T>} O resultado de `run`.
+   * @param run - Work on the connection.
+   * @param [signal] - Aborts the query in progress.
+   *
+   * @returns The result of `run`.
+   *
+   * @template T - Type of the result of `run`.
    */
   private async withConnection<T>(
     run: (connection: DuckDBConnection) => Promise<T>,
@@ -1591,30 +1677,31 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Opens a connection, materializes the window's records in a TEMP TABLE and runs `run`. Closes the
+   * connection at the end. A window without objects → empty TEMP TABLE (empty result, no error).
+   *
+   * @param options - The window and how to scan it (see {@link materialize}).
+   * @param run - Work on the TEMP TABLE.
+   *
+   * @returns The result of `run`.
+   *
+   * @template T - Type of the result of `run`.
+   */
   private async withRecords<T>(
-    window: AuditWindowInterface,
+    options: MaterializeOptionsInterface,
     run: (connection: DuckDBConnection) => Promise<T>,
-    onProgress?: AuditProgressCallback,
-    signal?: AbortSignal,
-    bufferMs?: number,
-    withRawEvents = false,
-    recipientId?: string,
   ): Promise<T> {
     return this.withConnection(
       async (connection) => {
         await this.materialize(
           connection,
-          window,
-          onProgress,
-          signal,
-          bufferMs,
-          withRawEvents,
-          recipientId,
+          options,
         );
 
         return run(connection);
       },
-      signal,
+      options.signal,
     );
   }
 
@@ -1626,16 +1713,15 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * (271k+ destinatários via `arg_max`/`any_value`) corta o custo da agregação. Fonte vazia
    * (janela sem objetos) → o `run` recebe listas vazias e deve curto-circuitar.
    *
+   * @param options - The window and how to scan it (see {@link scanPartitions}).
+   * @param run - Trabalho sobre a união das fontes.
+   *
+   * @returns O resultado de `run`.
+   *
    * @template T - Tipo do resultado de `run`.
-   * @param {AuditWindowInterface} window - Janela que define as partições varridas.
-   * @param {(connection: DuckDBConnection, sources: { parquetFiles: string[]; jsonFiles: string[] }) => Promise<T>} run - Trabalho sobre a união das fontes.
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento da varredura.
-   * @param {AbortSignal} [signal] - Aborta a query em curso.
-   * @param {number} [bufferMs] - Override do buffer de expansão (só pra frente) da janela.
-   * @returns {Promise<T>} O resultado de `run`.
    */
   private async withSources<T>(
-    window: AuditWindowInterface,
+    options: ScanOptionsInterface,
     run: (
       connection: DuckDBConnection,
       sources: {
@@ -1643,18 +1729,12 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
         jsonFiles: string[]
       },
     ) => Promise<T>,
-    onProgress?: AuditProgressCallback,
-    signal?: AbortSignal,
-    bufferMs?: number,
   ): Promise<T> {
     return this.withConnection(
       async (connection) => {
         const sources = await this.scanPartitions(
           connection,
-          window,
-          onProgress,
-          signal,
-          bufferMs,
+          options,
         );
 
         return run(
@@ -1662,7 +1742,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
           sources,
         );
       },
-      signal,
+      options.signal,
     );
   }
 
@@ -1674,26 +1754,27 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * cache → lê o S3 uma vez e grava o cache (write-through); recente → live (JSON). Emite progresso
    * (`mapping → reading → querying`) e contabiliza o custo de S3 ({@link recordScan}).
    *
-   * @param {DuckDBConnection} connection - Conexão ativa.
-   * @param {AuditWindowInterface} window - Janela que define as partições candidatas.
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento (mapping → reading → querying).
-   * @param {AbortSignal} [signal] - Aborta a varredura entre partições.
-   * @param {number} [bufferMs] - Override do buffer de expansão (só pra frente) da janela. Default
-   *   `this.lateStatusBufferMs` (cobre status que finalizam fora da janela). Passe `0` num lookup
-   *   pontual por id (reveal) p/ varrer SÓ a janela/filtros — o evento `queued` (com telefone) está
-   *   no próprio dia, então não precisa expandir, e o scan frio cai de ~6 dias para ~1.
-   * @returns {Promise<{ parquetFiles: string[]; jsonFiles: string[] }>} Fontes da janela.
+   * @param connection - Conexão ativa.
+   * @param options - The window, the progress callback (mapping → reading → querying), the signal
+   *   that aborts the scan between partitions and the forward buffer override (see
+   *   {@link ScanOptionsInterface.bufferMs}).
+   *
+   * @returns Fontes da janela.
    */
   private async scanPartitions(
     connection: DuckDBConnection,
-    window: AuditWindowInterface,
-    onProgress?: AuditProgressCallback,
-    signal?: AbortSignal,
-    bufferMs?: number,
+    options: ScanOptionsInterface,
   ): Promise<{
     parquetFiles: string[];
     jsonFiles: string[]
   }> {
+    const {
+      window,
+      onProgress,
+      signal,
+      bufferMs,
+    } = options;
+
     const startedAt = Date.now();
     const now = new Date();
 
@@ -1798,33 +1879,25 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * `/tmp` por partição. A dedup por destinatário roda sobre a UNIÃO `read_parquet(cache) ∪
    * read_json(live)` — global à janela (recipients podem cruzar partições).
    *
-   * @param {DuckDBConnection} connection - Conexão ativa.
-   * @param {AuditWindowInterface} window - Janela que define as partições candidatas.
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento (mapping → reading → querying).
-   * @param {AbortSignal} [signal] - Aborta a query em curso.
-   * @param {number} [bufferMs] - Override do buffer de expansão (só pra frente) da janela (vide {@link scanPartitions}).
-   * @param {boolean} [withRawEvents] - `true` materializa `atena_ev` (eventos crus) p/ a trilha; `false` agrega `atena_records` direto da fonte.
-   * @param {string} [recipientId] - Trilha: filtra o `atena_ev` a UM destinatário (md5) já no build (vide {@link evDdlFromSources}).
-   * @returns {Promise<void>}
+   * @param connection - Conexão ativa.
+   * @param options - The scan options (see {@link scanPartitions}) plus what to build: raw events for
+   *   the trail and the recipient filter (see {@link MaterializeOptionsInterface}).
    */
   private async materialize(
     connection: DuckDBConnection,
-    window: AuditWindowInterface,
-    onProgress?: AuditProgressCallback,
-    signal?: AbortSignal,
-    bufferMs?: number,
-    withRawEvents = false,
-    recipientId?: string,
+    options: MaterializeOptionsInterface,
   ): Promise<void> {
+    const {
+      withRawEvents = false,
+      recipientId,
+    } = options;
+
     const {
       parquetFiles,
       jsonFiles,
     } = await this.scanPartitions(
       connection,
-      window,
-      onProgress,
-      signal,
-      bufferMs,
+      options,
     );
 
     if (
@@ -1861,9 +1934,8 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * tempo), emite métricas best-effort (DogStatsD) e loga uma linha por consulta. Alimenta o
    * {@link scanStats} exposto no `/observability`.
    *
-   * @param {{ total: number; cachedCount: number; coldCount: number; liveCount: number; s3Objects: number }} counts - Contagens da consulta.
-   * @param {number} elapsedMs - Duração da materialização (ms).
-   * @returns {void}
+   * @param counts - Contagens da consulta.
+   * @param elapsedMs - Duração da materialização (ms).
    */
   private recordScan(
     counts: {
@@ -1920,8 +1992,6 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   /**
    * Poda os eventos de scan persistidos além de `scanEventRetentionMs` (best-effort, fire-and-forget)
    * — mantém a tabela limitada; falha nunca afeta o resto do eviction.
-   *
-   * @returns {void}
    */
   private pruneScanEvents(): void {
     this.prisma?.auditScanEvent.deleteMany({
@@ -1929,7 +1999,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     })
       .then((result) => {
         if (result.count > 0) {
-          this.logger.log(`audit_scan_events: poda removeu ${result.count} (> ${this.scanEventRetentionMs / DAY_MS}d).`);
+          this.logger.log(`audit_scan_events: poda removeu ${result.count} (> ${this.scanEventRetentionMs / MS_PER_DAY}d).`);
         }
       })
       .catch(() => undefined);
@@ -1940,8 +2010,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * persistidos (`audit_scan_events`) — sobrevive a restart. Sem Prisma (ex.: testes), cai no
    * acumulador em memória "desde a subida".
    *
-   * @param {number} [windowHours] - Tamanho da janela em horas (default 24).
-   * @returns {Promise<AuditScanStatsInterface>} Métricas agregadas da janela.
+   * @param [windowHours] - Tamanho da janela em horas (default 24).
+   *
+   * @returns Métricas agregadas da janela.
    */
   async scanStats(windowHours = 24): Promise<AuditScanStatsInterface> {
     if (!this.prisma) {
@@ -1955,7 +2026,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       });
     }
 
-    const since = new Date(Date.now() - windowHours * HOUR_MS);
+    const since = new Date(Date.now() - windowHours * MS_PER_HOUR);
 
     const agg = await this.prisma.auditScanEvent.aggregate({
       where: { at: { gte: since } },
@@ -1983,8 +2054,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * Monta o {@link AuditScanStatsInterface} (taxa de cache, custo estimado, médias) a partir dos
    * totais agregados — reusado pela janela persistida e pelo fallback em memória.
    *
-   * @param {object} totals - Totais agregados (queries/partições/objetos/ms).
-   * @returns {AuditScanStatsInterface} Estatísticas de borda.
+   * @param totals - Totais agregados (queries/partições/objetos/ms).
+   *
+   * @returns Estatísticas de borda.
    */
   private buildScanStats(totals: {
     queries: number;
@@ -1996,8 +2068,8 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
   }): AuditScanStatsInterface {
     // Estimativa GROSSEIRA: GET ~US$0,0004/1k (≈ 1 por objeto, limite inferior — DuckDB faz range
     // reads) + LIST ~US$0,005/1k (≈ 1 glob por partição lida do S3). Cache não toca o S3 (custo 0).
-    const cost = (totals.s3Objects * 0.0004) / 1000
-      + (totals.partitionsScanned * 0.005) / 1000;
+    const cost = (totals.s3Objects * S3_GET_USD_PER_1K) / REQUESTS_PER_PRICE_UNIT
+      + (totals.partitionsScanned * S3_LIST_USD_PER_1K) / REQUESTS_PER_PRICE_UNIT;
 
     return {
       queries: totals.queries,
@@ -2006,13 +2078,13 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
       partitions_scanned: totals.partitionsScanned,
       s3_objects: totals.s3Objects,
       cache_hit_rate: totals.partitionsTotal > 0
-        ? Math.round((totals.partitionsCached / totals.partitionsTotal) * 1000) / 1000
+        ? Math.round((totals.partitionsCached / totals.partitionsTotal) * HIT_RATE_PRECISION) / HIT_RATE_PRECISION
         : 0,
       avg_materialize_ms: totals.queries > 0
         ? Math.round(totals.readMs / totals.queries)
         : 0,
       estimated_get_requests: totals.s3Objects,
-      estimated_cost_usd: Math.round(cost * 10000) / 10000,
+      estimated_cost_usd: Math.round(cost * COST_ROUNDING_FACTOR) / COST_ROUNDING_FACTOR,
     };
   }
 
@@ -2032,8 +2104,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * Path do cache TTL de uma partição RECENTE (não-settled). Sufixo `|live` → hash distinto do cache
    * permanente (settled), sem colisão; a validade é pela mtime do arquivo (ver `materialize`).
    *
-   * @param {string} cacheKey - Chave da partição.
-   * @returns {string} Caminho do Parquet de cache live.
+   * @param cacheKey - Chave da partição.
+   *
+   * @returns Caminho do Parquet de cache live.
    */
   private liveCachePathFor(cacheKey: string): string {
     return this.cachePathFor(`${cacheKey}|live`);
@@ -2044,11 +2117,12 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * {@link materializeSettled} (manifesto/shards / fria). Não muta estado externo; devolve o que ler
    * (parquets/json), os objetos S3 lidos e o `kind` p/ a contabilidade do scan.
    *
-   * @param {DuckDBConnection} connection - Conexão DuckDB.
-   * @param {PartitionDescriptorInterface} descriptor - Partição candidata (glob/cacheKey/endsAt).
-   * @param {number} settledBefore - Limiar (epoch ms): partição fechada antes disto é "settled".
-   * @param {Date} now - Instante de referência (TTL do cache live / horizonte de lag).
-   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado da partição.
+   * @param connection - Conexão DuckDB.
+   * @param descriptor - Partição candidata (glob/cacheKey/endsAt).
+   * @param settledBefore - Limiar (epoch ms): partição fechada antes disto é "settled".
+   * @param now - Instante de referência (TTL do cache live / horizonte de lag).
+   *
+   * @returns Resultado da partição.
    */
   private async materializePartition(
     connection: DuckDBConnection,
@@ -2078,10 +2152,11 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * a partição aberta muda rápido, então o ganho do manifesto incremental (reservado às settled) não
    * compensa aqui.
    *
-   * @param {DuckDBConnection} connection - Conexão DuckDB.
-   * @param {PartitionDescriptorInterface} descriptor - Partição candidata.
-   * @param {Date} now - Instante de referência (validade do TTL).
-   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado da partição.
+   * @param connection - Conexão DuckDB.
+   * @param descriptor - Partição candidata.
+   * @param now - Instante de referência (validade do TTL).
+   *
+   * @returns Resultado da partição.
    */
   private async materializeLive(
     connection: DuckDBConnection,
@@ -2141,10 +2216,11 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * shard pendente (se houver) num base único (0 S3) ou serve direto. DENTRO do lag (ou fria): LIST +
    * reconcilia (ver {@link reconcileSettled}); fria sem cache → write-through completo.
    *
-   * @param {DuckDBConnection} connection - Conexão DuckDB.
-   * @param {PartitionDescriptorInterface} descriptor - Partição candidata.
-   * @param {Date} now - Instante de referência (horizonte de lag).
-   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado da partição.
+   * @param connection - Conexão DuckDB.
+   * @param descriptor - Partição candidata.
+   * @param now - Instante de referência (horizonte de lag).
+   *
+   * @returns Resultado da partição.
    */
   private async materializeSettled(
     connection: DuckDBConnection,
@@ -2216,11 +2292,12 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * manifesto. A fonte é append-only ⇒ só os objetos NOVOS são lidos (shard acumulado + novos, SEM
    * reler o base). LIST vazio = transitório → mantém o cache; objeto removido (raro) → rewrite completo.
    *
-   * @param {DuckDBConnection} connection - Conexão DuckDB.
-   * @param {string} cacheKey - Chave da partição.
-   * @param {PartitionManifestInterface} manifest - Manifesto atual.
-   * @param {string[]} files - Conjunto ATUAL de objetos da partição (do LIST).
-   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado (cache servido / shard / rewrite).
+   * @param connection - Conexão DuckDB.
+   * @param cacheKey - Chave da partição.
+   * @param manifest - Manifesto atual.
+   * @param files - Conjunto ATUAL de objetos da partição (do LIST).
+   *
+   * @returns Resultado (cache servido / shard / rewrite).
    */
   private async reconcileSettled(
     connection: DuckDBConnection,
@@ -2273,10 +2350,11 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * (uuid, ordenado) e grava o manifesto (base = todos os objetos; sem shard). Remove os Parquets do
    * manifesto anterior (se havia) DEPOIS do swap.
    *
-   * @param {DuckDBConnection} connection - Conexão DuckDB.
-   * @param {string[]} files - Objetos S3 a ler (não-vazio).
-   * @param {string} cacheKey - Chave da partição.
-   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado `cold` apontando p/ o base.
+   * @param connection - Conexão DuckDB.
+   * @param files - Objetos S3 a ler (não-vazio).
+   * @param cacheKey - Chave da partição.
+   *
+   * @returns Resultado `cold` apontando p/ o base.
    */
   private async writeColdCache(
     connection: DuckDBConnection,
@@ -2325,11 +2403,12 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * `shard` novo (uuid, ordenado) — SEM tocar o base — e troca o manifesto (swap atômico). Remove o
    * shard anterior DEPOIS do swap.
    *
-   * @param {DuckDBConnection} connection - Conexão DuckDB.
-   * @param {string} cacheKey - Chave da partição.
-   * @param {PartitionManifestInterface} manifest - Manifesto atual.
-   * @param {string[]} newFiles - Objetos novos (ausentes do manifesto).
-   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado apontando p/ base + novo shard.
+   * @param connection - Conexão DuckDB.
+   * @param cacheKey - Chave da partição.
+   * @param manifest - Manifesto atual.
+   * @param newFiles - Objetos novos (ausentes do manifesto).
+   *
+   * @returns Resultado apontando p/ base + novo shard.
    */
   private async appendShard(
     connection: DuckDBConnection,
@@ -2385,10 +2464,11 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * ordenado lendo só arquivos LOCAIS (0 S3), troca o manifesto (swap atômico) e remove os Parquets
    * antigos DEPOIS do swap. A partir daí a partição é imutável e servida direto.
    *
-   * @param {DuckDBConnection} connection - Conexão DuckDB.
-   * @param {string} cacheKey - Chave da partição.
-   * @param {PartitionManifestInterface} manifest - Manifesto atual (com shard).
-   * @returns {Promise<PartitionMaterializeResultInterface>} Resultado `cached` apontando p/ o base compactado.
+   * @param connection - Conexão DuckDB.
+   * @param cacheKey - Chave da partição.
+   * @param manifest - Manifesto atual (com shard).
+   *
+   * @returns Resultado `cached` apontando p/ o base compactado.
    */
   private async compactPartition(
     connection: DuckDBConnection,
@@ -2545,7 +2625,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     );
 
     return rows
-      .map((row) => String(row.file ?? ''))
+      .map((row) => scalarText(row.file ?? ''))
       .filter((file) => file !== '');
   }
 
@@ -2555,8 +2635,9 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
    * GETs são network-bound → concorrência alta (default 32) corta a latência da leitura fria sem
    * subir a CPU/RAM do DuckDB. Limpa o dir do lote se algum GET falhar.
    *
-   * @param {string[]} urls - URLs `s3://bucket/key` dos objetos da partição.
-   * @returns {Promise<{ files: string[]; dir: string }>} Paths locais + dir do lote (rm após o uso).
+   * @param urls - URLs `s3://bucket/key` dos objetos da partição.
+   *
+   * @returns Paths locais + dir do lote (rm após o uso).
    */
   private async prefetchToLocal(urls: string[]): Promise<{
     files: string[];
@@ -2712,7 +2793,7 @@ implements AuditQueryServiceInterface, OnModuleInit, OnModuleDestroy {
     connection: DuckDBConnection,
     sql: string,
     params: BindValue[],
-  ): Promise<Array<Record<string, unknown>>> {
+  ): Promise<Record<string, unknown>[]> {
     const reader = await connection.runAndReadAll(
       sql,
       params,

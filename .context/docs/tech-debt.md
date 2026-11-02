@@ -1,81 +1,104 @@
-# Débito técnico — Atena
+# Technical debt — Atena
 
-> Itens conscientemente adiados ou simplificados no MVP, para revisitar depois. Criado em 12/06/2026. Decisões relacionadas em [decisions.md](../../docs/design_handoff_atena/decisions.md).
+> Items consciously deferred or simplified in the MVP, to be revisited later. Created on 2026-06-12. Related decisions in [decisions.md](../../docs/design_handoff_atena/decisions.md).
 
-## 0. Já resolvido (resumo)
-- **Auth OIDC Microsoft Entra** ligada e validada (state/nonce/PKCE + sessão por cookie JWT). Ver item 1.
-- **RBAC gerenciado no app** (papéis no banco, `@Requires`), supera o antigo débito de App Roles do Entra. Ver item 1.
-- **LLM real:** Amazon Nova Pro (`us.amazon.nova-pro-v1:0`) via Bedrock Converse; provider fake sem credencial.
-- **Fonte de entrega = detailed report no S3** (`s3://example-sms-delivery-reports`), via DuckDB + cache `/tmp`; `messages`/`message_events` dropados. O contrato de logs gerais do `messaging-api` foi **abandonado**.
-- **Rename message→shipping concluído** (tools `search_shippings`/`get_shipping_trail`, `shipping_id`, rotas `/shippings/*`, incidentes com `related_shipping_ids`). "campaign" permanece.
-- **Top-3 cenários de anomalia** definidos (item 3) e detectores implementados (4 regras + shadow mode).
+## 0. Already resolved (summary)
+- **Microsoft Entra OIDC auth** enabled and validated (state/nonce/PKCE + JWT cookie session). See item 1.
+- **App-managed RBAC** (roles in the database, `@Requires`), supersedes the old Entra App Roles debt. See item 1.
+- **Real LLM:** Amazon Nova Pro (`us.amazon.nova-pro-v1:0`) via Bedrock Converse; fake provider without credentials.
+- **Delivery source = detailed report in S3** (`s3://example-sms-delivery-reports`), via DuckDB + `/tmp` cache; `messages`/`message_events` dropped. The general-logs contract of `messaging-api` was **abandoned**.
+- **message→shipping rename completed** (tools `search_shippings`/`get_shipping_trail`, `shipping_id`, routes `/shippings/*`, incidents with `related_shipping_ids`). "campaign" remains.
+- **Top-3 anomaly scenarios** defined (item 3) and detectors implemented (4 rules + shadow mode).
 
-## 1. Autenticação: login social institucional (OIDC via Microsoft 365) no MVP
-- **Decisão:** o MVP autentica via **login social do email institucional** — OIDC pelo **Microsoft 365 (Entra ID)**, restrito ao domínio `@example.com`. Sem senha própria. RBAC (`support_analyst` / `support_lead`) mapeado após o login.
-- **Trocabilidade:** o provedor fica atrás de uma **abstração de auth** (interface OIDC) para trocar de IdP facilmente (ex.: Google Workspace) sem reescrever o resto. É um requisito da decisão, não débito.
-- **Estado (2026-06-21):** login OIDC ligado **ponta-a-ponta** (plano `auth-oidc-entra`): state/nonce/PKCE, troca real de `code` por token, **sessão stateless por cookie JWT** (`atena_session`, `SameSite=None; Secure`), `GET /auth/me`, `logout` e tela de login no front. `AUTH_DEV_BYPASS` segue como **fallback de dev** (cookie tem precedência); **produção deve setar `AUTH_DEV_BYPASS=false`**.
-- **RBAC gerenciado no app (2026-06-21, plano `rbac-users-permissions`):** os papéis **deixaram de vir do IdP** — `mapRoles` foi removido. Agora há tabelas `users`/`user_roles`; o usuário é **persistido no login** (upsert) e os papéis são **atribuídos por um admin** (`/admin/usuarios`). Modelo **papéis→permissões** (mapa em código `auth/rbac/permissions.ts`; guard `@Requires(perm)`); papéis lidos do banco **por requisição** (cache ~30s, invalidado nas mutações). Estados: sem papel → `access_pending` (gate no front); `disabled` → `access_disabled`. Bootstrap por `AUTH_ADMIN_EMAILS`. devBypass de dev = `admin`. Catálogo inicial: `admin`/`support_lead`/`support_analyst`/`viewer`. **Isto supera o antigo débito do `support_lead`/App Roles do Entra.**
-- **Débitos residuais:**
-  - **Sem revogação central de sessão** (JWT stateless): não dá para invalidar o cookie antes do `exp` (8h). A **revogação de papéis** já é imediata (cache curto + lookup no banco); só o cookie em si não é revogável. Se necessário, sessão server-side ou refresh curto + denylist.
-  - **CSRF token ausente** — `SameSite=None` abre mão da proteção do cookie; hoje coberto por state/nonce/PKCE (login). Mutações sensíveis (admin, lifecycle) já exigem permissão + são auditadas; ao expor mutação cross-site mais ampla, adicionar double-submit/CSRF token.
-  - **Mapa papel→permissões em código** (não editável pelo admin no banco). Suficiente p/ o MVP; se precisar de papéis/permissões custom em runtime, promover para tabelas `roles`/`permissions`/`role_permissions`.
-  - **Sem FK** das tabelas existentes (`chat_sessions.user_id` etc.) para `users` (evita choque com `dev-user`/legado). Adicionar quando o legado for migrado.
-  - SSO corporativo completo / **SAML + SCIM**, caso seja preciso mais que o login social.
-- **Quando:** revogação de cookie/CSRF/FK se/quando o produto exigir; SAML/SCIM idem (não bloqueia o MVP).
-- **Validação pendente (humana):** o round-trip real com a Microsoft (login interativo no navegador) precisa ser validado por um operador — exige a app registrada no Entra com o `redirect_uri` (`/api/auth/callback`) e credencial corporativa. Fluxo/sessão/domínio + **RBAC inteiro** cobertos por testes + smoke estrutural (cookies forjados).
+## 1. Authentication: institutional social login (OIDC via Microsoft 365) in the MVP
+- **Decision:** the MVP authenticates via **social login with the institutional email** — OIDC through **Microsoft 365 (Entra ID)**, restricted to the `@example.com` domain. No password of its own. RBAC (`support_analyst` / `support_lead`) mapped after login.
+- **Swappability:** the provider sits behind an **auth abstraction** (OIDC interface) so the IdP can be swapped easily (e.g. Google Workspace) without rewriting the rest. This is a requirement of the decision, not debt.
+- **State (2026-06-21):** OIDC login enabled **end to end** (plan `auth-oidc-entra`): state/nonce/PKCE, real exchange of `code` for a token, **stateless JWT cookie session** (`atena_session`, `SameSite=None; Secure`), `GET /auth/me`, `logout` and a login screen on the front end. `AUTH_DEV_BYPASS` remains as a **dev fallback** (the cookie takes precedence); **production must set `AUTH_DEV_BYPASS=false`**.
+- **App-managed RBAC (2026-06-21, plan `rbac-users-permissions`):** roles **no longer come from the IdP** — `mapRoles` was removed. There are now `users`/`user_roles` tables; the user is **persisted at login** (upsert) and roles are **assigned by an admin** (`/admin/usuarios`). A **roles→permissions** model (map in code `auth/rbac/permissions.ts`; guard `@Requires(perm)`); roles read from the database **per request** (~30s cache, invalidated on mutations). States: no role → `access_pending` (gate on the front end); `disabled` → `access_disabled`. Bootstrap via `AUTH_ADMIN_EMAILS`. Dev devBypass = `admin`. Initial catalog: `admin`/`support_lead`/`support_analyst`/`viewer`. **This supersedes the old `support_lead`/Entra App Roles debt.**
+- **Residual debts:**
+  - **No central session revocation** (stateless JWT): the cookie cannot be invalidated before `exp` (8h). **Role revocation** is already immediate (short cache + database lookup); only the cookie itself cannot be revoked. If needed, a server-side session or a short refresh + denylist.
+  - **No CSRF token** — `SameSite=None` gives up the cookie's protection; currently covered by state/nonce/PKCE (login). Sensitive mutations (admin, lifecycle) already require a permission + are audited; when exposing broader cross-site mutations, add double-submit/a CSRF token.
+  - **Role→permissions map in code** (not editable by the admin in the database). Enough for the MVP; if custom roles/permissions are needed at runtime, promote to `roles`/`permissions`/`role_permissions` tables.
+  - **No FK** from the existing tables (`chat_sessions.user_id` etc.) to `users` (avoids clashing with `dev-user`/legacy). Add it once the legacy data is migrated.
+  - Full corporate SSO / **SAML + SCIM**, in case more than the social login is needed.
+- **When:** cookie revocation/CSRF/FK if/when the product requires it; SAML/SCIM likewise (does not block the MVP).
+- **Pending (human) validation:** the real round trip with Microsoft (interactive login in the browser) must be validated by an operator — it requires the app registered in Entra with the `redirect_uri` (`/api/auth/callback`) and a corporate credential. Flow/session/domain + **the entire RBAC** covered by tests + a structural smoke test (forged cookies).
 
-## 2. Banco: adaptação do schema PostgreSQL → MySQL
-O modelo em [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md) foi escrito para PostgreSQL. Itens a adaptar para **MySQL**:
-- `UUID` PK → `CHAR(36)` ou `BINARY(16)` (geração no app ou `UUID()`).
-- `TIMESTAMPTZ` → `DATETIME` em UTC (ou `TIMESTAMP`).
+## 2. Database: adapting the PostgreSQL → MySQL schema
+The model in [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md) was written for PostgreSQL. Items to adapt for **MySQL**:
+- `UUID` PK → `CHAR(36)` or `BINARY(16)` (generated in the app or `UUID()`).
+- `TIMESTAMPTZ` → `DATETIME` in UTC (or `TIMESTAMP`).
 - `JSONB` → `JSON`.
-- `TSTZRANGE` (`incidents.detection_window`) → duas colunas `DATETIME` (`detection_window_start` / `_end`).
-- `UUID[]` (`related_shipping_ids`) e `TEXT[]` (`tags`) → coluna `JSON` ou tabela de junção.
+- `TSTZRANGE` (`incidents.detection_window`) → two `DATETIME` columns (`detection_window_start` / `_end`).
+- `UUID[]` (`related_shipping_ids`) and `TEXT[]` (`tags`) → a `JSON` column or a join table.
 - `INET` (`audit_log.ip_address`) → `VARCHAR(45)`.
-- Particionamento de `audit_log` por mês → partição `RANGE` por coluna de tempo no MySQL.
-- Índices: sem GIN; usar índices comuns / funcionais (JSON) quando necessário.
-- **Imutabilidade do audit_log:** garantir via permissão do app role (só INSERT + SELECT).
+- Monthly partitioning of `audit_log` → `RANGE` partition by a time column in MySQL.
+- Indexes: no GIN; use regular / functional (JSON) indexes when needed.
+- **audit_log immutability:** guarantee it via the app role's permissions (INSERT + SELECT only).
 
-## 3. (resolvido) Top-3 cenários de anomalia
-- Definidos a partir dos logs de produção (`at-api-logs-prod`) — ver [anomaly-scenarios.md](anomaly-scenarios.md). Pendências residuais: validar com produto a definição de sucesso (`delivered` vs `delivered+sent`); recalcular baselines com 7–30 dias + dedupe por mensagem (status final, não evento); avaliar colunas extras em `anomaly_rules` (guarda de volume mínimo, baseline por hora-do-dia).
+## 3. (resolved) Top-3 anomaly scenarios
+- Defined from the production logs (`at-api-logs-prod`) — see [anomaly-scenarios.md](anomaly-scenarios.md). Residual open points: validate the definition of success with product (`delivered` vs `delivered+sent`); recompute baselines over 7–30 days + per-message deduplication (final status, not event); evaluate extra columns in `anomaly_rules` (minimum volume guard, time-of-day baseline).
 
-## 4. (resolvido) Sincronização da base de contexto (.context)
-- Passe concluído em 12/06/2026: docs (`.context/docs/*`), playbooks (`.context/agents/*`), skills (`.context/skills/*`) e o plano `.context/plans/atena-mvp.md` atualizados para **MySQL** + **Amazon Bedrock**, com a estratégia de dados (S3 = origem durável dos brutos; `/tmp` = cache transitório read-through; MySQL = metadados + audit) e login social institucional (OIDC via Microsoft 365). Manter sincronizado conforme surgirem novas decisões.
+## 4. (resolved) Synchronization of the context base (.context)
+- Pass completed on 2026-06-12: docs (`.context/docs/*`), playbooks (`.context/agents/*`), skills (`.context/skills/*`) and the plan `.context/plans/atena-mvp.md` updated for **MySQL** + **Amazon Bedrock**, with the data strategy (S3 = durable origin of the raw data; `/tmp` = transient read-through cache; MySQL = metadata + audit) and institutional social login (OIDC via Microsoft 365). Keep it in sync as new decisions come up.
 
-## 5. Cache transitório em `/tmp` — dimensionamento e durabilidade
-- O `/tmp` (volume Docker no EC2) é **cache transitório** dos dados brutos (decisão #8): reduz requisições repetidas ao S3 num curto período e mantém os brutos fora do MySQL. É **efêmero/rebuildável** — perde-se em restart/redeploy; ok porque a origem é o S3.
-- **Invariantes:** nada durável mora só no `/tmp` — `audit_log` (imutável, 1 ano) e metadados em **MySQL**; origem dos brutos no **S3**.
-- **A decidir (infra):** ~~TTL/eviction e limite de disco do `/tmp`~~ (eviction por idade+tamanho + limpeza de dirs de versão órfãos implementado no motor de auditoria — `ATENA_AUDIT_CACHE_MAX_MB`/`_MAX_AGE_HOURS`); EBS vs instance-store; **aquecimento (pré-popular) após redeploy** (pre-warming — ainda pendente); tamanho do cache vs volume de dados brutos.
+## 5. Transient cache in `/tmp` — sizing and durability
+- `/tmp` (Docker volume on the EC2 instance) is the **transient cache** of the raw data (decision #8): it reduces repeated requests to S3 within a short period and keeps raw data out of MySQL. It is **ephemeral/rebuildable** — lost on restart/redeploy; that is fine because the origin is S3.
+- **Invariants:** nothing durable lives only in `/tmp` — `audit_log` (immutable, 1 year) and metadata in **MySQL**; origin of the raw data in **S3**.
+- **To be decided (infra):** ~~TTL/eviction and disk limit of `/tmp`~~ (eviction by age+size + cleanup of orphaned version dirs implemented in the audit engine — `ATENA_AUDIT_CACHE_MAX_MB`/`_MAX_AGE_HOURS`); EBS vs instance store; **warming (pre-populating) after redeploy** (pre-warming — still pending); cache size vs raw data volume.
 
-## 6. Auditoria: saídas de fluxo pré-`queued` não rastreadas (médio prazo)
-- **Contexto:** a Atena conta a partir do **detailed report** (`example-sms-delivery-reports`), cujo primeiro registro de uma campanha é o `queued`. Falhas no produtor **antes** do `dispatchStatus('queued')` (parse / `calculateCreditByMessage` / `validatePayload` / `resolveSmsHashId`) **não geram registro** no detailed report → a Atena não as enxerga (só viram log de erro nos logs gerais).
-- **Decisão (MVP):** aceitar a lacuna — essas falhas são raras (a mensagem já passou pelo main-api). Canal: cobrimos **SMS Short + SMS Flash** (`campaign_type IN ('sms','sms_flash')`, decisão revista 2026-06-25; antes era só SMS Short). Voz/RCS seguem fora.
-- **Médio prazo:** **medir o volume** (erros pré-`queued` no dia vs nº de campanhas no detailed report) e decidir se vale mexer no produtor. Se relevante: o produtor emite um status de falha cedo (o detailed report não usa `hashId`, então dá pra emitir antes do `resolveSmsHashId`); o parse-falho (sem `campaign_id`) fica só no log. Alternativa barata no consumidor: reconciliar o intake (`[Action] enqueued`, agregado) vs as campanhas do detailed report.
+## 6. Audit: untracked pre-`queued` flow exits (medium term)
+- **Context:** Atena counts from the **detailed report** (`example-sms-delivery-reports`), whose first record for a campaign is the `queued`. Failures in the producer **before** `dispatchStatus('queued')` (parse / `calculateCreditByMessage` / `validatePayload` / `resolveSmsHashId`) **create no record** in the detailed report → Atena does not see them (they only become an error entry in the general logs).
+- **Decision (MVP):** accept the gap — these failures are rare (the message has already passed through main-api). Channel: we cover **SMS Short + SMS Flash** (`campaign_type IN ('sms','sms_flash')`, decision revised on 2026-06-25; previously SMS Short only). Voice/RCS remain out.
+- **Medium term:** **measure the volume** (pre-`queued` errors per day vs number of campaigns in the detailed report) and decide whether it is worth changing the producer. If relevant: the producer emits an early failure status (the detailed report does not use `hashId`, so it can be emitted before `resolveSmsHashId`); the failed parse (no `campaign_id`) stays in the log only. A cheap alternative on the consumer side: reconcile the intake (`[Action] enqueued`, aggregated) against the campaigns in the detailed report.
 
-## 7. Catálogo (`list_customers`/`list_providers`): scan e tamanho de resultado
-- **Contexto:** as tools de catálogo varrem o S3 para `DISTINCT` de clientes/provedores. Numa validação live o `list_customers` levou >2min (cold scan sobre a janela default, larga).
-- **(resolvido) scan amplo:** ~~clampar à janela/data-mínima~~ — as tools agora são **por janela** (`date_from`/`date_to`/`date_range`) e recortam à `ATENA_AUDIT_MIN_QUERY_DATE` (commit `c4cc0ac`); sem janela viram `[minQueryDate, agora]`. Validado live: "clientes nas últimas 24h" caiu de >2min para **~6s**. A seleção indevida pelo LLM também já foi mitigada (descrições + system prompt).
-- **Residual:** (a) **cache** do catálogo (clientes/provedores mudam devagar) com TTL, para chamadas repetidas sem outra query aquecer as partições; (b) **tamanho do resultado** — uma janela movimentada pode ter MUITOS clientes distintos, e despejar a lista inteira no LLM fica lento/caro na geração. Considerar `limit` + contagem (ex.: "N clientes; aqui os top/most recentes") em vez da lista completa.
+## 7. Catalog (`list_customers`/`list_providers`): scan and result size
+- **Context:** the catalog tools scan S3 for the `DISTINCT` customers/providers. In a live validation, `list_customers` took >2min (cold scan over the wide default window).
+- **(resolved) broad scan:** ~~clamp to the window/minimum date~~ — the tools are now **windowed** (`date_from`/`date_to`/`date_range`) and clipped to `ATENA_AUDIT_MIN_QUERY_DATE` (commit `c4cc0ac`); without a window they become `[minQueryDate, now]`. Validated live: "clientes nas últimas 24h" ("customers in the last 24h") dropped from >2min to **~6s**. Improper selection by the LLM has also been mitigated (descriptions + system prompt).
+- **Residual:** (a) a **cache** for the catalog (customers/providers change slowly) with a TTL, for repeated calls without another query having warmed the partitions; (b) **result size** — a busy window can have MANY distinct customers, and dumping the whole list into the LLM makes generation slow/expensive. Consider `limit` + a count (e.g. "N customers; here are the top/most recent") instead of the full list.
 
-## 8. (resolvido) Bedrock: turno pós-tool pendurava (stream sem chunks)
-- **Causa raiz (2026-06-29):** NÃO era o Bedrock — era o **event loop do Node bloqueado**. O log `[converse] send 52807ms · 1º token 1ms` denunciou: a Promise do Bedrock já tinha resolvido, mas o loop não a processava por ~52s (I/O **síncrono** no hot path — `writeFileSync` do pré-fetch de objetos S3 — + contenção do detector na **única** instância DuckDB). O stream do chat roda no mesmo loop → estourava o idle-timeout.
-- **Correção (commit `8131d1b`):** pré-fetch passou a `fs/promises.writeFile` (não-bloqueante → `send` caiu de ~52s p/ ~1–12s); detector com intervalo configurável `DETECT_INTERVAL_SECONDS` (60→180s, menos contenção); idle-timeout do LLM 60→120s; e o `catch` mudo do controller agora **loga** a causa real. Validado ao vivo (a pergunta que falhava passou a responder).
-- **Residual (limite de hardware, não software):** query AMPLA (relatório de vários dias) ainda leva ~88s = **compute do DuckDB em 2 CPUs**. Worker thread foi avaliado e **descartado** (o compute já roda fora do loop, nas threads do DuckDB; 2 instâncias arriscam OOM em 4GB). Ver memória `duckdb-event-loop-contention`.
+## 8. (resolved) Bedrock: the post-tool turn hung (stream without chunks)
+- **Root cause (2026-06-29):** it was NOT Bedrock — it was the **blocked Node event loop**. The log `[converse] send 52807ms · 1º token 1ms` gave it away: the Bedrock Promise had already resolved, but the loop did not process it for ~52s (**synchronous** I/O on the hot path — `writeFileSync` in the S3 object prefetch — + detector contention on the **single** DuckDB instance). The chat stream runs on the same loop → it blew the idle timeout.
+- **Fix (commit `8131d1b`):** the prefetch moved to `fs/promises.writeFile` (non-blocking → `send` dropped from ~52s to ~1–12s); detector with a configurable interval `DETECT_INTERVAL_SECONDS` (60→180s, less contention); LLM idle timeout 60→120s; and the controller's silent `catch` now **logs** the real cause. Validated live (the question that used to fail now gets an answer).
+- **Residual (hardware limit, not software):** a BROAD query (multi-day report) still takes ~88s = **DuckDB compute on 2 CPUs**. A worker thread was evaluated and **discarded** (the compute already runs off the loop, in DuckDB's threads; 2 instances risk OOM in 4GB). See memory `duckdb-event-loop-contention`.
 
-## 9. Credenciais AWS: S3 via IAM Role (feito no app) · Bedrock via Bearer (por design)
-- **S3 (detailed report):** o DuckDB usa `CREATE SECRET … PROVIDER credential_chain` → resolve sozinho **chaves estáticas/STS** (`AWS_ACCESS_KEY_ID`/`SECRET`/`SESSION_TOKEN`) no dev local OU a **IAM Role da instância** (EC2/ECS) em produção, sem chaves no `.env`. Nada a fazer no app — basta a EC2 ter a role com `s3:GetObject`/`s3:ListBucket` no bucket do detailed report.
-- **Bedrock (LLM):** autentica por `AWS_BEARER_TOKEN_BEDROCK` (Bearer), **OBRIGATÓRIO** quando `LLM_PROVIDER=bedrock` (o `LlmModule` falha-rápido sem ele). NÃO usa a IAM Role — por decisão de design.
-- **Resta (infra/AWS, fora do app):** anexar a IAM Role à EC2 e prover o Bearer do Bedrock por segredo (SSM/Secrets Manager) em produção. O `.env.example` já reflete os valores reais (`ATENA_SMS_STATUS_BUCKET=example-sms-delivery-reports`, `BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0`).
+## 9. AWS credentials: S3 via IAM Role (done in the app) · Bedrock via Bearer (by design)
+- **S3 (detailed report):** DuckDB uses `CREATE SECRET … PROVIDER credential_chain` → it resolves on its own either **static/STS keys** (`AWS_ACCESS_KEY_ID`/`SECRET`/`SESSION_TOKEN`) in local dev OR the **instance IAM Role** (EC2/ECS) in production, with no keys in `.env`. Nothing to do in the app — the EC2 instance just needs the role with `s3:GetObject`/`s3:ListBucket` on the detailed report bucket.
+- **Bedrock (LLM):** authenticates via `AWS_BEARER_TOKEN_BEDROCK` (Bearer), **MANDATORY** when `LLM_PROVIDER=bedrock` (`LlmModule` fails fast without it). It does NOT use the IAM Role — by design decision.
+- **Remaining (infra/AWS, outside the app):** attach the IAM Role to the EC2 instance and provide the Bedrock Bearer via a secret (SSM/Secrets Manager) in production. `.env.example` already reflects the real values (`ATENA_SMS_STATUS_BUCKET=example-sms-delivery-reports`, `BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0`).
 
-## 10. (resolvido) CI
-- **Feito (2026-06-29):** `.github/workflows/ci.yml` — job **API** (lint + testes Jest) + job **Web** (lint + unit Vitest + **e2e Playwright** hermético sobre Chromium); o e2e entrou no gate (lint + `typecheck:e2e`). Verde no GitHub Actions; roda em push/PR na `master`.
-- **Residual:** o CI não cobre o `make test-e2e` (e2e de API com DB) nem deploy; lint usa `--fix` (não falha em itens auto-corrigíveis). Suficiente para o MVP.
+## 10. (resolved) CI
+- **Done (2026-06-29):** `.github/workflows/ci.yml` — **API** job (lint + Jest tests) + **Web** job (lint + Vitest unit + hermetic **Playwright e2e** on Chromium); the e2e joined the gate (lint + `typecheck:e2e`). Green on GitHub Actions; runs on push/PR to `master`.
+- **Residual:** CI does not cover `make test-e2e` (API e2e with a DB) nor deploy; lint uses `--fix` (does not fail on auto-fixable items). Enough for the MVP.
 
-## 11. SSO corporativo completo (SAML + SCIM)
-- O MVP usa OIDC (Microsoft Entra) com papéis gerenciados no app. SSO corporativo completo (SAML + provisionamento via SCIM) segue como **débito residual** — não bloqueia o MVP. Ver item 1.
+## 11. Full corporate SSO (SAML + SCIM)
+- The MVP uses OIDC (Microsoft Entra) with app-managed roles. Full corporate SSO (SAML + SCIM provisioning) remains **residual debt** — it does not block the MVP. See item 1.
 
-## 12. Observabilidade: KPIs do protótipo sem fonte de dado real
-- **Contexto (2026-06-29):** ao alinhar a tela de Observabilidade ao protótipo, alguns números do mock **não têm fonte real** no backend. Decisão consciente: manter a UI **fiel ao dado real** (não fabricar número), deixando estes como débito. A parte de UI/estilo (barra de latência, WS verde + fundo, card de recusas, tokens) já foi alinhada.
-- **WebSocket — "média" e "lag médio":** o `SupportGateway` só expõe `connected` (ao vivo) + `peak` (em memória, escopo do processo). Não há série temporal de conexões nem medição de RTT — o card mostra só **conectados + pico**. Para os 4 stats do protótipo: (a) **média** = contador rolante em memória no gateway (barato, mas escopo-processo, não por-janela — métrica meio "vaidade"); (b) **lag médio** = **protocolo ping/pong** (cliente web + gateway medindo RTT), mais envolvido. O ideal seria **telemetria persistida** (série temporal) p/ ser por-janela de verdade, como os demais KPIs.
-- **Recusas — breakdown por motivo:** a recusa **é persistida + contada** (dado real), mas o orquestrador (`buildRefusal`) emite **sempre um único motivo** `fora_do_escopo`. O protótipo mostra 3 (`fora_de_escopo`/`falta_de_contexto`/`prompt_injection`) — **mock**. Para o breakdown real: **classificador de recusa** no orquestrador (distinguir o motivo via `stop_details` do Bedrock / heurística do pedido). O exemplo por motivo já existe no front (mapa estático `REFUSAL_REASON_EXAMPLE`), pronto p/ os motivos extras quando existirem.
-- **Quando:** quando o produto quiser as métricas de WS de verdade (telemetria) ou o breakdown de recusas; **nada disso bloqueia** o uso atual (a UI mostra o dado real que existe).
+## 12. Observability: prototype KPIs without a real data source
+- **Context (2026-06-29):** when aligning the Observability screen with the prototype, some of the mock's numbers **have no real source** in the backend. Conscious decision: keep the UI **faithful to the real data** (do not fabricate numbers), leaving these as debt. The UI/style part (latency bar, green WS + background, refusals card, tokens) has already been aligned.
+- **WebSocket — "average" and "average lag":** `SupportGateway` only exposes `connected` (live) + `peak` (in memory, process scope). There is no time series of connections nor RTT measurement — the card shows only **connected + peak**. For the prototype's 4 stats: (a) **average** = a rolling in-memory counter in the gateway (cheap, but process-scoped, not per window — a somewhat "vanity" metric); (b) **average lag** = a **ping/pong protocol** (web client + gateway measuring RTT), more involved. The ideal would be **persisted telemetry** (time series) so it is truly per window, like the other KPIs.
+- **Refusals — breakdown by reason:** the refusal **is persisted + counted** (real data), but the orchestrator (`buildRefusal`) **always emits a single reason** `fora_do_escopo`. The prototype shows 3 (`fora_de_escopo`/`falta_de_contexto`/`prompt_injection`) — a **mock**. For the real breakdown: a **refusal classifier** in the orchestrator (distinguishing the reason via Bedrock's `stop_details` / a heuristic on the request). The per-reason example already exists on the front end (static map `REFUSAL_REASON_EXAMPLE`), ready for the extra reasons when they exist.
+- **When:** when the product wants real WS metrics (telemetry) or the refusals breakdown; **none of this blocks** current usage (the UI shows the real data that exists).
+
+## 13. Web unit coverage below the 80% gate
+- **Context (2026-11-01):** the standards require 80% coverage on statements, branches, functions and lines. The API meets it (94.4 / 82.7 / 89.4 / 94.2). The web app does not: its Vitest suite covers the logic modules (SSE parsing, reveal, formatting, time, the chat hook, the incident banner), while pages and components are exercised only by the Playwright suite, which does not report coverage. Measured: statements 16.7%, branches 54.7%, functions 43.7%, lines 16.7% over `apps/web/src`.
+- **Decision:** the threshold was not lowered silently: `apps/web/vite.config.ts` holds a **ratchet at the measured floor** (16 / 54 / 42 / 16), so coverage cannot drop, and this item tracks the gap.
+- **What closes it:** component tests with `jsdom` + Testing Library for the pages (chat, incidents, reports, rules, audit, admin, observability) with the API mocked at `apiFetch`, raising the floor in `vite.config.ts` with each batch until all four metrics reach 80% — or, alternatively, merging Playwright coverage (V8 via `page.coverage`) into the report.
+
+## 14. Dependency advisories below the audit gate
+- **Context (2026-11-01):** CI fails on production advisories of severity **high** or above (`npm audit --omit=dev --audit-level=high`). The high ones found when the gate was introduced were fixed (lockfile updates, `dd-trace` ≥ 5.134, `multer` 2.5.0 through `overrides`, because `@nestjs/platform-express` 11 pins 2.4.0).
+- **Open:** two **moderate** advisories in `react-router` 6 (open redirect via backslash in `<Link>`/`useNavigate`; constructor injection in SSR hydration, which this SPA does not use). The fix is react-router 7, a major upgrade.
+- **What closes it:** migrate `react-router-dom` 6 → 7 (route definitions and data APIs), then drop the `multer` override once `@nestjs/platform-express` ships a fixed version.
+
+## 15. Code comments still in Portuguese
+- **Context:** the standards require everything in English. The context base, the tooling and every comment written since 2026-11-01 are in English; most older code comments (TSDoc of the API and web modules, inline comments), the `Makefile` help texts, `docs/` (handoff, cost notes) and some identifiers of pages (`UsuariosPage`, `RelatoriosPage`, route `/admin/usuarios`) are still in Portuguese. User-facing UI strings stay in Portuguese by design.
+- **What closes it:** translate module by module when a file is touched for other reasons; rename the page components (`UsersPage`, `ReportsPage`) in a dedicated `refactor` PR; translate `docs/` last (historical).
+
+## 16. Behaviour found while raising coverage (not changed)
+- **`audit-query/duckdb-audit-query.service.ts`, `fetchObjectToLocal`:** when an S3 response has no `Body`, it writes an empty file; DuckDB then fails the whole query with "Input is not a GZIP stream", so this fallback never helps. Decide whether to skip the partition or fail with a clear error.
+- **`cache/s3-tmp-content-cache.ts`, `get()`:** `parseRef(ref)` runs before the `try`, so a malformed ref (e.g. `s3://bucket-only`) throws, although the interface documents `null` on failure. The spec asserts the current behaviour.
+- **Incident detection-window fallbacks:** the schema says the window columns are `NOT NULL`, but the service still falls back when they are missing (a spec relies on it). Decide whether the fallback should exist.
+
+## 17. Branch ruleset still requires the previous CI job names
+- **Context (2026-11-01):** CI now has one job per check. The ruleset on `master` required `API · lint + testes` and `Web · lint + unit + e2e (Playwright)`; both names are kept alive as transition jobs that pass only when the jobs doing their work passed.
+- **What closes it:** require `lint`, `typecheck`, `architecture`, `unused`, `test-api`, `test-web`, `e2e-web`, `tooling`, `audit`, `context`, `commitlint` and `CodeQL` in the ruleset, then delete the two transition jobs from `ci.yml`.

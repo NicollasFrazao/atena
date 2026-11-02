@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, type JSX } from 'react';
 import { APP_TZ_LABEL, formatDate, formatTime } from '../../util/time';
+import { cssValue, cssVar } from '../../styles/tokens';
 
 /** Ponto cronológico por hora (`at` = início do bucket, ISO 8601 UTC; `value` = métrica plotada). */
 export interface HourlyPointInterface {
@@ -9,6 +10,12 @@ export interface HourlyPointInterface {
 
 /** Altura do gráfico (px). */
 const HEIGHT = 56;
+
+/** Width of the SVG viewBox: 100, so an x in the viewBox is also a CSS percentage of the chart. */
+const VIEWBOX_WIDTH = 100;
+
+/** Headroom added above and below the plotted range, as a fraction of that range. */
+const RANGE_PADDING_RATIO = 0.15;
 
 /** Quantidade alvo de rótulos no eixo X. */
 const LABEL_COUNT = 5;
@@ -55,24 +62,25 @@ function labelIndices(count: number): number[] {
  * passar o mouse uma coluna por bucket destaca o ponto e mostra `DD/MM HHh · <valor>`. Genérico:
  * usado pela taxa de entrega (%) e pelo consumo de tokens, via `formatValue` + `clampMax`.
  *
- * @param {object} props - Configuração do gráfico.
- * @param {HourlyPointInterface[]} props.points - Buckets cronológicos (ISO UTC em `at`, número em `value`).
- * @param {string} props.title - Título (caixa-alta) à esquerda do cabeçalho.
- * @param {(value: number) => string} props.formatValue - Formata o valor (tooltip + máx/mín).
- * @param {number} [props.clampMax] - Teto da escala padded (ex.: 100 para %); sem isso, usa o máx + folga.
- * @returns {JSX.Element} O gráfico horário interativo.
+ * @param props - Configuração do gráfico.
+ * @param props.points - Buckets cronológicos (ISO UTC em `at`, número em `value`).
+ * @param props.title - Título (caixa-alta) à esquerda do cabeçalho.
+ * @param props.formatValue - Formata o valor (tooltip + máx/mín).
+ * @param [props.clampMax] - Teto da escala padded (ex.: 100 para %); sem isso, usa o máx + folga.
+ *
+ * @returns O gráfico horário interativo.
  */
 export function HourlyChart({
   points,
   title,
   formatValue,
   clampMax,
-}: {
+}: Readonly<{
   points: HourlyPointInterface[];
   title: string;
   formatValue: (value: number) => string;
   clampMax?: number
-}): JSX.Element {
+}>): JSX.Element {
   const [
     hover,
     setHover,
@@ -82,7 +90,7 @@ export function HourlyChart({
     return (
       <div style={{
         fontSize: 11,
-        color: 'var(--at-fg-subtle)',
+        color: cssVar.fgSubtle,
       }}
       >
         Sem dados horários na janela.
@@ -94,7 +102,7 @@ export function HourlyChart({
   const max = Math.max(...values);
   const min = Math.min(...values);
 
-  const pad = (max - min) * 0.15;
+  const pad = (max - min) * RANGE_PADDING_RATIO;
 
   const lo = Math.max(
     0,
@@ -113,7 +121,7 @@ export function HourlyChart({
     points.length - 1,
   );
 
-  const pointX = (index: number): number => (index / lastIndex) * 100;
+  const pointX = (index: number): number => (index / lastIndex) * VIEWBOX_WIDTH;
   const pointY = (value: number): number => (1 - (value - lo) / span) * HEIGHT;
 
   const line = points
@@ -125,7 +133,7 @@ export function HourlyChart({
       : 'L'} ${pointX(index)} ${pointY(point.value)}`)
     .join(' ');
 
-  const area = `${line} L 100 ${HEIGHT} L 0 ${HEIGHT} Z`;
+  const area = `${line} L ${VIEWBOX_WIDTH} ${HEIGHT} L 0 ${HEIGHT} Z`;
 
   const hovered = hover !== null
     ? formatBucket(points[hover].at)
@@ -155,15 +163,15 @@ export function HourlyChart({
     <div>
       <div style={{
         display: 'flex',
-        justifyContent: 'space-between',
+        justifyContent: cssValue.spaceBetween,
         alignItems: 'flex-end',
-        marginBottom: 'var(--at-space-4)',
+        marginBottom: cssVar.space4,
       }}
       >
         <div style={{
           fontSize: 11,
           fontWeight: 600,
-          color: 'var(--at-fg-subtle)',
+          color: cssVar.fgSubtle,
           textTransform: 'uppercase',
           letterSpacing: 0.5,
           minWidth: 0,
@@ -176,7 +184,7 @@ export function HourlyChart({
           <span style={{
             textTransform: 'none',
             fontWeight: 400,
-            color: 'var(--at-fg-subtle)',
+            color: cssVar.fgSubtle,
           }}
           >
             {` · ${APP_TZ_LABEL}`}
@@ -184,18 +192,18 @@ export function HourlyChart({
         </div>
         <div style={{
           display: 'flex',
-          gap: 'var(--at-space-12)',
+          gap: cssVar.space12,
           fontSize: 11,
-          color: 'var(--at-fg-muted)',
+          color: cssVar.fgMuted,
           flexShrink: 0,
           whiteSpace: 'nowrap',
         }}
         >
           <span>
-            <b style={{ color: 'var(--at-fg)' }}>{formatValue(max)}</b> máx
+            <b style={{ color: cssVar.fg }}>{formatValue(max)}</b> máx
           </span>
           <span>
-            <b style={{ color: 'var(--at-fg)' }}>{formatValue(min)}</b> mín
+            <b style={{ color: cssVar.fg }}>{formatValue(min)}</b> mín
           </span>
         </div>
       </div>
@@ -203,15 +211,15 @@ export function HourlyChart({
       <div style={{
         position: 'relative',
         height: HEIGHT,
-        background: 'var(--at-bg-soft)',
-        border: '1px solid var(--at-border)',
-        borderRadius: 'var(--at-radius-4)',
+        background: cssVar.bgSoft,
+        border: cssVar.borderLine,
+        borderRadius: cssVar.radius4,
       }}
       >
         <svg
           width="100%"
           height={HEIGHT}
-          viewBox={`0 0 100 ${HEIGHT}`}
+          viewBox={`0 0 ${VIEWBOX_WIDTH} ${HEIGHT}`}
           preserveAspectRatio="none"
           style={{ display: 'block' }}
           aria-hidden="true"
@@ -226,12 +234,12 @@ export function HourlyChart({
             >
               <stop
                 offset="0%"
-                stopColor="var(--at-primary)"
+                stopColor={cssVar.primary}
                 stopOpacity="0.28"
               />
               <stop
                 offset="100%"
-                stopColor="var(--at-primary)"
+                stopColor={cssVar.primary}
                 stopOpacity="0"
               />
             </linearGradient>
@@ -243,7 +251,7 @@ export function HourlyChart({
           />
           <path
             d={line}
-            stroke="var(--at-primary)"
+            stroke={cssVar.primary}
             strokeWidth="1.5"
             fill="none"
             vectorEffect="non-scaling-stroke"
@@ -260,7 +268,7 @@ export function HourlyChart({
                 top: 0,
                 bottom: 0,
                 width: 1,
-                background: 'var(--at-border)',
+                background: cssVar.border,
                 transform: 'translateX(-0.5px)',
               }}
               />
@@ -271,7 +279,7 @@ export function HourlyChart({
                 width: 7,
                 height: 7,
                 borderRadius: '50%',
-                background: 'var(--at-primary)',
+                background: cssVar.primary,
                 border: '1.5px solid var(--at-white)',
                 transform: 'translate(-50%, -50%)',
               }}
@@ -293,8 +301,8 @@ export function HourlyChart({
           ) => (
             <div
               key={point.at}
-              onMouseEnter={() => setHover(index)}
-              onMouseLeave={() => setHover(null)}
+              onMouseEnter={() => { setHover(index); }}
+              onMouseLeave={() => { setHover(null); }}
               style={{
                 flex: 1,
                 cursor: 'crosshair',
@@ -312,11 +320,11 @@ export function HourlyChart({
               top: -6,
               transform: 'translate(-50%, -100%)',
               padding: '3px 7px',
-              borderRadius: 'var(--at-radius-4)',
-              background: 'var(--at-fg)',
-              color: 'var(--at-white)',
+              borderRadius: cssVar.radius4,
+              background: cssVar.fg,
+              color: cssVar.white,
               fontSize: 11,
-              fontVariantNumeric: 'tabular-nums',
+              fontVariantNumeric: cssValue.tabularNums,
               whiteSpace: 'nowrap',
               pointerEvents: 'none',
             }}
@@ -330,7 +338,7 @@ export function HourlyChart({
       <div style={{
         position: 'relative',
         height: 14,
-        marginTop: 'var(--at-space-2)',
+        marginTop: cssVar.space2,
       }}
       >
         {axis.map((label) => (
@@ -344,8 +352,8 @@ export function HourlyChart({
                 lastIndex,
               ),
               fontSize: 10,
-              color: 'var(--at-fg-subtle)',
-              fontVariantNumeric: 'tabular-nums',
+              color: cssVar.fgSubtle,
+              fontVariantNumeric: cssValue.tabularNums,
               whiteSpace: 'nowrap',
             }}
           >

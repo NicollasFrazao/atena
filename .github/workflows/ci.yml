@@ -1,35 +1,27 @@
 name: CI
 
-# Lint + testes unitários (api/web) + e2e de browser (Playwright, hermético — sem S3/DB).
 on:
   push:
     branches: [master]
   pull_request:
 
-# Cancela execuções antigas do mesmo ref ao empurrar de novo.
+permissions:
+  contents: read
+
+# Cancel older runs of the same ref when a new commit is pushed.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  api:
-    name: API · lint + testes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      # Os pacotes consomem @atena/types compilado (dist); a api importa o cliente Prisma gerado.
-      - run: npm run build -w @atena/types
-      - run: npm run prisma:generate -w apps/api
-      - run: npm run lint -w apps/api
-      - run: npm test -w apps/api
+env:
+  # The git hooks are for local commits; CI runs the checks as jobs.
+  HUSKY: '0'
 
-  web:
-    name: Web · lint + unit + e2e (Playwright)
+# One job per check, so each one can be a required status check on its own. The workspaces
+# consume @atena/types from its build (dist), and the API needs the generated Prisma client, so
+# the jobs that compile or type-check code build both first.
+jobs:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -39,13 +31,101 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build -w @atena/types
-      - run: npm run lint -w @atena/web
-      - run: npm run typecheck:e2e -w @atena/web
-      - run: npm test -w @atena/web
-      # Browser + libs do SO para o Chromium do Playwright.
+      - run: npm run prisma:generate
+      - name: ESLint (root tooling and every workspace), warnings fail
+        run: npm run lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @atena/types
+      - run: npm run prisma:generate
+      - run: npm run typecheck
+
+  architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @atena/types
+      - name: Layer rules and cycles (dependency-cruiser)
+        run: npm run check:architecture
+
+  unused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unused files, exports and dependencies (knip)
+        run: npm run check:unused
+
+  test-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @atena/types
+      - run: npm run prisma:generate
+      - name: API tests with the 80% coverage gate
+        run: npm run test:coverage -w @atena/api
+      - uses: actions/upload-artifact@v5
+        if: ${{ !cancelled() }}
+        with:
+          name: coverage-api
+          path: apps/api/coverage/
+          retention-days: 14
+
+  test-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @atena/types
+      - name: Web unit tests with the coverage floor (see vite.config.ts)
+        run: npm run test:coverage -w @atena/web
+      - uses: actions/upload-artifact@v5
+        if: ${{ !cancelled() }}
+        with:
+          name: coverage-web
+          path: apps/web/coverage/
+          retention-days: 14
+
+  e2e-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @atena/types
+      # Browser and OS libraries for Playwright's Chromium.
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
-      # Hermético: o webServer do Playwright builda o web e o serve; as chamadas /api/** são mockadas.
+      # Hermetic: Playwright's webServer builds and serves the web app; every /api/** call is mocked.
       - run: npm run e2e -w @atena/web
       - uses: actions/upload-artifact@v5
         if: ${{ !cancelled() }}
@@ -53,3 +133,75 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 7
+
+  tooling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Tests of the local ESLint rules and the context script
+        run: npm run test:tooling
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Production dependencies, high severity and above
+        run: npm audit --omit=dev --audit-level=high
+
+  context:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Agent surfaces are copies of .context/docs/README.md
+        run: npm run check:context
+
+  commitlint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Every commit of the pull request follows Conventional Commits
+        run: >-
+          npx commitlint
+          --from ${{ github.event.pull_request.base.sha }}
+          --to ${{ github.event.pull_request.head.sha }}
+          --verbose
+
+  # Transition gates: the branch ruleset still requires the two job names of the previous
+  # layout. Each one passes only when the jobs that now do its work passed. Remove both once the
+  # ruleset requires the jobs above (see CONTRIBUTING.md, "Repository settings").
+  api:
+    name: API · lint + testes
+    if: ${{ always() }}
+    needs: [lint, typecheck, test-api]
+    runs-on: ubuntu-latest
+    steps:
+      - name: lint, typecheck and test-api passed
+        run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}" = true
+
+  web:
+    name: Web · lint + unit + e2e (Playwright)
+    if: ${{ always() }}
+    needs: [lint, typecheck, test-web, e2e-web]
+    runs-on: ubuntu-latest
+    steps:
+      - name: lint, typecheck, test-web and e2e-web passed
+        run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}" = true

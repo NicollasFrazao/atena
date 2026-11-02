@@ -64,8 +64,9 @@ export const TOOLS_CATALOG: ToolDescriptorInterface[] = [
 /**
  * Rótulo legível (PT-BR) de uma ferramenta pelo nome técnico; cai no próprio nome se desconhecida.
  *
- * @param {string} name - Nome técnico da tool (ex.: `generate_delivery_report`).
- * @returns {string} Rótulo amigável (ex.: "Relatório de entregabilidade").
+ * @param name - Nome técnico da tool (ex.: `generate_delivery_report`).
+ *
+ * @returns Rótulo amigável (ex.: "Relatório de entregabilidade").
  */
 export function toolLabel(name: string): string {
   return TOOLS_CATALOG.find((tool) => tool.name === name)?.label ?? name;
@@ -76,8 +77,9 @@ export function toolLabel(name: string): string {
  * resposta). Rede de segurança independente da aderência do modelo ao prompt — o usuário nunca vê
  * `search_shippings` etc. mesmo se o modelo escrever.
  *
- * @param {string} text - Texto cru do modelo.
- * @returns {string} Texto com os nomes técnicos substituídos pelos rótulos.
+ * @param text - Texto cru do modelo.
+ *
+ * @returns Texto com os nomes técnicos substituídos pelos rótulos.
  */
 export function humanizeToolNames(text: string): string {
   return TOOLS_CATALOG.reduce(

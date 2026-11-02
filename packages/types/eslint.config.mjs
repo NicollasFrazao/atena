@@ -1,5 +1,5 @@
-// ESLint (flat config) do pacote de tipos compartilhados (@atena/types).
-// Herda a base da Atena (../../eslint.shared.mjs): typescript-eslint + sonarjs/recommended + estrito.
+// ESLint flat config of the shared types package (@atena/types), on the shared base
+// (../../eslint.shared.mjs).
 import tseslint from 'typescript-eslint';
 import { sharedConfigs } from '../../eslint.shared.mjs';
 
@@ -10,5 +10,5 @@ export default tseslint.config(
       'node_modules/**',
     ],
   },
-  ...sharedConfigs,
+  ...sharedConfigs({ tsconfigRootDir: import.meta.dirname }),
 );

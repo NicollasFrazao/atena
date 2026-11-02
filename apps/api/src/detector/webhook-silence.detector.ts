@@ -1,3 +1,4 @@
+import { MS_PER_MINUTE } from '../common/units';
 import type {
   DetectionInterface,
   DetectorOptionsInterface,
@@ -10,28 +11,41 @@ function sendTime(message: ShippingSampleInterface): number {
   return (message.requestedAt ?? message.occurredAt).getTime();
 }
 
+/** One provider evaluated by the webhook-silence rule over the current window of sends. */
+interface ProviderEvaluationInterface {
+  /** Rule (threshold in MINUTES, window of sends). */
+  rule: DetectorRuleInterface;
+  /** Provider evaluated (value of the dimension). */
+  provider: string;
+  /** The provider's samples in the lookback (any status). */
+  samples: ShippingSampleInterface[];
+  /** Start (ms) of the window of sends. */
+  currentStart: number;
+  /** End (ms) of the window / reference instant. */
+  currentEnd: number;
+  /** Calibration (minimum volume of sends). */
+  opts: DetectorOptionsInterface;
+}
+
 /**
  * Avalia um provider: dispara se houve ENVIOS na janela (acima da guarda) mas
  * nenhum STATUS (`finalizedAt`) chegou nos últimos `threshold` minutos — o canal
  * de callbacks ficou em silêncio. `threshold` é lido em MINUTOS (não σ/%).
  *
- * @param {DetectorRuleInterface} rule - Regra (limiar em MINUTOS, janela de envios).
- * @param {string} provider - Provedor avaliado (valor da dimensão).
- * @param {ShippingSampleInterface[]} samples - Amostras do provider no lookback (qualquer status).
- * @param {number} currentStart - Início (ms) da janela de envios.
- * @param {number} currentEnd - Fim (ms) da janela / instante de referência.
- * @param {DetectorOptionsInterface} opts - Calibração (volume mínimo de envios).
+ * @param evaluation - The rule, the provider and its samples, the window of sends and the calibration.
  *
- * @returns {DetectionInterface | null} Anomalia detectada, ou `null`.
+ * @returns Anomalia detectada, ou `null`.
  */
-function evaluateProvider(
-  rule: DetectorRuleInterface,
-  provider: string,
-  samples: ShippingSampleInterface[],
-  currentStart: number,
-  currentEnd: number,
-  opts: DetectorOptionsInterface,
-): DetectionInterface | null {
+function evaluateProvider(evaluation: ProviderEvaluationInterface): DetectionInterface | null {
+  const {
+    rule,
+    provider,
+    samples,
+    currentStart,
+    currentEnd,
+    opts,
+  } = evaluation;
+
   const sends = samples.filter((message) => sendTime(message) >= currentStart);
 
   if (sends.length < opts.minTerminalVolume) {
@@ -39,8 +53,8 @@ function evaluateProvider(
   }
 
   const statusTimes = samples
-    .filter((message) => message.finalizedAt != null)
-    .map((message) => (message.finalizedAt as Date).getTime());
+    .map((message) => message.finalizedAt?.getTime())
+    .filter((time) => time != null);
 
   // reduce em vez de `Math.max(...statusTimes)`: o spread de um array grande (provedor de alto
   // volume → centenas de milhares de status) estoura o limite de argumentos ("Maximum call stack
@@ -58,7 +72,7 @@ function evaluateProvider(
     )
     : null;
 
-  const silenceMs = rule.threshold * 60_000;
+  const silenceMs = rule.threshold * MS_PER_MINUTE;
 
   const gapMs = lastStatus == null
     ? currentEnd - currentStart
@@ -73,7 +87,7 @@ function evaluateProvider(
 
   const gapLabel = lastStatus == null
     ? 'nenhum status recebido'
-    : `${Math.round(gapMs / 60_000)} min sem status`;
+    : `${Math.round(gapMs / MS_PER_MINUTE)} min sem status`;
 
   return {
     ruleId: rule.id,
@@ -101,12 +115,12 @@ function evaluateProvider(
  * (`finalizedAt`) nos últimos `threshold` minutos. Função pura — recebe `now` e a
  * calibração, sem I/O nem relógio implícito.
  *
- * @param {DetectorRuleInterface} rule - Regra `webhook_silence` (limiar em minutos).
- * @param {ShippingSampleInterface[]} messages - Mensagens do lookback (qualquer status, com `provider`).
- * @param {Date} now - Instante de referência.
- * @param {DetectorOptionsInterface} opts - Calibração.
+ * @param rule - Regra `webhook_silence` (limiar em minutos).
+ * @param messages - Mensagens do lookback (qualquer status, com `provider`).
+ * @param now - Instante de referência.
+ * @param opts - Calibração.
  *
- * @returns {DetectionInterface[]} Uma detecção por provedor em silêncio.
+ * @returns Uma detecção por provedor em silêncio.
  */
 export function detectWebhookSilence(
   rule: DetectorRuleInterface,
@@ -115,7 +129,7 @@ export function detectWebhookSilence(
   opts: DetectorOptionsInterface,
 ): DetectionInterface[] {
   const currentEnd = now.getTime();
-  const currentStart = currentEnd - rule.windowMinutes * 60_000;
+  const currentStart = currentEnd - rule.windowMinutes * MS_PER_MINUTE;
 
   const byProvider = new Map<string, ShippingSampleInterface[]>();
 
@@ -142,14 +156,14 @@ export function detectWebhookSilence(
     provider,
     samples,
   ] of byProvider) {
-    const detection = evaluateProvider(
+    const detection = evaluateProvider({
       rule,
       provider,
       samples,
       currentStart,
       currentEnd,
       opts,
-    );
+    });
 
     if (detection) {
       detections.push(detection);

@@ -5,6 +5,7 @@ import type {
   ChatMessageInterface,
   ChatSessionListItemInterface,
 } from '@atena/types';
+import { MINUTES_PER_HOUR, MS_PER_MINUTE } from '../common/units';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -26,16 +27,17 @@ export const STUB_USER_ID = 'dev-user';
 @Injectable()
 export class ChatService {
   /**
-   * @param {PrismaService} prisma - Cliente Prisma para sessões e mensagens de chat.
+   * @param prisma - Cliente Prisma para sessões e mensagens de chat.
    */
   constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Cria uma sessão de chat para o usuário.
    *
-   * @param {string} userId - Subject do usuário dono da sessão.
-   * @param {string} [title] - Título inicial opcional.
-   * @returns {Promise<{ session_id: string }>} Id da sessão criada.
+   * @param userId - Subject do usuário dono da sessão.
+   * @param [title] - Título inicial opcional.
+   *
+   * @returns Id da sessão criada.
    */
   async createSession(
     userId: string,
@@ -56,10 +58,12 @@ export class ChatService {
    * Atualiza uma sessão de chat: título (cabeçalho/histórico) e/ou fixação (`pinned`). Aplica só os
    * campos informados. Só age sobre uma sessão do próprio usuário.
    *
-   * @param {string} sessionId - Id da sessão.
-   * @param {string} userId - Subject do usuário dono (escopo de autorização).
-   * @param {{ title?: string; pinned?: boolean }} changes - Campos a atualizar (parciais).
-   * @returns {Promise<{ session_id: string; title: string; pinned: boolean }>} Sessão atualizada.
+   * @param sessionId - Id da sessão.
+   * @param userId - Subject do usuário dono (escopo de autorização).
+   * @param changes - Campos a atualizar (parciais).
+   *
+   * @returns Sessão atualizada.
+   *
    * @throws {NotFoundException} Se a sessão não existir ou não pertencer ao usuário.
    */
   async updateSession(
@@ -115,9 +119,8 @@ export class ChatService {
    * Vincula (idempotente) uma sessão a um incidente — many-to-many. Chamado quando o chat referencia
    * um incidente (ex.: tool `get_incident`). A PK composta evita duplicar o par.
    *
-   * @param {string} sessionId - Id da sessão.
-   * @param {string} incidentId - Id do incidente referenciado.
-   * @returns {Promise<void>}
+   * @param sessionId - Id da sessão.
+   * @param incidentId - Id do incidente referenciado.
    */
   async linkIncident(
     sessionId: string,
@@ -141,8 +144,9 @@ export class ChatService {
   /**
    * Lista as sessões do usuário (histórico), mais recentes primeiro.
    *
-   * @param {string} userId - Subject do usuário.
-   * @returns {Promise<ChatSessionListItemInterface[]>} Itens de sessão (snake_case) com contagens derivadas.
+   * @param userId - Subject do usuário.
+   *
+   * @returns Itens de sessão (snake_case) com contagens derivadas.
    */
   async listSessions(userId: string): Promise<ChatSessionListItemInterface[]> {
     const sessions = await this.prisma.chatSession.findMany({
@@ -164,7 +168,8 @@ export class ChatService {
       let preview = '';
 
       for (const msg of session.messages) {
-        const content = msg.content as unknown as ChatMessageContentInterface;
+        // JSON column: a row can hold JSON `null` instead of a content object.
+        const content = msg.content as unknown as ChatMessageContentInterface | null;
 
         if (Array.isArray(content?.tools)) {
           toolCount += content.tools.length;
@@ -202,9 +207,11 @@ export class ChatService {
   /**
    * Lê o histórico de mensagens de uma sessão do próprio usuário, em ordem cronológica.
    *
-   * @param {string} sessionId - Id da sessão.
-   * @param {string} userId - Subject do usuário dono (escopo de autorização).
-   * @returns {Promise<ChatMessageInterface[]>} Mensagens da sessão (snake_case).
+   * @param sessionId - Id da sessão.
+   * @param userId - Subject do usuário dono (escopo de autorização).
+   *
+   * @returns Mensagens da sessão (snake_case).
+   *
    * @throws {NotFoundException} Se a sessão não existir ou não pertencer ao usuário.
    */
   async getMessages(
@@ -224,7 +231,7 @@ export class ChatService {
     return messages.map((message) => ({
       id: message.id,
       role: message.role,
-      content: (message.content as unknown as ChatMessageContentInterface) ?? { text: '' },
+      content: (message.content as unknown as ChatMessageContentInterface | null) ?? { text: '' },
       created_at: message.createdAt.toISOString(),
     }));
   }
@@ -232,10 +239,11 @@ export class ChatService {
   /**
    * Anexa uma mensagem à sessão e atualiza `last_activity` (usado pelo orquestrador).
    *
-   * @param {string} sessionId - Id da sessão.
-   * @param {'user' | 'assistant'} role - Autor da mensagem.
-   * @param {ChatMessageContentInterface} content - Conteúdo estruturado a persistir.
-   * @returns {Promise<string>} Id da mensagem criada.
+   * @param sessionId - Id da sessão.
+   * @param role - Autor da mensagem.
+   * @param content - Conteúdo estruturado a persistir.
+   *
+   * @returns Id da mensagem criada.
    */
   async appendMessage(
     sessionId: string,
@@ -264,9 +272,11 @@ export class ChatService {
    * chamado antes de ler mensagens, renomear ou iniciar o stream SSE). Devolve 404 tanto para
    * sessão inexistente quanto para sessão de outro usuário (não vaza a existência).
    *
-   * @param {string} sessionId - Id da sessão.
-   * @param {string} userId - Subject do usuário dono.
-   * @returns {Promise<void>} Resolve se a sessão existir e for do usuário.
+   * @param sessionId - Id da sessão.
+   * @param userId - Subject do usuário dono.
+   *
+   * @returns Resolve se a sessão existir e for do usuário.
+   *
    * @throws {NotFoundException} Se a sessão não existir ou não pertencer ao usuário.
    */
   async assertSession(
@@ -294,9 +304,10 @@ export class ChatService {
   /**
    * Formata a duração entre dois instantes como `"Xm"` ou `"Xh Ym"`.
    *
-   * @param {Date} start - Instante inicial.
-   * @param {Date} end - Instante final.
-   * @returns {string} Duração legível.
+   * @param start - Instante inicial.
+   * @param end - Instante final.
+   *
+   * @returns Duração legível.
    */
   private formatDuration(
     start: Date,
@@ -304,13 +315,13 @@ export class ChatService {
   ): string {
     const minutes = Math.max(
       0,
-      Math.round((end.getTime() - start.getTime()) / 60_000),
+      Math.round((end.getTime() - start.getTime()) / MS_PER_MINUTE),
     );
 
-    if (minutes < 60) {
+    if (minutes < MINUTES_PER_HOUR) {
       return `${minutes}m`;
     }
 
-    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+    return `${Math.floor(minutes / MINUTES_PER_HOUR)}h ${minutes % MINUTES_PER_HOUR}m`;
   }
 }

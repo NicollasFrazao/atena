@@ -7,10 +7,15 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Rule ids referenced by the rules and by the seeded incidents.
+const RULE_DELIVERY_DROP_CUSTOMER = 'r-delivery-drop-customer';
+const RULE_POLICY_BLOCK_SPIKE = 'r-policy-block-spike';
+const RULE_FAILURE_SPIKE = 'r-failure-spike';
+
 // Fase 2 — regras de anomalia (defaults de .context/docs/anomaly-scenarios.md).
 const RULES = [
   {
-    id: 'r-delivery-drop-customer',
+    id: RULE_DELIVERY_DROP_CUSTOMER,
     name: 'Queda de entrega por cliente',
     ruleType: 'delivery_rate_drop',
     dimension: 'customer',
@@ -34,7 +39,7 @@ const RULES = [
   },
   // consistent_error escopado por CATEGORIA (mede a categoria-alvo, não a dominante).
   {
-    id: 'r-policy-block-spike',
+    id: RULE_POLICY_BLOCK_SPIKE,
     name: 'Spike de bloqueio por política',
     ruleType: 'consistent_error',
     dimension: 'customer',
@@ -69,7 +74,7 @@ const RULES = [
   },
   // failure_spike agora é BASELINE-RELATIVO (σ vs. histórico do cliente), não piso absoluto em %.
   {
-    id: 'r-failure-spike',
+    id: RULE_FAILURE_SPIKE,
     name: 'Pico de falha (vs baseline)',
     ruleType: 'failure_spike',
     dimension: 'customer',
@@ -97,7 +102,7 @@ const RULES = [
 const ACTIVE_INCIDENTS = [
   {
     id: 'INC-2401',
-    ruleId: 'r-delivery-drop-customer',
+    ruleId: RULE_DELIVERY_DROP_CUSTOMER,
     severity: 'critical',
     status: 'detected',
     dimensionType: 'provider',
@@ -141,7 +146,7 @@ const ACTIVE_INCIDENTS = [
   },
   {
     id: 'INC-2398',
-    ruleId: 'r-policy-block-spike',
+    ruleId: RULE_POLICY_BLOCK_SPIKE,
     severity: 'info',
     status: 'acknowledged',
     dimensionType: 'provider',
@@ -167,7 +172,7 @@ const ACTIVE_INCIDENTS = [
 const RESOLVED_INCIDENTS = [
   {
     id: 'INC-2395',
-    ruleId: 'r-failure-spike',
+    ruleId: RULE_FAILURE_SPIKE,
     severity: 'warning',
     dimensionType: 'customer',
     dimensionValue: 'CreditBank',
@@ -183,7 +188,7 @@ const RESOLVED_INCIDENTS = [
   },
   {
     id: 'INC-2391',
-    ruleId: 'r-delivery-drop-customer',
+    ruleId: RULE_DELIVERY_DROP_CUSTOMER,
     severity: 'critical',
     dimensionType: 'provider',
     dimensionValue: 'Zenvia',
@@ -199,7 +204,7 @@ const RESOLVED_INCIDENTS = [
   },
   {
     id: 'INC-2386',
-    ruleId: 'r-policy-block-spike',
+    ruleId: RULE_POLICY_BLOCK_SPIKE,
     severity: 'info',
     dimensionType: 'provider',
     dimensionValue: 'Plivo',
@@ -235,7 +240,7 @@ async function main(): Promise<void> {
       // ambas usam só terminais no denominador, taxa_falha = 1 − taxa_entrega, então o pico de falha
       // dispara EXATAMENTE junto com a queda de entrega (mesmo valor/σ/threshold), duplicando o
       // incidente. Mantida no catálogo (re-ativável via /admin), mas desligada por padrão.
-      enabled: rule.id !== 'r-failure-spike',
+      enabled: rule.id !== RULE_FAILURE_SPIKE,
     })),
   });
 

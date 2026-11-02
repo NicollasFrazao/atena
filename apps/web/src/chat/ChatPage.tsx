@@ -1,19 +1,19 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState, type JSX } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowUp,
-  ChatCircle,
-  Check,
-  CircleNotch,
-  Copy,
+  ArrowUpIcon as ArrowUp,
+  ChatCircleIcon as ChatCircle,
+  CheckIcon as Check,
+  CircleNotchIcon as CircleNotch,
+  CopyIcon as Copy,
   type Icon,
-  ListChecks,
-  MagnifyingGlass,
-  PencilSimple,
-  ShieldCheck,
-  Sparkle,
-  TrendUp,
-  WarningCircle,
+  ListChecksIcon as ListChecks,
+  MagnifyingGlassIcon as MagnifyingGlass,
+  PencilSimpleIcon as PencilSimple,
+  ShieldCheckIcon as ShieldCheck,
+  SparkleIcon as Sparkle,
+  TrendUpIcon as TrendUp,
+  WarningCircleIcon as WarningCircle,
 } from '@phosphor-icons/react';
 import {
   type DisplayMessageInterface,
@@ -29,6 +29,8 @@ import { Markdown } from './Markdown';
 import { ToolsDisclaimer } from './ToolsDisclaimer';
 import { humanizeToolNames, toolLabel } from './tools-catalog';
 import { useCurrentUser } from '../user/currentUser';
+import { cssValue, cssVar } from '../styles/tokens';
+import { MS_PER_SECOND, PERCENT_SCALE, SECONDS_PER_MINUTE } from '../util/units';
 
 /** Degradê do avatar do assistente (ícone sparkle), igual ao protótipo. */
 const SPARKLE_GRADIENT = 'linear-gradient(135deg, #077E70, #01322F)';
@@ -76,7 +78,7 @@ const SUGGESTIONS: SuggestionInterface[] = [
  * com sucesso renderiza um card rico abaixo da pill (ver `tool-cards/`); o reveal de PII
  * (telefone/conteúdo) é fatia futura.
  *
- * @returns {JSX.Element} A tela de chat.
+ * @returns A tela de chat.
  */
 export function ChatPage(): JSX.Element {
   const {
@@ -177,7 +179,7 @@ export function ChatPage(): JSX.Element {
  * Cabeçalho da sessão de chat (fixo acima da conversa): nome editável, código (id) copiável e o
  * total de sessões com mensagens. Renomear persiste via PATCH e atualiza o histórico/contador.
  *
- * @returns {JSX.Element} A barra de cabeçalho da sessão.
+ * @returns A barra de cabeçalho da sessão.
  */
 function SessionHeader(): JSX.Element {
   const {
@@ -192,8 +194,8 @@ function SessionHeader(): JSX.Element {
 
   return (
     <div style={{
-      borderBottom: '1px solid var(--at-border)',
-      background: 'var(--at-white)',
+      borderBottom: cssVar.borderLine,
+      background: cssVar.white,
       flexShrink: 0,
     }}
     >
@@ -203,7 +205,7 @@ function SessionHeader(): JSX.Element {
         margin: '0 auto',
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--at-space-12)',
+        gap: cssVar.space12,
         padding: 'var(--at-space-12) 0',
       }}
       >
@@ -215,7 +217,7 @@ function SessionHeader(): JSX.Element {
         <span style={{ flex: 1 }} />
         <SessionCount
           count={openCount}
-          onClick={() => navigate('/historico')}
+          onClick={() => { navigate('/historico'); }}
         />
       </div>
     </div>
@@ -226,10 +228,10 @@ function SessionHeader(): JSX.Element {
 function SessionNameEditor({
   title,
   onRename,
-}: {
+}: Readonly<{
   title: string;
   onRename: (title: string) => void
-}): JSX.Element {
+}>): JSX.Element {
   const [
     editing,
     setEditing,
@@ -274,7 +276,7 @@ function SessionNameEditor({
       <input
         ref={inputRef}
         value={draft}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => { setDraft(event.target.value); }}
         onBlur={commit}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
@@ -286,15 +288,15 @@ function SessionNameEditor({
         }}
         maxLength={200}
         style={{
-          fontFamily: 'var(--at-font-heading)',
-          fontSize: 'var(--at-fs-16)',
+          fontFamily: cssVar.fontHeading,
+          fontSize: cssVar.fs16,
           fontWeight: 600,
-          color: 'var(--at-fg)',
+          color: cssVar.fg,
           border: '1px solid var(--at-primary)',
-          borderRadius: 'var(--at-radius-4)',
+          borderRadius: cssVar.radius4,
           padding: '2px 8px',
           outline: 'none',
-          background: 'var(--at-white)',
+          background: cssVar.white,
         }}
       />
     );
@@ -306,19 +308,19 @@ function SessionNameEditor({
       onClick={open}
       title="Renomear a sessão"
       style={{
-        display: 'inline-flex',
+        display: cssValue.inlineFlex,
         alignItems: 'center',
-        gap: 'var(--at-space-4)',
+        gap: cssVar.space4,
         border: 'none',
         background: 'none',
         padding: 0,
         cursor: 'pointer',
-        color: 'var(--at-fg)',
+        color: cssVar.fg,
       }}
     >
       <span style={{
-        fontFamily: 'var(--at-font-heading)',
-        fontSize: 'var(--at-fs-16)',
+        fontFamily: cssVar.fontHeading,
+        fontSize: cssVar.fs16,
         fontWeight: 600,
       }}
       >
@@ -326,14 +328,17 @@ function SessionNameEditor({
       </span>
       <PencilSimple
         size={13}
-        color="var(--at-fg-subtle)"
+        color={cssVar.fgSubtle}
       />
     </button>
   );
 }
 
+/** How long the "copied" confirmation of the session code stays visible. */
+const COPIED_FEEDBACK_MS = 1200;
+
 /** Código (id) da sessão em mono, copiável ao clicar. */
-function SessionCode({ sessionId }: { sessionId: string | null }): JSX.Element {
+function SessionCode({ sessionId }: Readonly<{ sessionId: string | null }>): JSX.Element {
   const [
     copied,
     setCopied,
@@ -342,9 +347,9 @@ function SessionCode({ sessionId }: { sessionId: string | null }): JSX.Element {
   if (sessionId === null) {
     return (
       <span style={{
-        fontFamily: 'ui-monospace, Menlo, monospace',
-        fontSize: 'var(--at-fs-12)',
-        color: 'var(--at-fg-subtle)',
+        fontFamily: cssValue.fontMono,
+        fontSize: cssVar.fs12,
+        color: cssVar.fgSubtle,
       }}
       >
         sessão nova…
@@ -358,8 +363,8 @@ function SessionCode({ sessionId }: { sessionId: string | null }): JSX.Element {
         setCopied(true);
 
         window.setTimeout(
-          () => setCopied(false),
-          1200,
+          () => { setCopied(false); },
+          COPIED_FEEDBACK_MS,
         );
       })
       .catch(() => undefined);
@@ -371,17 +376,17 @@ function SessionCode({ sessionId }: { sessionId: string | null }): JSX.Element {
       onClick={copy}
       title="Copiar código da sessão"
       style={{
-        display: 'inline-flex',
+        display: cssValue.inlineFlex,
         alignItems: 'center',
-        gap: 'var(--at-space-4)',
-        border: '1px solid var(--at-border)',
-        background: 'var(--at-bg-soft)',
-        borderRadius: 'var(--at-radius-4)',
+        gap: cssVar.space4,
+        border: cssVar.borderLine,
+        background: cssVar.bgSoft,
+        borderRadius: cssVar.radius4,
         padding: '2px 8px',
         cursor: 'pointer',
-        fontFamily: 'ui-monospace, Menlo, monospace',
-        fontSize: 'var(--at-fs-12)',
-        color: 'var(--at-fg-muted)',
+        fontFamily: cssValue.fontMono,
+        fontSize: cssVar.fs12,
+        color: cssVar.fgMuted,
       }}
     >
       {sessionId}
@@ -389,7 +394,7 @@ function SessionCode({ sessionId }: { sessionId: string | null }): JSX.Element {
         ? (
           <Check
             size={12}
-            color="var(--at-success-300)"
+            color={cssVar.success300}
           />
         )
         : <Copy size={12} />}
@@ -401,26 +406,26 @@ function SessionCode({ sessionId }: { sessionId: string | null }): JSX.Element {
 function SessionCount({
   count,
   onClick,
-}: {
+}: Readonly<{
   count: number;
   onClick: () => void
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <button
       type="button"
       onClick={onClick}
       title="Ver histórico de sessões"
       style={{
-        display: 'inline-flex',
+        display: cssValue.inlineFlex,
         alignItems: 'center',
-        gap: 'var(--at-space-4)',
-        border: '1px solid var(--at-border)',
-        background: 'var(--at-bg-soft)',
-        borderRadius: 'var(--at-radius-4)',
+        gap: cssVar.space4,
+        border: cssVar.borderLine,
+        background: cssVar.bgSoft,
+        borderRadius: cssVar.radius4,
         padding: '4px 8px',
         cursor: 'pointer',
-        fontSize: 'var(--at-fs-13)',
-        color: 'var(--at-fg-muted)',
+        fontSize: cssVar.fs13,
+        color: cssVar.fgMuted,
         whiteSpace: 'nowrap',
       }}
     >
@@ -435,7 +440,7 @@ function SessionCount({
 }
 
 /** Estado vazio: avatar sparkle + saudação personalizada + nota read-only + 4 cards de sugestão. */
-function EmptyState({ onPick }: { onPick: (text: string) => void }): JSX.Element {
+function EmptyState({ onPick }: Readonly<{ onPick: (text: string) => void }>): JSX.Element {
   const user = useCurrentUser();
 
   return (
@@ -456,21 +461,21 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }): JSX.Element
         display: 'grid',
         placeItems: 'center',
         boxShadow: '0 8px 24px rgba(7, 126, 112, 0.25)',
-        marginBottom: 'var(--at-space-16)',
+        marginBottom: cssVar.space16,
       }}
       >
         <Sparkle
           size={26}
           weight="fill"
-          color="var(--at-white)"
+          color={cssVar.white}
         />
       </div>
       <h1 style={{
-        fontSize: 'var(--at-fs-28)',
+        fontSize: cssVar.fs28,
         fontWeight: 600,
-        color: 'var(--at-fg)',
+        color: cssVar.fg,
         margin: 0,
-        marginBottom: 'var(--at-space-8)',
+        marginBottom: cssVar.space8,
         textAlign: 'center',
         letterSpacing: -0.3,
       }}
@@ -478,23 +483,23 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }): JSX.Element
         Olá, {user.firstName}. Em que posso ajudar?
       </h1>
       <p style={{
-        fontSize: 'var(--at-fs-14)',
-        color: 'var(--at-fg-muted)',
+        fontSize: cssVar.fs14,
+        color: cssVar.fgMuted,
         margin: 0,
-        marginBottom: 'var(--at-space-24)',
+        marginBottom: cssVar.space24,
         textAlign: 'center',
         maxWidth: 520,
-        lineHeight: 'var(--at-lh-22)',
+        lineHeight: cssVar.lh22,
       }}
       >
         Eu busco mensagens, mostro a trilha completa de um envio, analiso risco de conteúdo e gero
         relatórios de entregabilidade. Para a Fase 1 todos os dados são{' '}
-        <strong style={{ color: 'var(--at-fg)' }}>read-only</strong>.
+        <strong style={{ color: cssVar.fg }}>read-only</strong>.
       </p>
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(2, 1fr)',
-        gap: 'var(--at-space-12)',
+        gap: cssVar.space12,
         maxWidth: 640,
         width: '100%',
       }}
@@ -515,27 +520,27 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }): JSX.Element
 function SuggestionCard({
   suggestion,
   onPick,
-}: {
+}: Readonly<{
   suggestion: SuggestionInterface;
   onPick: (text: string) => void
-}): JSX.Element {
+}>): JSX.Element {
   const IconComponent = suggestion.icon;
 
   return (
     <button
       type="button"
       className="at-suggestion-card"
-      onClick={() => onPick(suggestion.prompt)}
+      onClick={() => { onPick(suggestion.prompt); }}
       style={{
         textAlign: 'left',
-        background: 'var(--at-white)',
-        border: '1px solid var(--at-border)',
+        background: cssVar.white,
+        border: cssVar.borderLine,
         borderRadius: 8,
         padding: '14px 16px',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'flex-start',
-        gap: 'var(--at-space-12)',
+        gap: cssVar.space12,
         font: 'inherit',
       }}
     >
@@ -544,8 +549,8 @@ function SuggestionCard({
         height: 32,
         borderRadius: 6,
         flexShrink: 0,
-        background: 'var(--at-primary-lighter)',
-        color: 'var(--at-primary)',
+        background: cssVar.primaryLighter,
+        color: cssVar.primary,
         display: 'grid',
         placeItems: 'center',
       }}
@@ -555,17 +560,17 @@ function SuggestionCard({
       <span style={{ minWidth: 0 }}>
         <span style={{
           display: 'block',
-          fontSize: 'var(--at-fs-14)',
+          fontSize: cssVar.fs14,
           fontWeight: 600,
-          color: 'var(--at-fg)',
+          color: cssVar.fg,
         }}
         >
           {suggestion.title}
         </span>
         <span style={{
           display: 'block',
-          fontSize: 'var(--at-fs-12)',
-          color: 'var(--at-fg-muted)',
+          fontSize: cssVar.fs12,
+          color: cssVar.fgMuted,
           marginTop: 2,
         }}
         >
@@ -580,25 +585,26 @@ function SuggestionCard({
  * Renderiza UMA parte da mensagem, na ordem do stream: raciocínio (fonte pequena, transparente e
  * justificada), texto da resposta, ou a tool (pill + card rico).
  *
- * @param {{ part: DisplayPartInterface; index: number }} props - A parte e sua posição na mensagem.
- * @returns {JSX.Element} A parte renderizada.
+ * @param props - A parte e sua posição na mensagem.
+ *
+ * @returns A parte renderizada.
  */
 function MessagePart({
   part,
   index,
-}: {
+}: Readonly<{
   part: DisplayPartInterface;
   index: number
-}): JSX.Element {
+}>): JSX.Element {
   if (part.kind === 'thinking') {
     return (
       <div style={{
-        fontSize: 'var(--at-fs-12)',
-        color: 'var(--at-fg-muted)',
+        fontSize: cssVar.fs12,
+        color: cssVar.fgMuted,
         opacity: 0.55,
         fontStyle: 'italic',
         whiteSpace: 'pre-wrap',
-        lineHeight: 'var(--at-lh-22)',
+        lineHeight: cssVar.lh22,
         textAlign: 'justify',
       }}
       >
@@ -612,7 +618,7 @@ function MessagePart({
       <div style={{
         textAlign: 'justify',
         marginTop: index > 0
-          ? 'var(--at-space-12)'
+          ? cssVar.space12
           : undefined,
       }}
       >
@@ -625,7 +631,7 @@ function MessagePart({
     return (
       <div style={{
         marginTop: index > 0
-          ? 'var(--at-space-12)'
+          ? cssVar.space12
           : undefined,
       }}
       >
@@ -637,7 +643,7 @@ function MessagePart({
   return (
     <div style={{
       marginTop: index > 0
-        ? 'var(--at-space-12)'
+        ? cssVar.space12
         : undefined,
     }}
     >
@@ -663,22 +669,22 @@ function userText(message: DisplayMessageInterface): string {
 }
 
 /** Mensagem do usuário: bolha verde sólida alinhada à direita (cantos assimétricos, sem borda). */
-function UserBubble({ message }: { message: DisplayMessageInterface }): JSX.Element {
+function UserBubble({ message }: Readonly<{ message: DisplayMessageInterface }>): JSX.Element {
   return (
     <div style={{
       display: 'flex',
       justifyContent: 'flex-end',
-      marginBottom: 'var(--at-space-16)',
+      marginBottom: cssVar.space16,
     }}
     >
       <div style={{
         maxWidth: '78%',
-        background: 'var(--at-primary)',
-        color: 'var(--at-white)',
+        background: cssVar.primary,
+        color: cssVar.white,
         padding: '12px 16px',
         borderRadius: '14px 14px 4px 14px',
-        fontSize: 'var(--at-fs-14)',
-        lineHeight: 'var(--at-lh-22)',
+        fontSize: cssVar.fs14,
+        lineHeight: cssVar.lh22,
         whiteSpace: 'pre-wrap',
       }}
       >
@@ -689,9 +695,9 @@ function UserBubble({ message }: { message: DisplayMessageInterface }): JSX.Elem
 }
 
 /** Mensagem do assistente: avatar sparkle + coluna de conteúdo (partes ordenadas/spinner/refusal/erro). */
-function AssistantRow({ message }: { message: DisplayMessageInterface }): JSX.Element {
+function AssistantRow({ message }: Readonly<{ message: DisplayMessageInterface }>): JSX.Element {
   const someToolRunning = message.parts.some((part) => part.kind === 'tool' && part.tool.status === 'running');
-  const lastPart = message.parts[message.parts.length - 1];
+  const lastPart = message.parts.at(-1);
 
   // Sem texto/raciocínio fluindo e sem tool rodando → aguardando o próximo passo do modelo.
   const awaiting = message.streaming
@@ -701,9 +707,9 @@ function AssistantRow({ message }: { message: DisplayMessageInterface }): JSX.El
   return (
     <div style={{
       display: 'flex',
-      gap: 'var(--at-space-12)',
+      gap: cssVar.space12,
       alignItems: 'flex-start',
-      marginBottom: 'var(--at-space-20)',
+      marginBottom: cssVar.space20,
     }}
     >
       <div style={{
@@ -720,7 +726,7 @@ function AssistantRow({ message }: { message: DisplayMessageInterface }): JSX.El
         <Sparkle
           size={16}
           weight="fill"
-          color="var(--at-white)"
+          color={cssVar.white}
         />
       </div>
       <div style={{
@@ -744,13 +750,13 @@ function AssistantRow({ message }: { message: DisplayMessageInterface }): JSX.El
           ? <CircleNotch
             size={16}
             className="at-spin"
-            color="var(--at-fg-subtle)"
+            color={cssVar.fgSubtle}
             style={{
               display: 'block',
               // Só separa do que vem acima (ex.: card de tool concluída); no spinner inicial
               // (coluna ainda vazia) não há nada acima, então sem margin.
               marginTop: message.parts.length > 0
-                ? 'var(--at-space-12)'
+                ? cssVar.space12
                 : undefined,
             }}
           />
@@ -760,9 +766,9 @@ function AssistantRow({ message }: { message: DisplayMessageInterface }): JSX.El
           : null}
         {message.error
           ? <div style={{
-            color: 'var(--at-danger-300)',
-            fontSize: 'var(--at-fs-12)',
-            marginTop: 'var(--at-space-8)',
+            color: cssVar.danger300,
+            fontSize: cssVar.fs12,
+            marginTop: cssVar.space8,
           }}
           >
             Erro: {message.error}
@@ -800,18 +806,18 @@ function finalTime(durationMs: number | undefined): string | null {
 
 /** Formata uma duração em ms de forma compacta: `850ms`, `12s`, `4m37s`. */
 function formatDuration(ms: number): string {
-  if (ms < 1000) {
+  if (ms < MS_PER_SECOND) {
     return `${ms}ms`;
   }
 
-  const totalSeconds = Math.round(ms / 1000);
+  const totalSeconds = Math.round(ms / MS_PER_SECOND);
 
-  if (totalSeconds < 60) {
+  if (totalSeconds < SECONDS_PER_MINUTE) {
     return `${totalSeconds}s`;
   }
 
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / SECONDS_PER_MINUTE);
+  const seconds = totalSeconds % SECONDS_PER_MINUTE;
 
   return `${minutes}m${String(seconds).padStart(
     2,
@@ -819,14 +825,18 @@ function formatDuration(ms: number): string {
   )}s`;
 }
 
+/** Refresh interval of a running tool's live elapsed-time counter. */
+const ELAPSED_TICK_MS = MS_PER_SECOND;
+
 /**
  * Pill da tool com andamento: enquanto roda mostra a etapa atual (ou "buscando…"), um cronômetro
  * ao vivo e — na fase de leitura do S3 — uma barra de partições; ao concluir, o resumo + tempo total.
  *
- * @param {{ tool: DisplayToolInterface }} props - A invocação de tool a exibir.
- * @returns {JSX.Element} A pill da tool.
+ * @param props - A invocação de tool a exibir.
+ *
+ * @returns A pill da tool.
  */
-function ToolRow({ tool }: { tool: DisplayToolInterface }): JSX.Element {
+function ToolRow({ tool }: Readonly<{ tool: DisplayToolInterface }>): JSX.Element {
   const running = tool.status === 'running';
 
   const [
@@ -844,16 +854,21 @@ function ToolRow({ tool }: { tool: DisplayToolInterface }): JSX.Element {
       }
 
       const startedAt = tool.startedAt;
-      const tick = (): void => setElapsed(Date.now() - startedAt);
+
+      const tick = (): void => {
+        setElapsed(Date.now() - startedAt);
+      };
 
       tick();
 
       const handle = window.setInterval(
         tick,
-        1000,
+        ELAPSED_TICK_MS,
       );
 
-      return () => window.clearInterval(handle);
+      return () => {
+        window.clearInterval(handle);
+      };
     },
     [
       running,
@@ -884,23 +899,23 @@ function ToolRow({ tool }: { tool: DisplayToolInterface }): JSX.Element {
 
   const pct = showBar
     ? Math.min(
-      100,
-      Math.round(((tool.progress?.current ?? 0) / total) * 100),
+      PERCENT_SCALE,
+      Math.round(((tool.progress?.current ?? 0) / total) * PERCENT_SCALE),
     )
     : 0;
 
   return (
     <div style={{
-      display: 'inline-flex',
+      display: cssValue.inlineFlex,
       alignItems: 'center',
-      gap: 'var(--at-space-8)',
-      background: 'var(--at-bg-soft)',
-      border: '1px solid var(--at-border)',
+      gap: cssVar.space8,
+      background: cssVar.bgSoft,
+      border: cssVar.borderLine,
       borderRadius: 999,
       padding: '4px 10px',
-      marginBottom: 'var(--at-space-8)',
-      fontSize: 'var(--at-fs-12)',
-      color: 'var(--at-fg-muted)',
+      marginBottom: cssVar.space8,
+      fontSize: cssVar.fs12,
+      color: cssVar.fgMuted,
     }}
     >
       {running
@@ -912,16 +927,16 @@ function ToolRow({ tool }: { tool: DisplayToolInterface }): JSX.Element {
       {showBar
         ? (
           <span style={{
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
-            gap: 'var(--at-space-8)',
+            gap: cssVar.space8,
           }}
           >
             <span style={{
               width: 48,
               height: 4,
               borderRadius: 999,
-              background: 'var(--at-border)',
+              background: cssVar.border,
               overflow: 'hidden',
             }}
             >
@@ -929,11 +944,11 @@ function ToolRow({ tool }: { tool: DisplayToolInterface }): JSX.Element {
                 display: 'block',
                 width: `${pct}%`,
                 height: '100%',
-                background: 'var(--at-fg-muted)',
+                background: cssVar.fgMuted,
               }}
               />
             </span>
-            <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ fontVariantNumeric: cssValue.tabularNums }}>
               {tool.progress?.current ?? 0}/{total}
             </span>
           </span>
@@ -943,7 +958,7 @@ function ToolRow({ tool }: { tool: DisplayToolInterface }): JSX.Element {
         ? (
           <>
             <span>·</span>
-            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</span>
+            <span style={{ fontVariantNumeric: cssValue.tabularNums }}>{time}</span>
           </>
         )
         : null}
@@ -952,22 +967,22 @@ function ToolRow({ tool }: { tool: DisplayToolInterface }): JSX.Element {
 }
 
 /** Card de recusa (fora de escopo): motivo, explicação e o que dá pra fazer. */
-function RefusalCard({ refusal }: { refusal: RefusalInterface }): JSX.Element {
+function RefusalCard({ refusal }: Readonly<{ refusal: RefusalInterface }>): JSX.Element {
   return (
     <div style={{
-      background: 'var(--at-warning-50)',
+      background: cssVar.warning50,
       border: '1px solid var(--at-warning-200)',
       borderRadius: 4,
       padding: '10px 12px',
-      fontSize: 'var(--at-fs-14)',
+      fontSize: cssVar.fs14,
     }}
     >
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--at-space-8)',
+        gap: cssVar.space8,
         fontWeight: 600,
-        marginBottom: 'var(--at-space-4)',
+        marginBottom: cssVar.space4,
       }}
       >
         <WarningCircle size={16} />
@@ -977,8 +992,8 @@ function RefusalCard({ refusal }: { refusal: RefusalInterface }): JSX.Element {
       {refusal.can_do.length > 0
         ? <ul style={{
           margin: 'var(--at-space-8) 0 0',
-          paddingLeft: 'var(--at-space-20)',
-          color: 'var(--at-fg-muted)',
+          paddingLeft: cssVar.space20,
+          color: cssVar.fgMuted,
         }}
         >
           {refusal.can_do.map((item) => (
@@ -994,10 +1009,10 @@ function RefusalCard({ refusal }: { refusal: RefusalInterface }): JSX.Element {
 function Composer({
   disabled,
   onSend,
-}: {
+}: Readonly<{
   disabled: boolean;
   onSend: (text: string) => void
-}): JSX.Element {
+}>): JSX.Element {
   const [
     text,
     setText,
@@ -1020,8 +1035,8 @@ function Composer({
   return (
     <div style={{
       padding: 'var(--at-space-16) 0 var(--at-space-20)',
-      borderTop: '1px solid var(--at-border)',
-      background: 'var(--at-white)',
+      borderTop: cssVar.borderLine,
+      background: cssVar.white,
     }}
     >
       <div style={{
@@ -1035,8 +1050,8 @@ function Composer({
           style={{
             display: 'flex',
             alignItems: 'flex-end',
-            gap: 'var(--at-space-8)',
-            background: 'var(--at-white)',
+            gap: cssVar.space8,
+            background: cssVar.white,
             border: '1.5px solid var(--at-border)',
             borderRadius: 12,
             padding: '8px 8px 8px 14px',
@@ -1044,7 +1059,7 @@ function Composer({
         >
           <textarea
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={(event) => { setText(event.target.value); }}
             onKeyDown={(event) => {
               if (
                 event.key === 'Enter'
@@ -1062,11 +1077,11 @@ function Composer({
               border: 'none',
               outline: 'none',
               padding: '8px 0',
-              fontSize: 'var(--at-fs-14)',
+              fontSize: cssVar.fs14,
               fontFamily: 'inherit',
-              lineHeight: 'var(--at-lh-22)',
+              lineHeight: cssVar.lh22,
               background: 'transparent',
-              color: 'var(--at-fg)',
+              color: cssVar.fg,
               maxHeight: 120,
             }}
           />
@@ -1085,11 +1100,11 @@ function Composer({
               border: 'none',
               borderRadius: 8,
               background: canSend
-                ? 'var(--at-primary)'
-                : 'var(--at-bg-soft)',
+                ? cssVar.primary
+                : cssVar.bgSoft,
               color: canSend
-                ? 'var(--at-white)'
-                : 'var(--at-fg-subtle)',
+                ? cssVar.white
+                : cssVar.fgSubtle,
               cursor: canSend
                 ? 'pointer'
                 : 'not-allowed',
@@ -1103,17 +1118,17 @@ function Composer({
         </div>
         <div style={{
           display: 'flex',
-          justifyContent: 'space-between',
+          justifyContent: cssValue.spaceBetween,
           alignItems: 'center',
-          marginTop: 'var(--at-space-8)',
-          fontSize: 'var(--at-fs-12)',
-          color: 'var(--at-fg-subtle)',
+          marginTop: cssVar.space8,
+          fontSize: cssVar.fs12,
+          color: cssVar.fgSubtle,
         }}
         >
           <span style={{
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
-            gap: 'var(--at-space-12)',
+            gap: cssVar.space12,
             minWidth: 0,
           }}
           >
@@ -1121,9 +1136,9 @@ function Composer({
             <span
               className="at-hide-tablet"
               style={{
-                display: 'inline-flex',
+                display: cssValue.inlineFlex,
                 alignItems: 'center',
-                gap: 'var(--at-space-4)',
+                gap: cssVar.space4,
               }}
             >
               <ShieldCheck size={12} />
@@ -1133,9 +1148,9 @@ function Composer({
           <span
             className="at-hide-mobile"
             style={{
-              display: 'inline-flex',
+              display: cssValue.inlineFlex,
               alignItems: 'center',
-              gap: 'var(--at-space-4)',
+              gap: cssVar.space4,
               flexShrink: 0,
             }}
           >
@@ -1148,15 +1163,15 @@ function Composer({
 }
 
 /** Tecla estilizada para as dicas de atalho do composer. */
-function Kbd({ children }: { children: ReactNode }): JSX.Element {
+function Kbd({ children }: Readonly<{ children: ReactNode }>): JSX.Element {
   return (
     <kbd style={{
       fontFamily: 'inherit',
-      fontSize: 'var(--at-fs-10)',
-      color: 'var(--at-fg-muted)',
-      background: 'var(--at-bg-soft)',
-      border: '1px solid var(--at-border)',
-      borderRadius: 'var(--at-radius-4)',
+      fontSize: cssVar.fs10,
+      color: cssVar.fgMuted,
+      background: cssVar.bgSoft,
+      border: cssVar.borderLine,
+      borderRadius: cssVar.radius4,
       padding: '1px 5px',
     }}
     >

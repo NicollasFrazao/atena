@@ -82,10 +82,11 @@ function toQuery(query: AuditQueryInterface): string {
 /**
  * Lista registros do audit log (`GET /audit`).
  *
- * @param {AuditQueryInterface} query - Filtros + paginação.
- * @returns {Promise<PaginatedEnvelopeInterface<AuditLogEntryInterface>>} Página de registros.
+ * @param query - Filtros + paginação.
+ *
+ * @returns Página de registros.
  */
-export function listAudit(
+function listAudit(
   query: AuditQueryInterface,
 ): Promise<PaginatedEnvelopeInterface<AuditLogEntryInterface>> {
   return apiFetch(`/audit${toQuery(query)}`);
@@ -94,8 +95,9 @@ export function listAudit(
 /**
  * Query da listagem do audit log (react-query), reativa aos filtros.
  *
- * @param {AuditQueryInterface} query - Filtros + paginação.
- * @returns {UseQueryResult<PaginatedEnvelopeInterface<AuditLogEntryInterface>>} Estado da query.
+ * @param query - Filtros + paginação.
+ *
+ * @returns Estado da query.
  */
 export function useAudit(
   query: AuditQueryInterface,
@@ -112,7 +114,7 @@ export function useAudit(
 /**
  * Query dos contadores do topo (`GET /audit/summary`).
  *
- * @returns {UseQueryResult<AuditSummaryInterface>} Estado da query.
+ * @returns Estado da query.
  */
 export function useAuditSummary(): UseQueryResult<AuditSummaryInterface> {
   return useQuery({
@@ -127,7 +129,7 @@ export function useAuditSummary(): UseQueryResult<AuditSummaryInterface> {
 /**
  * Query dos usuários distintos do log (para o filtro de usuário).
  *
- * @returns {UseQueryResult<AuditUserOptionInterface[]>} Usuários distintos (id + nome de exibição).
+ * @returns Usuários distintos (id + nome de exibição).
  */
 export function useAuditUsers(): UseQueryResult<AuditUserOptionInterface[]> {
   return useQuery({
@@ -143,8 +145,9 @@ export function useAuditUsers(): UseQueryResult<AuditUserOptionInterface[]> {
  * Baixa os registros que casam os filtros como arquivo JSONL (um JSON por linha). Busca via
  * `GET /audit/export` (sem paginação, até o teto do servidor) e dispara o download no navegador.
  *
- * @param {AuditQueryInterface} query - Filtros atuais (paginação ignorada).
- * @returns {Promise<void>} Resolve quando o download é disparado.
+ * @param query - Filtros atuais (paginação ignorada).
+ *
+ * @returns Resolve quando o download é disparado.
  */
 export async function downloadAuditJsonl(query: AuditQueryInterface): Promise<void> {
   const rows = await apiFetch<AuditLogEntryInterface[]>(`/audit/export${toQuery({

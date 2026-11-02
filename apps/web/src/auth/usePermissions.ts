@@ -13,7 +13,7 @@ interface PermissionsApiInterface {
  * Hook de autorização para a UI: esconde/desabilita ações sem permissão (ex.: botão de reveal de
  * PII, item de nav do admin). NÃO substitui a checagem do backend — é só para a experiência.
  *
- * @returns {PermissionsApiInterface} `can(permission)` e a lista de permissões.
+ * @returns `can(permission)` e a lista de permissões.
  */
 export function usePermissions(): PermissionsApiInterface {
   const { user } = useAuth();

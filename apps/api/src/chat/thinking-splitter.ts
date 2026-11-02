@@ -12,9 +12,10 @@ export interface ThinkingSplitResultInterface {
  * Maior `k` tal que o sufixo de `value` (tamanho `k`) seja prefixo de `marker` (com `k < marker.length`).
  * Usado para segurar um possível início de tag partido no fim do buffer (ex.: `"...</think"`).
  *
- * @param {string} value - Buffer atual.
- * @param {string} marker - Marcador esperado a seguir.
- * @returns {number} Tamanho do sufixo a segurar (0 se nenhum).
+ * @param value - Buffer atual.
+ * @param marker - Marcador esperado a seguir.
+ *
+ * @returns Tamanho do sufixo a segurar (0 se nenhum).
  */
 function partialPrefixLen(
   value: string,
@@ -51,8 +52,9 @@ export class ThinkingSplitter {
    * Consome um fragmento e devolve as porções já classificáveis; segura um possível início de tag
    * partido no buffer para o próximo push.
    *
-   * @param {string} delta - Fragmento de texto do stream.
-   * @returns {ThinkingSplitResultInterface} Porções de raciocínio e de resposta deste push.
+   * @param delta - Fragmento de texto do stream.
+   *
+   * @returns Porções de raciocínio e de resposta deste push.
    */
   push(delta: string): ThinkingSplitResultInterface {
     this.buffer += delta;

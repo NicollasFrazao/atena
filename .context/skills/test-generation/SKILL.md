@@ -10,92 +10,165 @@ scaffoldVersion: "2.0.0"
 ---
 ## Workflow
 
-Contexto: hoje NÃO há código de produção nem runner de testes configurado no Atena — só o protótipo de referência (`docs/(protótipo original, não incluído)*.jsx`). Esta skill descreve como gerar testes QUANDO o código de produção existir; o runner provável é Jest (stack TS/NestJS). Não afirme que existem testes hoje.
+Context: Atena's production code and test runners exist — **Jest** (+ ts-jest) in `apps/api` (`npm test`, `npm run test:e2e`), **Vitest** in `apps/web` (`npm test`) and **Playwright** for browser e2e (`apps/web/e2e/`, `npm run e2e`), all run by CI (`.github/workflows/ci.yml`). Specs already exist next to the code (`*.spec.ts`, `*.e2e.spec.ts`); follow their patterns. The original reference prototype is not included in the repo.
 
-1. **Identifique o que testar e situe pelos 5 princípios.** No Atena, os caminhos de maior valor de teste são os que protegem segurança e integridade: tools determinísticas, validação server-side do resolve, mascaramento de PII + audit, recusa do LLM, RBAC, WS/reconexão, shapes de contrato.
-2. **Tools determinísticas:** dado um input fixo, a tool retorna o shape esperado (§C). Teste que a execução é server-side (a app roda a query, o LLM não toca o banco) e que cada invocação escreve audit `tool_call`. Compare o output com o mock correspondente em `prototype/data.jsx` (ex.: `search_messages` → `MOCK.searchResults[]` / §C.1).
-3. **Validação server-side do resolve (§D)** — caso de teste mais denso, com tabela de casos:
-   - `actionCategory` fora do enum → rejeita.
-   - `actionDescription` < 20 chars → rejeita (< 10 no `auto_resolved` → rejeita).
-   - category ∈ {provider_escalated, internal_escalated} sem `escalatedTo` → rejeita.
-   - transição inválida (ex.: resolved → resolved) → rejeita; detected|acknowledged|auto_resolved → resolved → aceita.
-   - sucesso escreve `incident_activity` (status_change) + audit `incident_resolve`.
-4. **PII + audit:** telefone/conteúdo mascarados por padrão; reveal retorna o valor cheio E grava audit (`reveal_phone`/`reveal_content`); negar reveal sem permissão.
-5. **Recusa do LLM:** pedido fora de escopo / que pediria dado fabricado → stream emite `refusal`, não `tool_call`; nenhum dado estruturado inventado.
-6. **RBAC guards:** `support_analyst` recebe 403 em relatórios gerenciais / edição de regras / audit log; `support_lead` passa. Endpoint sem token → 401.
-7. **WS `/ws/support`:** eventos `incident.created`/`incident.updated`/`incident.auto_resolved` no formato de `03-websocket-events.md`; handshake sem token válido é rejeitado; reconexão com backoff exponencial (cap 30s) e re-fetch `GET /api/incidents?status=detected,acknowledged` ao reconectar.
-8. **Shapes de contrato:** snapshot/asserção de que cada response bate com `data.jsx`/§C (campos camelCase, ISO 8601).
-9. **Estados de erro (`error-states.jsx`):** tool timeout → ToolError + retry; WS down → faixa persistente; 401 → overlay de re-login.
-10. Mantenha cada teste determinístico e isolado (mock no boundary: Prisma, S3, Amazon Bedrock, clock).
+1. **Identify what to test and place it against the 5 principles.** In Atena, the highest-value test paths are those that protect security and integrity: deterministic tools, server-side validation of resolve, PII masking + audit, LLM refusal, RBAC, WS/reconnection, contract shapes.
+2. **Deterministic tools:** given a fixed input, the tool returns the expected shape (`@atena/types`). Test that execution is server-side (the app runs the query, the LLM does not touch the database) and that each invocation writes audit `tool_call` (the handler carries `@Audit('tool_call', 'info')`). Compare the output with the matching type in `@atena/types` (e.g. `search_shippings` → `PaginatedEnvelopeInterface<SearchResultRowInterface>` / §C.1).
+3. **Server-side validation of resolve (§D)** — the densest test case, with a table of cases:
+   - `action_category` outside the enum → rejected (the DTO's `@IsIn`).
+   - `action_description` < 20 chars → rejected (< 10 on `auto_resolved` → rejected).
+   - category ∈ {provider_escalated, internal_escalated} without `escalated_to` → rejected.
+   - invalid transition (e.g. resolved → resolved) → rejected; detected|acknowledged|auto_resolved → resolved → accepted.
+   - success writes `incident_activity` (status_change) + audit `incident_resolve`.
+4. **PII + audit:** phone/content masked by default; reveal returns the full value AND writes audit (`reveal_phone`/`reveal_content`); deny reveal without permission (`pii:reveal`).
+5. **LLM refusal:** an out-of-scope request / one that would require fabricated data → the stream emits `refusal`, not `tool_call`; no made-up structured data. Use `FakeLlmProvider` or mock the Bedrock provider.
+6. **RBAC guards:** a `viewer`/`support_analyst` gets 403 on `rules:edit`, `pii:reveal` and `ops:run` routes and only `admin` passes `users:manage`; `support_lead` passes the lead routes. An endpoint without a session → 401.
+7. **WS `/ws/support`:** `incident.created`/`incident.updated`/`incident.auto_resolved` events in the format of `03-websocket-events.md` (`WsServerEvent`); a handshake without a valid session is rejected. The handoff's reconnection (exponential backoff capped at 30 s + re-fetch of `GET /api/incidents?status=detected,acknowledged` on reconnect) is not what the client does today (socket.io-client default reconnection + query invalidation on WS events) — test the real behavior and flag the gap.
+8. **Contract shapes:** assert that each response matches `@atena/types` / `docs/openapi.yaml` (snake_case fields, ISO 8601).
+9. **Error states:** tool timeout/failure → inline error + retry; WS down → persistent strip; 401 → back to the login.
+10. Keep each test deterministic and isolated (mock at the boundary: Prisma, S3/DuckDB engine, Amazon Bedrock, clock).
 
 ## Examples
 
-**Validação server-side do resolve (Jest, NestJS service) — tabela de casos:**
+**Server-side validation of resolve (Jest, NestJS service) — table of cases** (`buildService` and `VALID_RESOLVE` as in `apps/api/src/incidents/incident-lifecycle.service.spec.ts`, which mocks Prisma, `AuditService`, `IncidentsService` and `SupportGateway`):
 ```typescript
-describe('IncidentsService.resolve (validação §D)', () => {
-  const base = { actionCategory: 'provider_recovered',
-                 actionDescription: 'a'.repeat(20) }; // 20 chars OK
+describe('IncidentLifecycleService.resolve (validation §D)', () => {
+  it('rejects action_description < 20 chars', async () => {
+    const { service } = buildService({
+      id: 'INC-2401',
+      status: 'detected',
+    });
 
-  it('rejeita actionDescription < 20 chars', async () => {
-    await expect(svc.resolve('INC-2401', { ...base, actionDescription: 'curto' }))
-      .rejects.toThrow(/20/);
+    await expect(service.resolve(
+      'INC-2401',
+      {
+        action_category: 'other',
+        action_description: 'short',
+      },
+      'analyst-1',
+    )).rejects.toBeInstanceOf(AppException);
   });
 
-  it.each(['provider_escalated', 'internal_escalated'])(
-    'exige escalatedTo quando category=%s', async (cat) => {
-      await expect(svc.resolve('INC-2401', { ...base, actionCategory: cat }))
-        .rejects.toThrow(/escalatedTo/);
+  it.each([
+    'provider_escalated',
+    'internal_escalated',
+  ] as const)('requires escalated_to when category=%s', async (category) => {
+    const { service } = buildService({
+      id: 'INC-2401',
+      status: 'detected',
+    });
+
+    await expect(service.resolve(
+      'INC-2401',
+      {
+        action_category: category,
+        action_description: 'Opened a ticket with the provider and followed up.',
+      },
+      'analyst-1',
+    )).rejects.toBeInstanceOf(AppException);
   });
 
-  it('só transiciona de detected|acknowledged|auto_resolved → resolved', async () => {
-    db.incident('INC-9').status = 'resolved';
-    await expect(svc.resolve('INC-9', base)).rejects.toThrow(/transi/);
+  it('only transitions from detected|acknowledged|auto_resolved → resolved', async () => {
+    const {
+      service,
+      prisma,
+    } = buildService({
+      id: 'INC-9',
+      status: 'resolved',
+    });
+
+    await expect(service.resolve(
+      'INC-9',
+      VALID_RESOLVE,
+      'analyst-1',
+    )).rejects.toBeInstanceOf(AppException);
+
+    expect(prisma.incident.update).not.toHaveBeenCalled();
   });
 
-  it('no sucesso, escreve incident_activity (status_change) + audit incident_resolve', async () => {
-    await svc.resolve('INC-2401', { ...base, actionCategory: 'provider_escalated',
-                                    escalatedTo: 'Twilio #91234' });
-    expect(activityRepo.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ activityType: 'status_change' }));
-    expect(auditRepo.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'incident_resolve' }));
+  it('on success, writes incident_activity (status_change) + audit incident_resolve', async () => {
+    const {
+      service,
+      prisma,
+      audit,
+    } = buildService({
+      id: 'INC-2401',
+      status: 'acknowledged',
+    });
+
+    await service.resolve(
+      'INC-2401',
+      {
+        action_category: 'provider_escalated',
+        action_description: 'Escalated to the provider through the priority channel.',
+        escalated_to: 'ProviderA #91234',
+      },
+      'analyst-1',
+    );
+
+    expect(prisma.incidentActivity.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ activityType: 'status_change' }),
+    }));
+
+    expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ action: 'incident_resolve' }));
   });
 });
 ```
 
-**PII mascarada + audit no reveal:**
+**Masked PII + audit on reveal:**
 ```typescript
-it('search_messages retorna phoneMasked por padrão, sem audit de reveal', async () => {
-  const res = await tools.searchMessages({ phone: '+5511987651234', dateRange });
-  expect(res.rows[0].phoneMasked).toMatch(/9\*+/);
-  expect(res.rows[0].phoneFull).toBeUndefined();
-  expect(auditRepo.insert).toHaveBeenCalledWith(
-    expect.objectContaining({ action: 'tool_call' }));        // tool gera tool_call
-  expect(auditRepo.insert).not.toHaveBeenCalledWith(
-    expect.objectContaining({ action: 'reveal_phone' }));     // reveal NÃO acontece sozinho
+it('search returns phone_masked by default, never phone_full', async () => {
+  const service = new ShippingsService(auditQueryReturning([
+    shippingRecord({ phoneE164: '+5511987651234' }),
+  ]));
+
+  const result = await service.search({ phone: '+5511987651234' });
+
+  expect(result.rows[0].phone_masked).toContain('****');
+  expect(result.rows[0].phone_full).toBeUndefined();
 });
 
-it('reveal de telefone retorna phoneFull e grava audit reveal_phone', async () => {
-  const full = await svc.revealPhone('4f3a2b1c-1111', analystWithPermission);
-  expect(full).toBe('+55 11 98765-1234');
-  expect(auditRepo.insert).toHaveBeenCalledWith(
-    expect.objectContaining({ action: 'reveal_phone', severity: 'pii' }));
+it('the search handler is audited as tool_call and the reveal handler as reveal_phone (pii)', () => {
+  const reflector = new Reflector();
+
+  expect(reflector.get(AUDIT_KEY, ShippingsController.prototype.search)).toEqual({
+    action: 'tool_call',
+    severity: 'info',
+  });
+
+  expect(reflector.get(AUDIT_KEY, ShippingsController.prototype.revealPhone)).toEqual({
+    action: 'reveal_phone',
+    severity: 'pii',
+  });
+});
+
+it('the phone reveal returns phone_full', async () => {
+  const service = new RevealService(
+    auditQueryWithShipping({ phoneE164: '+5511987651234' }),
+    cacheStub,
+  );
+
+  await expect(service.revealPhone('4f3a2b1c-1111')).resolves.toEqual({
+    shipping_id: '4f3a2b1c-1111',
+    phone_full: '+5511987651234',
+  });
 });
 ```
+(`auditQueryReturning`, `shippingRecord`, `auditQueryWithShipping` and `cacheStub` stand for the small stub helpers the existing specs build over `AuditQueryServiceInterface`; see `shippings.service.spec.ts` and `reveal.service.spec.ts`.)
 
 ## Quality Bar
 
-- Não afirmar que há testes hoje; gerar testes só sobre código que exista. Runner provável Jest — ajuste ao que o projeto adotar.
-- Tools testadas como determinísticas e server-side (LLM não toca o banco); output validado contra o mock em `prototype/data.jsx`/§C; cada tool call escreve audit `tool_call`.
-- Resolve coberto por tabela de casos cobrindo §D inteiro: enum, ≥20/≥10 chars, escalated_to condicional, transições válidas/inválidas, escrita de incident_activity + audit.
-- Mascaramento de PII testado nos dois sentidos: mascarado por padrão (sem reveal silencioso) e reveal grava audit (`reveal_phone`/`reveal_content`, severity `pii`).
-- Recusa do LLM testada: fora de escopo emite `refusal`, nunca inventa dado estruturado.
-- RBAC: 403 para `support_analyst` em rotas de lead; 401 sem token (REST e handshake WS).
-- WS: formato de evento conforme `03-websocket-events.md`; rejeita handshake sem token; reconexão com backoff cap 30s + re-fetch de incidentes ativos.
-- Determinismo e isolamento: mock no boundary (Prisma, S3, Amazon Bedrock, relógio); sem dependência de rede, tempo real ou ordem entre testes. Testar comportamento, não implementação; AAA; nomes descritivos.
+- Generate tests only over code that exists, with the runner of the target app (Jest in `apps/api`, Vitest in `apps/web`, Playwright for browser e2e), following the existing specs.
+- Tools tested as deterministic and server-side (the LLM does not touch the database); output validated against `@atena/types` / `docs/openapi.yaml`; each tool call writes audit `tool_call`.
+- Resolve covered by a table of cases spanning all of §D: enum, ≥20/≥10 chars, conditional escalated_to, valid/invalid transitions, writing incident_activity + audit.
+- PII masking tested both ways: masked by default (no silent reveal) and the reveal writes audit (`reveal_phone`/`reveal_content`, severity `pii`).
+- LLM refusal tested: out of scope emits `refusal`, never made-up structured data.
+- RBAC: 403 for roles lacking the permission (per `permissions.ts`); 401 without a session (REST and WS handshake).
+- WS: event format per `03-websocket-events.md`; rejects a handshake without a session; reconnection tested as implemented, with the gap against the handoff (30 s cap + re-fetch of active incidents) flagged.
+- Determinism and isolation: mock at the boundary (Prisma, S3/DuckDB engine, Amazon Bedrock, clock); no dependency on network, real time or order between tests. Test behavior, not implementation; AAA; descriptive names.
 
 ## Resource Strategy
 
-- Sem `scripts/`/`references/`/`assets/` próprios enquanto não houver runner/código: os shapes-fonte para asserção já vivem em `prototype/data.jsx` e §C de `01-backend-api-contract.md`.
-- Quando o backend existir, fixtures de teste devem derivar de `@atena/types` (uma fonte de verdade) e dos mocks do protótipo — não duplicar shapes inline.
-- Referencie §D do contrato e §5.3 de `02-data-model.md` para as regras do resolve em vez de recopiar enums nos testes.
+- No `scripts/`/`references/`/`assets/` of its own: the source shapes for assertions live in `@atena/types` and `docs/openapi.yaml` (historically §C of `01-backend-api-contract.md`).
+- Test fixtures derive from `@atena/types` (single source of truth) and from the existing specs' helpers — do not duplicate shapes inline.
+- Reference §D of the contract and `apps/api/prisma/schema.prisma` (historically §5.3 of `02-data-model.md`) for the resolve rules instead of re-copying enums into the tests.

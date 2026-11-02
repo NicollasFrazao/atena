@@ -20,8 +20,8 @@ import { CONTENT_CACHE, type ContentCacheInterface } from '../cache/content-cach
 @Injectable()
 export class RevealService {
   /**
-   * @param {AuditQueryServiceInterface} audit - Motor de consulta (telefone / `content_ref`).
-   * @param {ContentCacheInterface} cache - Cache read-through `/tmp`↔S3 do conteúdo bruto.
+   * @param audit - Motor de consulta (telefone / `content_ref`).
+   * @param cache - Cache read-through `/tmp`↔S3 do conteúdo bruto.
    */
   constructor(
     @Inject(AUDIT_QUERY) private readonly audit: AuditQueryServiceInterface,
@@ -31,10 +31,12 @@ export class RevealService {
   /**
    * Revela o telefone completo (E.164) de um envio.
    *
-   * @param {string} shippingId - Id do envio.
-   * @param {AuditWindowInterface} [window] - Janela do contexto (mesma do search/trilha); evita o
+   * @param shippingId - Id do envio.
+   * @param [window] - Janela do contexto (mesma do search/trilha); evita o
    *   scan frio de ~30 dias que estoura timeout num lookup pontual por id.
-   * @returns {Promise<RevealedPhoneInterface>} `{ shipping_id, phone_full }` (não mascarado).
+   *
+   * @returns `{ shipping_id, phone_full }` (não mascarado).
+   *
    * @throws {NotFoundException} Se o envio não existir.
    */
   async revealPhone(
@@ -67,10 +69,12 @@ export class RevealService {
   /**
    * Revela o conteúdo bruto de um envio (hidratado do S3 via `content_ref`).
    *
-   * @param {string} shippingId - Id do envio.
-   * @param {AuditWindowInterface} [window] - Janela do contexto (mesma do search/trilha); evita o
+   * @param shippingId - Id do envio.
+   * @param [window] - Janela do contexto (mesma do search/trilha); evita o
    *   scan frio de ~30 dias que estoura timeout num lookup pontual por id.
-   * @returns {Promise<RevealedContentInterface>} `{ shipping_id, content_preview }`.
+   *
+   * @returns `{ shipping_id, content_preview }`.
+   *
    * @throws {NotFoundException} Se o envio não existir.
    * @throws {UnprocessableEntityException} Se não houver `content_ref` ou o conteúdo não puder ser hidratado.
    */

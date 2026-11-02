@@ -20,7 +20,7 @@ const TITLE_SUFFIX = 'Atena';
  * Atualiza o `document.title` conforme a rota (ex.: "Incidentes · Atena"). Sem rota
  * conhecida, usa só o sufixo do produto. Não renderiza nada — é só efeito de navegação.
  *
- * @returns {null} Nada (componente de efeito).
+ * @returns Nada (componente de efeito).
  */
 export function RouteTitle(): null {
   const { pathname } = useLocation();

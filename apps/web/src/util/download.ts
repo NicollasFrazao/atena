@@ -2,9 +2,8 @@
  * Dispara o download de um Blob no navegador: cria um object URL temporário, clica num `<a download>`
  * e revoga a URL. Usado pelos exports de mensagens (CSV gerado no servidor e baixado como blob).
  *
- * @param {Blob} blob - Conteúdo a baixar.
- * @param {string} filename - Nome do arquivo no download.
- * @returns {void}
+ * @param blob - Conteúdo a baixar.
+ * @param filename - Nome do arquivo no download.
  */
 export function triggerBlobDownload(
   blob: Blob,
@@ -37,9 +36,11 @@ export function triggerBlobDownload(
  * Baixa um arquivo de uma URL (GET) como blob e dispara o download — base dos exports CSV gerados no
  * servidor (mensagens/incidente/relatório), que respondem com `Content-Disposition: attachment`.
  *
- * @param {string} url - URL completa do arquivo (GET).
- * @param {string} filename - Nome do arquivo no download.
- * @returns {Promise<void>} Resolve quando o download é disparado.
+ * @param url - URL completa do arquivo (GET).
+ * @param filename - Nome do arquivo no download.
+ *
+ * @returns Resolve quando o download é disparado.
+ *
  * @throws {Error} Se a resposta não for 2xx.
  */
 export async function downloadFile(

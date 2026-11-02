@@ -1,10 +1,5 @@
+import { MS_PER_DAY, MS_PER_HOUR } from '../common/units';
 import type { AuditWindowInterface } from './audit-query.types';
-
-/** Milissegundos em uma hora. */
-const HOUR_MS = 3_600_000;
-
-/** Milissegundos em um dia. */
-const DAY_MS = 24 * HOUR_MS;
 
 /** Acima desta janela (em horas), as partições são por dia (não por hora) para limitar a lista. */
 const HOURLY_GRAIN_MAX_HOURS = 72;
@@ -13,13 +8,13 @@ const HOURLY_GRAIN_MAX_HOURS = 72;
 export const RECORDS_TABLE = 'atena_records';
 
 /** Nome da TEMP TABLE (por conexão) com os EVENTOS crus (status + envio) — base de records e da trilha. */
-export const EV_TABLE = 'atena_ev';
+const EV_TABLE = 'atena_ev';
 
 /**
  * Colunas dos eventos `ev` (um por registro do detailed report) — MESMA ORDEM na projeção e no
  * Parquet de cache (`SELECT ${EV_COLUMNS} FROM read_parquet`).
  */
-export const EV_COLUMNS = 'campaign_id, phone, customer, provider, campaign_type, '
+const EV_COLUMNS = 'campaign_id, phone, customer, provider, campaign_type, '
   + 'status, provider_code, error_text, sent_at, processed_at, message, app_id';
 
 /**
@@ -45,8 +40,10 @@ const SOURCE_COLUMNS = `{
   error: 'JSON'
 }`;
 
-/** Código de país (DDI) default p/ canonizar números nacionais sem DDI. BR = 55. Fica ASSADO no cache
- *  de eventos, então trocá-lo exige bump do `EV_CACHE_VERSION` (não é hot-swap por env). */
+/**
+ * Código de país (DDI) default p/ canonizar números nacionais sem DDI. BR = 55. Fica ASSADO no cache
+ *  de eventos, então trocá-lo exige bump do `EV_CACHE_VERSION` (não é hot-swap por env).
+ */
 const DEFAULT_DDI = '55';
 
 /** Só-dígitos do phone (remove `+`, espaços, pontuação). */
@@ -134,14 +131,13 @@ function dayGlob(
 /**
  * Uma partição candidata da janela: o glob dos objetos, a chave de cache e o instante em que a
  * partição se ENCERRA (para decidir se já está "settled" — fechada e cacheável).
- *
- * @property {string} glob - Glob dos objetos da partição.
- * @property {string} cacheKey - Chave estável da partição (compõe o nome do Parquet de cache).
- * @property {Date | null} endsAt - Fim do intervalo da partição; `null` = partição aberta (nunca cacheável).
  */
 export interface PartitionDescriptorInterface {
+  /** Glob dos objetos da partição. */
   glob: string;
+  /** Chave estável da partição (compõe o nome do Parquet de cache). */
   cacheKey: string;
+  /** Fim do intervalo da partição; `null` = partição aberta (nunca cacheável). */
   endsAt: Date | null;
 }
 
@@ -149,10 +145,11 @@ export interface PartitionDescriptorInterface {
  * Descreve as partições que cobrem a janela (hora a hora se ≤ 72h; senão dia a dia). Sem `from`,
  * devolve uma partição ampla e não-cacheável (todo o período).
  *
- * @param {string} sourceRoot - Raiz dos dados (`s3://bucket` ou diretório local).
- * @param {AuditWindowInterface} window - Janela `[from, to)`.
- * @param {Date} now - Instante de referência para `to` ausente.
- * @returns {PartitionDescriptorInterface[]} Partições candidatas (sem duplicatas).
+ * @param sourceRoot - Raiz dos dados (`s3://bucket` ou diretório local).
+ * @param window - Janela `[from, to)`.
+ * @param now - Instante de referência para `to` ausente.
+ *
+ * @returns Partições candidatas (sem duplicatas).
  */
 export function partitionDescriptors(
   sourceRoot: string,
@@ -189,13 +186,13 @@ export function partitionDescriptors(
 
   const spanHours = Math.max(
     1,
-    Math.ceil((end - startHour) / HOUR_MS),
+    Math.ceil((end - startHour) / MS_PER_HOUR),
   );
 
   const byKey = new Map<string, PartitionDescriptorInterface>();
 
   if (spanHours <= HOURLY_GRAIN_MAX_HOURS) {
-    for (let cursor = startHour; cursor <= end; cursor += HOUR_MS) {
+    for (let cursor = startHour; cursor <= end; cursor += MS_PER_HOUR) {
       const date = new Date(cursor);
 
       const key = `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}`
@@ -209,7 +206,7 @@ export function partitionDescriptors(
             date,
           ),
           cacheKey: key,
-          endsAt: new Date(cursor + HOUR_MS),
+          endsAt: new Date(cursor + MS_PER_HOUR),
         },
       );
     }
@@ -221,7 +218,7 @@ export function partitionDescriptors(
       from.getUTCDate(),
     );
 
-    for (let cursor = startDay; cursor <= end; cursor += DAY_MS) {
+    for (let cursor = startDay; cursor <= end; cursor += MS_PER_DAY) {
       const date = new Date(cursor);
       const key = `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
 
@@ -233,7 +230,7 @@ export function partitionDescriptors(
             date,
           ),
           cacheKey: key,
-          endsAt: new Date(cursor + DAY_MS),
+          endsAt: new Date(cursor + MS_PER_DAY),
         },
       );
     }
@@ -290,9 +287,10 @@ function evSelect(files: string[]): string {
  * agregação/dedup independe de ordem) — só o layout físico; caches antigos (não ordenados) seguem
  * válidos (sem invalidar `EV_CACHE_VERSION`).
  *
- * @param {string[]} files - Objetos da partição.
- * @param {string} parquetPath - Destino do Parquet de cache.
- * @returns {string} Comando `COPY`.
+ * @param files - Objetos da partição.
+ * @param parquetPath - Destino do Parquet de cache.
+ *
+ * @returns Comando `COPY`.
  */
 export function evCopyToParquetSql(
   files: string[],
@@ -313,9 +311,10 @@ export function evCopyToParquetSql(
  * dobra o(s) shard(s) de objetos atrasados no base e reaplica a ordenação global. Lê só arquivos
  * LOCAIS (0 requests S3).
  *
- * @param {string[]} parquets - Parquets de cache a unir (base + shards).
- * @param {string} parquetPath - Destino do Parquet compactado.
- * @returns {string} Comando `COPY`.
+ * @param parquets - Parquets de cache a unir (base + shards).
+ * @param parquetPath - Destino do Parquet compactado.
+ *
+ * @returns Comando `COPY`.
  */
 export function evCompactParquetsSql(
   parquets: string[],
@@ -334,9 +333,10 @@ export function evCompactParquetsSql(
  * DDL que materializa, numa TEMP TABLE, os eventos `ev` da janela — unindo o cache Parquet (settled)
  * e os objetos JSON live (não-settled). Um registro por transição de status (queued/delivered/...).
  *
- * @param {string[]} parquetFiles - Parquets de cache (já no formato `ev`); podem ser vazios.
- * @param {string[]} jsonFiles - Objetos JSON.gz live; podem ser vazios.
- * @returns {string} `CREATE OR REPLACE TEMP TABLE ... AS SELECT ...`.
+ * @param parquetFiles - Parquets de cache (já no formato `ev`); podem ser vazios.
+ * @param jsonFiles - Objetos JSON.gz live; podem ser vazios.
+ *
+ * @returns `CREATE OR REPLACE TEMP TABLE ... AS SELECT ...`.
  */
 function evSourcesUnion(
   parquetFiles: string[],
@@ -365,10 +365,11 @@ const SHIPPING_ID_HEX = /^[0-9a-f]{32}$/i;
  * dos objetos é o mesmo (o filtro roda na leitura), mas o build despenca. `recipientId` é md5 (32 hex)
  * validado → seguro interpolar (DDL não aceita bind no CREATE … AS).
  *
- * @param {string[]} parquetFiles - Parquets de cache (formato `ev`); podem ser vazios.
- * @param {string[]} jsonFiles - Objetos JSON.gz live; podem ser vazios.
- * @param {string} [recipientId] - Shipping_id (md5) p/ filtrar o `ev` a um destinatário (trilha).
- * @returns {string} `CREATE OR REPLACE TEMP TABLE atena_ev AS ...`.
+ * @param parquetFiles - Parquets de cache (formato `ev`); podem ser vazios.
+ * @param jsonFiles - Objetos JSON.gz live; podem ser vazios.
+ * @param [recipientId] - Shipping_id (md5) p/ filtrar o `ev` a um destinatário (trilha).
+ *
+ * @returns `CREATE OR REPLACE TEMP TABLE atena_ev AS ...`.
  */
 export function evDdlFromSources(
   parquetFiles: string[],
@@ -405,7 +406,7 @@ export const EMPTY_EV_DDL = `CREATE OR REPLACE TEMP TABLE ${EV_TABLE} (`
  * `NULL` enquanto `pending`. `error_hint` = a categoria de falha terminal (`bounce`/`request_error`/...).
  * `id = md5(campaign_id || '|' || phone)` (chave do destinatário; casa a trilha em {@link trailEventsSql}).
  *
- * @returns {string} `CREATE OR REPLACE TEMP TABLE atena_records AS ...`.
+ * @returns `CREATE OR REPLACE TEMP TABLE atena_records AS ...`.
  */
 export function recordsDdl(fromSource: string = EV_TABLE): string {
   return `
@@ -462,9 +463,10 @@ FROM grouped`;
  * transição de status (potencialmente ~milhões de linhas) só pra agregar em seguida. A trilha, que
  * precisa dos eventos crus, continua usando `recordsDdl()` sobre `atena_ev`.
  *
- * @param {string[]} parquetFiles - Parquets de cache (formato `ev`); podem ser vazios.
- * @param {string[]} jsonFiles - Objetos JSON.gz live; podem ser vazios.
- * @returns {string} `CREATE OR REPLACE TEMP TABLE atena_records AS ...` agregando da fonte.
+ * @param parquetFiles - Parquets de cache (formato `ev`); podem ser vazios.
+ * @param jsonFiles - Objetos JSON.gz live; podem ser vazios.
+ *
+ * @returns `CREATE OR REPLACE TEMP TABLE atena_records AS ...` agregando da fonte.
  */
 export function recordsDdlFromSources(
   parquetFiles: string[],
@@ -485,9 +487,10 @@ export function recordsDdlFromSources(
  * (a janela não casou objetos): o chamador deve curto-circuitar (a união seria SQL inválido). Use
  * como `FROM ${sourcesSubquery(parquet, json)}`.
  *
- * @param {string[]} parquetFiles - Parquets de cache (formato `ev`); podem ser vazios.
- * @param {string[]} jsonFiles - Objetos JSON.gz live; podem ser vazios.
- * @returns {string} `(\n<união>\n) AS src` — ou `''` se ambas as listas estão vazias.
+ * @param parquetFiles - Parquets de cache (formato `ev`); podem ser vazios.
+ * @param jsonFiles - Objetos JSON.gz live; podem ser vazios.
+ *
+ * @returns `(\n<união>\n) AS src` — ou `''` se ambas as listas estão vazias.
  */
 export function sourcesSubquery(
   parquetFiles: string[],
@@ -507,7 +510,7 @@ export function sourcesSubquery(
  * Eventos crus de um destinatário (`md5(campaign_id || '|' || phone) = $1`), em ordem cronológica —
  * base da trilha. A chave casa o grão por destinatário (campanha + telefone) de {@link recordsDdl}.
  *
- * @returns {string} SELECT dos eventos de `atena_ev` para o id dado (bind `$1`).
+ * @returns SELECT dos eventos de `atena_ev` para o id dado (bind `$1`).
  */
 export function trailEventsSql(): string {
   return `SELECT status, provider, provider_code, error_text, sent_at, processed_at

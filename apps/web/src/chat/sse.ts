@@ -1,14 +1,15 @@
-import type { ApiErrorInterface, ChatStreamEvent } from '@atena/types';
-import { ApiError, notifyUnauthorized } from '../api/client';
+import type { ChatStreamEvent } from '@atena/types';
+import { ApiError, type ApiErrorBodyType, notifyUnauthorized } from '../api/client';
 import { API_URL } from '../api/config';
+import { HTTP_STATUS_UNAUTHORIZED } from '../api/http-status';
 
 /**
  * Parseia frames SSE completos de um buffer (`event: <tipo>\ndata: <json>\n\n`).
  * Devolve os eventos parseados e o `rest` (frame possivelmente incompleto) p/ o próximo chunk.
  *
- * @param {string} buffer - Texto acumulado do stream.
+ * @param buffer - Texto acumulado do stream.
  *
- * @returns {{ events: ChatStreamEvent[]; rest: string }} Eventos completos + sobra.
+ * @returns Eventos completos + sobra.
  */
 export function parseSseFrames(buffer: string): {
   events: ChatStreamEvent[];
@@ -32,7 +33,42 @@ export function parseSseFrames(buffer: string): {
   };
 }
 
-/** Parseia um único frame SSE em um {@link ChatStreamEvent}; `null` se incompleto/inválido. */
+/**
+ * The event names the chat understands. A `Record` so that adding an event to
+ * {@link ChatStreamEvent} without listing it here fails the type check.
+ */
+const KNOWN_EVENT_NAMES: Record<ChatStreamEvent['event'], true> = {
+  tool_call: true,
+  tool_progress: true,
+  tool_result: true,
+  text_delta: true,
+  thinking_delta: true,
+  done: true,
+  refusal: true,
+  error: true,
+};
+
+/**
+ * Whether a frame's event name is one of {@link ChatStreamEvent}'s.
+ *
+ * @param name - The `event:` field of the frame.
+ *
+ * @returns `true` for a known event name.
+ */
+function isKnownEventName(name: string): name is ChatStreamEvent['event'] {
+  return Object.hasOwn(
+    KNOWN_EVENT_NAMES,
+    name,
+  );
+}
+
+/**
+ * Parseia um único frame SSE em um {@link ChatStreamEvent}; `null` se incompleto/inválido.
+ *
+ * @remarks
+ * An event name outside {@link ChatStreamEvent} (a newer server, a keep-alive) also yields `null`,
+ * so the returned type is the truth: the chat ignored those events anyway.
+ */
 function parseFrame(frame: string): ChatStreamEvent | null {
   let name = '';
   const dataLines: string[] = [];
@@ -46,7 +82,7 @@ function parseFrame(frame: string): ChatStreamEvent | null {
   }
 
   if (
-    !name
+    !isKnownEventName(name)
     || dataLines.length === 0
   ) {
     return null;
@@ -68,12 +104,13 @@ function parseFrame(frame: string): ChatStreamEvent | null {
  * Envia a mensagem do usuário e consome o stream SSE (`POST /chat/sessions/:id/messages`),
  * chamando `onEvent` a cada evento (tool_call → tool_result → text_delta → done/refusal).
  *
- * @param {string} sessionId - Id da sessão.
- * @param {string} text - Texto do usuário.
- * @param {(event: ChatStreamEvent) => void} onEvent - Handler de cada evento.
- * @param {AbortSignal} [signal] - Para cancelar o stream.
+ * @param sessionId - Id da sessão.
+ * @param text - Texto do usuário.
+ * @param onEvent - Handler de cada evento.
+ * @param [signal] - Para cancelar o stream.
  *
- * @returns {Promise<void>} Resolve quando o stream encerra.
+ * @returns Resolve quando o stream encerra.
+ *
  * @throws {Error} Se a resposta não trouxer um corpo legível.
  */
 export async function streamChatMessage(
@@ -101,11 +138,11 @@ export async function streamChatMessage(
   // flushHeaders): a resposta tem corpo JSON, não SSE. Sem checar `response.ok`, o reader leria o
   // erro como stream vazio → balão em branco sem erro e sem overlay de re-login.
   if (!response.ok) {
-    if (response.status === 401) {
+    if (response.status === HTTP_STATUS_UNAUTHORIZED) {
       notifyUnauthorized();
     }
 
-    const body = (await response.json().catch(() => null)) as ApiErrorInterface | null;
+    const body = (await response.json().catch(() => null)) as ApiErrorBodyType;
 
     throw new ApiError(
       body?.error?.code ?? 'error',

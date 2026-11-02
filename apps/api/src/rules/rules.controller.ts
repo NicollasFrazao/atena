@@ -21,14 +21,14 @@ import { RulesService } from './rules.service';
 @Controller('rules')
 export class RulesController {
   /**
-   * @param {RulesService} rules - Serviço de regras de anomalia.
+   * @param rules - Serviço de regras de anomalia.
    */
   constructor(private readonly rules: RulesService) {}
 
   /**
    * `GET /rules` — lista todas as regras de anomalia.
    *
-   * @returns {Promise<AnomalyRuleInterface[]>} Regras (snake_case).
+   * @returns Regras (snake_case).
    */
   @Get()
   @Requires('rules:view')
@@ -39,11 +39,11 @@ export class RulesController {
   /**
    * `PUT /rules/:id` — edita campos permitidos da regra (`rule_type` imutável).
    *
-   * @param {string} id - Id da regra.
-   * @param {UpdateRuleDto} body - Campos a atualizar (parcial).
-   * @param {AuthenticatedUserInterface} [user] - Operador autenticado.
+   * @param id - Id da regra.
+   * @param body - Campos a atualizar (parcial).
+   * @param [user] - Operador autenticado.
    *
-   * @returns {Promise<AnomalyRuleInterface>} Regra atualizada.
+   * @returns Regra atualizada.
    */
   @Put(':id')
   @Requires('rules:edit')

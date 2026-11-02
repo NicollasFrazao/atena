@@ -21,9 +21,9 @@ export class RecordCache {
   private readonly entries = new Map<string, RecordCacheEntryInterface>();
 
   /**
-   * @param {number} ttlMs - Tempo de vida de cada entrada (ms).
-   * @param {number} maxSize - Teto de entradas; ao exceder, remove as mais antigas (FIFO).
-   * @param {() => number} [now] - Fonte do tempo (injetável para teste); default `Date.now`.
+   * @param ttlMs - Tempo de vida de cada entrada (ms).
+   * @param maxSize - Teto de entradas; ao exceder, remove as mais antigas (FIFO).
+   * @param [now] - Fonte do tempo (injetável para teste); default `Date.now`.
    */
   constructor(
     private readonly ttlMs: number,
@@ -34,8 +34,7 @@ export class RecordCache {
   /**
    * Insere/atualiza um registro (renovando o TTL e a posição). Aplica o teto por FIFO.
    *
-   * @param {DeliveryRecordInterface} record - Registro a cachear (chaveado por `record.id`).
-   * @returns {void}
+   * @param record - Registro a cachear (chaveado por `record.id`).
    */
   set(record: DeliveryRecordInterface): void {
     // Reinsere no fim para renovar a ordem (a chave mais antiga é a primeira da Map).
@@ -63,8 +62,9 @@ export class RecordCache {
   /**
    * Lê um registro por id; `null` se ausente ou expirado (expirado é removido na leitura).
    *
-   * @param {string} id - Id da mensagem.
-   * @returns {DeliveryRecordInterface | null} O registro quente, ou `null`.
+   * @param id - Id da mensagem.
+   *
+   * @returns O registro quente, ou `null`.
    */
   get(id: string): DeliveryRecordInterface | null {
     const hit = this.entries.get(id);

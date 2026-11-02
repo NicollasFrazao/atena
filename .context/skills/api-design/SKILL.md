@@ -10,94 +10,100 @@ scaffoldVersion: "2.0.0"
 ---
 ## Workflow
 
-> ESTADO DO REPO: ainda não existe backend. Estas são as convenções de DIREÇÃO ditadas pelo handoff (`docs/design_handoff_atena/01-backend-api-contract.md`). Os response shapes são extraídos dos mocks do protótipo (`prototype/data.jsx`) e são o contrato que o backend NestJS deverá cumprir.
+> REPOSITORY STATE: the NestJS backend is implemented (`apps/api`). The current HTTP contract is `docs/openapi.yaml`, and the response shapes live in `@atena/types` (`packages/types/src/index.ts`). The handoff (`docs/design_handoff_atena/01-backend-api-contract.md`) is the historical origin of these conventions; its shapes were extracted from the prototype mocks (not included in the repo) and were written in camelCase, while the project later chose **snake_case for every API request and response** (`.context/docs/code-style.md`).
 
-1. Identifique a tool por trás do endpoint. No Atena, quase todo endpoint REST espelha uma tool do LLM (`search_messages` ↔ `GET /api/messages/search`). Confirme se o que você está desenhando é Fase 1 (search/trail/analyze/report/list) ou Fase 2 (incidents) — ou um endpoint sem tool (ack/resolve/comment).
-2. Modele o recurso em snake_case no MySQL (ver `02-data-model.md`) e exponha camelCase na API. O mapeamento snake↔camel é responsabilidade do ORM (Prisma), nunca do consumidor.
-3. Escolha o método HTTP correto: `GET` para tools de leitura (search, trail, list), `POST` para tools que processam/agregam (`analyze`, `reports/delivery`) e para mutações de estado de incidente (`acknowledge`, `resolve`, `comment`).
-4. Defina request e response batendo exatamente com o shape do `data.jsx`. Datas saem em ISO 8601 UTC; a UI formata o relativo ("há 12 min"). Toda lista usa o envelope paginado `{ rows, page, totalPages, total, latencyMs }`.
-5. Padronize erro como `{ error: { code, message } }` — sempre, em todo endpoint, com status HTTP coerente (401 token rejeitado, 403 RBAC, 404, 422 validação).
-6. Aplique os guards: Bearer token OIDC (login social institucional) em TODOS os endpoints (OIDC restrito ao domínio `@example.com`); guard de RBAC por papel (`support_analyst` vs `support_lead`); interceptor de audit nas ações sensíveis (`tool_call`, `reveal_phone`, `reveal_content`, `export_report`, `incident_*`, `rule_update`).
-7. Para mutação de incidente, faça a validação dupla server-side (§D do contrato) — nunca confie na UI.
-8. Para o chat, projete o stream SSE; para incidentes em tempo real, os eventos WS (`03-websocket-events.md`).
+1. Identify the tool behind the endpoint. In Atena, almost every REST endpoint mirrors an LLM tool (`search_shippings` ↔ `GET /api/shippings/search`). Confirm whether what you are designing is Phase 1 (search/trail/analyze/report/list) or Phase 2 (incidents) — or an endpoint without a tool (ack/resolve/comment).
+2. Model the resource in snake_case in MySQL (see `apps/api/prisma/schema.prisma`; `02-data-model.md` is historical) and expose **snake_case at the API** too. Prisma Client is camelCase internally, so map to snake_case at the edge — in the services/serializers that build the response and in the DTOs that read the input — never in the consumer. URL segments are `kebab-case`, plural nouns (e.g. `/api/delivery-reports`).
+3. Choose the right HTTP method: `GET` for read tools (search, trail, list), `POST` for tools that process/aggregate (`analyze`, `reports/delivery`) and for incident state mutations (`acknowledge`, `resolve`, `comment`).
+4. Define request and response matching the shape in `@atena/types` exactly (and document it in `docs/openapi.yaml`). Dates go out in ISO 8601 UTC; the UI formats the relative form ("há 12 min" ("12 min ago")). Every list uses the paginated envelope `{ rows, page, total_pages, total, latency_ms }`.
+5. Standardize errors as `{ error: { code, message } }` — always, on every endpoint, with a coherent HTTP status (400 malformed input rejected by the `ValidationPipe`, 401 missing/invalid session, 403 RBAC, 404, 409 invalid state transition, 422 business-rule validation).
+6. Apply the guards: OIDC session (JWT cookie `atena_session`, issued after the Microsoft Entra login) on EVERY endpoint (OIDC restricted to the `@example.com` domain; only `/health` and `/auth/*` are `@Public`); per-endpoint permission guard via `@Requires(perm)` (4 roles — admin/support_lead/support_analyst/viewer — mapped to permissions in `apps/api/src/auth/rbac/permissions.ts`); audit on the sensitive actions (`tool_call`, `reveal_phone`, `reveal_content`, `export_report`, `incident_*`, `rule_update`), via `@Audit(action, severity)` on the handler or written by the service for incident/rule changes.
+7. For incident mutations, do the double server-side validation (§D of the contract) — never trust the UI.
+8. For the chat, design the SSE stream; for real-time incidents, the WS events (`03-websocket-events.md`).
 
 ## Examples
 
-**Endpoint de leitura espelhando tool (`search_messages`):**
+**Read endpoint mirroring a tool (`search_shippings`):**
 ```
-GET /api/messages/search?phone=...&status=failed&provider=Twilio&customerId=...&dateRange=...&page=1&limit=20
-Authorization: Bearer <token>
+GET /api/shippings/search?phone=...&status=failed&provider=ProviderA&customer_id=...&date_range=24h&page=1&limit=20
+Cookie: atena_session=<jwt>
 
 200 OK
 {
   "rows": [
     {
       "id": "4f3a2b1c-1111",
-      "phoneMasked": "+55 11 9****-1234",
+      "campaign_id": "c-9001",
+      "phone_masked": "+55 11 9****-1234",
       "status": "failed",
-      "provider": "Twilio",
-      "customer": "CreditBank",
-      "requestedAt": "2026-05-28T14:02:18Z",
-      "errorHint": "INSUFFICIENT_BALANCE"
+      "provider": "ProviderA",
+      "customer": "Customer 1001",
+      "channel": "sms",
+      "app_id": null,
+      "requested_at": "2026-05-28T14:02:18Z",
+      "finalized_at": "2026-05-28T14:02:21Z",
+      "error_hint": "insufficient_credits"
     }
   ],
-  "page": 1, "totalPages": 4, "total": 73, "latencyMs": 42
+  "page": 1, "total_pages": 4, "total": 73, "latency_ms": 42
 }
 ```
-`phoneFull` e `contentPreview` NÃO vêm por padrão — só após reveal autorizado, que grava audit (`reveal_phone`/`reveal_content`).
+`phone_full` and the SMS content do NOT come by default — only after an authorized reveal (`POST /api/shippings/{id}/reveal-phone` / `reveal-content`, permission `pii:reveal`), which writes an audit entry (`reveal_phone`/`reveal_content`).
 
-**Mutação de estado com validação server-side (`POST /api/incidents/{id}/resolve` — §D):**
+**State mutation with server-side validation (`POST /api/incidents/{id}/resolve` — §D):**
 ```
 POST /api/incidents/INC-2401/resolve
 {
-  "actionCategory": "provider_escalated",
-  "actionDescription": "Contatei a Twilio pelo canal comercial e abri ticket prioritário.",
-  "escalatedTo": "Twilio Support — ticket #91234",
-  "relatedMessageIds": ["4f3a2b1c-1111"],
-  "tags": ["fornecedor-twilio"]
+  "action_category": "provider_escalated",
+  "action_description": "Contacted the provider through the commercial channel and opened a priority ticket.",
+  "escalated_to": "ProviderA Support — ticket #91234",
+  "related_shipping_ids": ["4f3a2b1c-1111"],
+  "tags": ["provider-a"]
 }
 ```
-Validar no backend (não confiar na UI):
-- `actionCategory` ∈ { provider_recovered, provider_escalated, internal_escalated, false_positive, customer_communicated, monitoring_only, other }
-- `actionDescription` ≥ 20 chars (≥ 10 no fluxo `auto_resolved`)
-- se `actionCategory ∈ { provider_escalated, internal_escalated }` → `escalatedTo` obrigatório
-- só transita de `detected | acknowledged | auto_resolved` → `resolved`
-- escreve `incident_activity` (status_change) + `audit_log` (incident_resolve)
+Validate in the backend (do not trust the UI):
+- `action_category` ∈ { provider_recovered, provider_escalated, internal_escalated, false_positive, customer_communicated, monitoring_only, other }
+- `action_description` ≥ 20 chars (≥ 10 in the `auto_resolved` flow)
+- if `action_category ∈ { provider_escalated, internal_escalated }` → `escalated_to` required
+- only transitions from `detected | acknowledged | auto_resolved` → `resolved`
+- writes `incident_activity` (status_change) + `audit_log` (incident_resolve)
 
-**Erro de validação:**
+**Validation error:**
 ```
 422 Unprocessable Entity
-{ "error": { "code": "ESCALATED_TO_REQUIRED", "message": "escalatedTo é obrigatório quando a categoria é provider_escalated" } }
+{ "error": { "code": "validation_error", "message": "escalated_to é obrigatório quando a categoria é de escalonamento" } }
 ```
+(The message is the product's Portuguese text: "escalated_to is required when the category is an escalation".)
 
-**Stream do chat (`POST /api/chat/sessions/{id}/messages`):**
+**Chat stream (`POST /api/chat/sessions/{id}/messages`):**
 ```
-event: tool_call    data: { "name": "search_messages", "args": {...}, "status": "running" }
-event: tool_result  data: { "name": "search_messages", "status": "success", "result": {...} }
+event: tool_call    data: { "name": "search_shippings", "args": {...}, "status": "running" }
+event: tool_result  data: { "name": "search_shippings", "status": "success", "result": {...} }
 event: text_delta   data: { "delta": "Encontrei 6 envios…" }
-event: done         data: { "messageId": "...", "refusal": null }
+event: done         data: { "message_id": "...", "refusal": null, "session_title": "..." }
 ```
-Fora de escopo, em vez de `tool_call`:
+(`text_delta` carries the assistant's Portuguese answer, here "I found 6 shippings…"; the stream may also carry `thinking_delta` and `tool_progress`.)
+Out of scope, instead of `tool_call`:
 ```
-event: refusal  data: { "reason": "fora_de_escopo", "explanation": "...", "canDo": [...] }
+event: refusal  data: { "reason": "fora_do_escopo", "explanation": "...", "can_do": [...] }
 ```
 
 ## Quality Bar
 
-- camelCase na API, snake_case no DB — sempre. O mapeamento vive no ORM, não vaza para o cliente.
-- Datas em ISO 8601 UTC na resposta; nunca mande string relativa do backend.
-- Listas SEMPRE no envelope `{ rows, page, totalPages, total, latencyMs }`. Não invente `{ data, meta }`.
-- Erro SEMPRE `{ error: { code, message } }`. `code` é estável e em SCREAMING_SNAKE; `message` é PT-BR para o humano.
-- Bearer token OIDC (login social institucional) obrigatório em todo endpoint (OIDC restrito ao domínio `@example.com`); sem token → 401 (a UI mostra `SessionExpiredOverlay`).
-- RBAC por endpoint via guard NestJS: relatórios gerenciais, editar regras e ver audit são `support_lead`.
-- Cada tool da Fase 1/2 tem endpoint espelhado; `acknowledge`/`resolve`/`comment` NÃO são tools — só REST + UI.
-- PII mascarada por padrão; `phoneFull`/`contentPreview` só com reveal + audit.
-- Validação de mutação de incidente é dupla e server-side; a UI valida só para UX, o backend é a autoridade.
-- LLM não fabrica dados: se não houver tool/dado, o stream emite `refusal`, não texto inventado.
+- snake_case at the API (every request and response), snake_case in the DB — always. Prisma Client's camelCase stays internal; the mapping lives at the edge (services/serializers and DTOs) and does not leak to the client.
+- Dates in ISO 8601 UTC in the response; never send a relative string from the backend.
+- Lists ALWAYS in the envelope `{ rows, page, total_pages, total, latency_ms }`. Do not invent `{ data, meta }`.
+- Errors ALWAYS `{ error: { code, message } }`. `code` is stable and in lowercase snake_case (e.g. `validation_error`, `invalid_state_transition`, `not_found`); `message` is Brazilian Portuguese for the human.
+- OIDC session (JWT cookie) required on every endpoint (OIDC restricted to the `@example.com` domain); without a valid session → 401 (the web client sends the user back to the login).
+- Per-endpoint RBAC via the NestJS permission guard (`@Requires(perm)`): editing rules is `rules:edit` (`support_lead`+), revealing PII and PII exports are `pii:reveal` (`support_lead`+), user management is `users:manage` (admin); reports (`reports:view`) and the audit log (`audit:view`) are readable by every role.
+- Every Phase 1/2 tool has a mirrored endpoint; `acknowledge`/`resolve`/`comment` are NOT tools — only REST + UI.
+- PII masked by default; `phone_full`/content only with reveal + audit.
+- Incident mutation validation is double and server-side; the UI validates only for UX, the backend is the authority.
+- The LLM does not fabricate data: if there is no tool/data, the stream emits `refusal`, not made-up text.
 
 ## Resource Strategy
 
-- Mantenha o contrato canônico em `docs/design_handoff_atena/01-backend-api-contract.md`; este SKILL aponta para lá, não duplica.
-- Adicione `references/` aqui só se um catálogo de códigos de erro ou de enums crescer demais para o contrato.
-- Não crie `scripts/` antes de existir backend; quando existir, um gerador de tipos a partir do contrato (alinhado com `@atena/types`) seria candidato.
-- Não duplique shapes — eles vivem em `prototype/data.jsx`; cite o arquivo.
+- Keep the canonical contract in `docs/openapi.yaml` and the shapes in `@atena/types` (`docs/design_handoff_atena/01-backend-api-contract.md` is the historical reference); this SKILL points there, it does not duplicate.
+- Add `references/` here only if a catalog of error codes or enums grows too large for the contract.
+- A `scripts/` candidate now that the backend exists: a type/contract checker that keeps `docs/openapi.yaml` aligned with `@atena/types`.
+- Do not duplicate shapes — they live in `@atena/types` (`packages/types/src/index.ts`); cite the file.

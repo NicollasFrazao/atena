@@ -7,10 +7,9 @@ import type { Response } from 'express';
  * headers de attachment. Compartilhado pelos exports de mensagens (telefone em claro, auditados): o
  * CSV é gerado pelo DuckDB (`COPY`) e enviado sem materializar em memória.
  *
- * @param {Response} res - Resposta Express.
- * @param {string} file - Caminho do CSV temporário (será removido ao fim do stream).
- * @param {string} filename - Nome do arquivo no download (ex.: `atena-envios.csv`).
- * @returns {void}
+ * @param res - Resposta Express.
+ * @param file - Caminho do CSV temporário (será removido ao fim do stream).
+ * @param filename - Nome do arquivo no download (ex.: `atena-envios.csv`).
  */
 export function streamCsvDownload(
   res: Response,

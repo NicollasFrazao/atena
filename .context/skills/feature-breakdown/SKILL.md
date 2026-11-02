@@ -10,76 +10,77 @@ scaffoldVersion: "2.0.0"
 ---
 ## Workflow
 
-Contexto: o repo do Atena hoje é só DESIGN HANDOFF (specs + protótipo React em `docs/design_handoff_atena/`). NÃO existe código de produção. Toda quebra de feature parte do handoff e descreve trabalho a fazer — não há produção para "estender".
+Context: the Atena repo holds the implemented MVP — `apps/api` (NestJS 11 + Prisma/MySQL, DuckDB over S3), `apps/web` (React 18 + Vite) and `packages/types` (`@atena/types`); the design handoff (`docs/design_handoff_atena/`) is the historical spec/design reference (the original React prototype is not included in the repo). Every feature breakdown starts from the existing code and contracts (`@atena/types`, `docs/openapi.yaml`) and describes work that extends them.
 
-1. **Situe a feature na ordem de sprints** do `docs/design_handoff_atena/README.md` §7. Nada de Fase 2 antes da fundação:
-   - **Sprint 0 — Fundação:** auth (login social institucional (OIDC, domínio restrito) — OIDC pelo provedor do email corporativo, restrito ao domínio `@example.com`) + RBAC (`support_analyst`/`support_lead`), schema MySQL + migrations (`02-data-model.md`), interceptor de audit log global.
-   - **Sprint 1 — Fase 1 (self-service):** tools determinísticas, orquestrador LLM (chat/stream/tool routing + recusa), mascaramento de PII + reveal-com-audit, frontend do chat.
-   - **Sprint 2 — Fase 2 (proativo):** detector de anomalias, WS gateway + push, ciclo de vida do incidente (ack/resolve server-side), telas de Regras/Relatórios/Audit/Observabilidade.
-2. **Ligue tela → endpoint → shape → tool** usando `04-screen-to-endpoint-map.md`. Toda feature de UI deve nomear: o componente do protótipo, o(s) endpoint(s) REST/WS, o shape de resposta (§C de `01-backend-api-contract.md`) e a tool (se houver).
-3. **Quebre em tarefas independentes** seguindo a fatia vertical natural do Atena: migration → endpoint/tool (backend) → tipo em `@atena/types` → UI (recriar do protótipo, não copiar JSX). Cada tarefa testável isoladamente.
-4. **Aplique os 5 princípios como critério de aceite em cada tarefa relevante** (ver Quality Bar). Ex.: tarefa de tool sempre tem critério "escreve audit `tool_call`"; tarefa de PII sempre tem "mascarado por padrão + reveal gera audit".
-5. **Marque o que depende de DECISÃO PENDENTE** (`06-pending-decisions.md` / `decisions.md`): PII no hot store vs só S3, thresholds default das regras, onde mora o audit log. Não invente a decisão — sinalize como bloqueio.
-6. **Ordene por dependência:** Sprint 0 destrava tudo; tools dependem do schema; UI depende do shape do endpoint; ack/resolve dependem de incidents + WS.
-7. **Critérios de aceite concretos** por tarefa: endpoint responde no shape exato do `data.jsx`, guard RBAC aplicado, validação server-side coberta.
+1. **Place the feature in the sprint order** of `docs/design_handoff_atena/README.md` §7. All three sprints are already delivered, so a new feature extends one of these layers; nothing of Phase 2 goes in without its foundation:
+   - **Sprint 0 — Foundation:** auth (OIDC via Microsoft Entra, restricted to the `@example.com` domain, session in a JWT cookie) + app-managed RBAC (4 roles — admin/support_lead/support_analyst/viewer — mapped to permissions, `@Requires(perm)`), MySQL schema + migrations (`apps/api/prisma/schema.prisma`), global audit log interceptor.
+   - **Sprint 1 — Phase 1 (self-service):** deterministic tools, LLM orchestrator (chat/stream/tool routing + refusal), PII masking + reveal-with-audit, chat frontend.
+   - **Sprint 2 — Phase 2 (proactive):** anomaly detector, WS gateway + push, incident lifecycle (server-side ack/resolve), Rules/Reports/Audit/Observability screens.
+2. **Link screen → endpoint → shape → tool** using `04-screen-to-endpoint-map.md`. Every UI feature must name: the screen component (in `apps/web/src/`), the REST/WS endpoint(s), the response shape (`@atena/types` / `docs/openapi.yaml`) and the tool (if any).
+3. **Break it into independent tasks** following Atena's natural vertical slice: migration (only for app state — delivery data lives on S3) → endpoint/tool (backend) → type in `@atena/types` → UI (in-house components on the `--at-*` tokens). Each task testable in isolation.
+4. **Apply the 5 principles as acceptance criteria on every relevant task** (see the Quality Bar). E.g. a tool task always has the criterion "writes audit `tool_call`"; a PII task always has "masked by default + reveal generates audit".
+5. **Mark what depends on a PENDING DECISION** (`06-pending-decisions.md` / `decisions.md`). Already settled in `decisions.md`: SMS content may live in an easy-access store read through to S3 (implemented as S3 + the `/tmp` cache; the MySQL delivery hot store was dropped), the top-3 anomaly scenarios and default rule thresholds (`.context/docs/anomaly-scenarios.md`), and the audit log as an append-only table in the same database (INSERT + SELECT only). Do not invent a decision — flag anything still open as a blocker.
+6. **Order by dependency:** the foundation unblocks everything; tools depend on the S3/DuckDB engine (delivery) or the schema (app state); the UI depends on the endpoint's shape; ack/resolve depend on incidents + WS.
+7. **Concrete acceptance criteria** per task: the endpoint responds in the exact shape of `@atena/types`, the RBAC guard is applied, server-side validation is covered.
 
 ## Examples
 
-**Feature: Busca de mensagens (Sprint 1, Fase 1)**
+**Feature: shipping search (Sprint 1, Phase 1) — as it was broken down, mapped to today's code**
 ```
-## Feature: Busca de mensagens
-Tela: tool-results.jsx SearchResults  →  GET /api/messages/search  →  shape §C.1  →  tool search_messages
+## Feature: Shipping search
+Screen: apps/web/src/chat/tool-cards/SearchResultsCard.tsx  →  GET /api/shippings/search  →  SearchResultRowInterface (§C.1)  →  tool search_shippings
 
-### T1 — Migration messages + message_events (Sprint 0, pré-req)
-- Tabelas conforme 02-data-model.md (snake_case): phone_e164 + phone_hash, content_ref (sem texto sensível).
-- Aceite: migration sobe; índices idx_messages_phone / customer_time / status_time / provider_time criados.
+### T1 — Delivery data source (pre-req)
+- No MySQL table: shippings come from the S3 detailed report via DuckDB (apps/api/src/audit-query/),
+  phone normalized to digits-only, grain per recipient (campaign_id+phone), /tmp cache.
+- Acceptance: the engine answers a windowed search; partitions served from cache when hot.
 
-### T2 — Endpoint GET /api/messages/search + tool search_messages
-- Input { phone?, messageId?, dateRange, status?, provider?, customerId?, limit, page }.
-- App roda a query (a IA NÃO toca o banco — princípio 1); guard RBAC; envelope { rows, page, totalPages, total, latencyMs }.
-- Aceite: response bate com MOCK.searchResults[] (§C.1); cada invocação escreve audit action 'tool_call'.
+### T2 — Endpoint GET /api/shippings/search + tool search_shippings
+- Input { phone?, status?, provider?, channel?, error_hint?, customer_id?, campaign_id?, date_from?, date_to?, date_range?, page, limit }.
+- The app runs the query (the AI does NOT touch the database — principle 1); @Requires('messages:search'); envelope { rows, page, total_pages, total, latency_ms }.
+- Acceptance: the response matches SearchResultRowInterface (§C.1); each call writes audit action 'tool_call'.
 
-### T3 — Tipo compartilhado em @atena/types
-- SearchRow, SearchResponse derivados do shape §C.1 (camelCase API ↔ snake_case DB no ORM).
-- Aceite: backend e frontend importam o mesmo tipo.
+### T3 — Shared type in @atena/types
+- SearchResultRowInterface + PaginatedEnvelopeInterface<T> (snake_case at the API; Prisma Client camelCase mapped at the edge).
+- Acceptance: backend and frontend import the same type.
 
-### T4 — UI SearchResults (recriar do protótipo c/ atena-design-system)
-- phoneMasked por padrão; PhoneCell revela phoneFull só com permissão + reveal → audit 'reveal_phone' (princípio 5).
-- Linha clicável → abre trilha (get_message_trail).
-- Aceite: usa Table/Badge do design-system (NÃO copiar o JSX do protótipo); estado de erro = ToolError inline + "tentar de novo".
+### T4 — UI SearchResultsCard (in-house components on the --at-* tokens)
+- phone_masked by default; RevealField reveals phone_full only with permission + reveal → audit 'reveal_phone' (principle 5).
+- Clickable row → opens the trail (get_shipping_trail).
+- Acceptance: reuses the in-house components (do NOT copy prototype JSX); error state = inline tool error + "tentar de novo" ("try again").
 
-### Dependências: T2,T4 dependem de T1; T4 depende de T3; reveal depende do audit interceptor (Sprint 0).
-### Bloqueio pendente: PII no hot store vs só S3 afeta como phoneFull/contentRef são servidos.
+### Dependencies: T2,T4 depend on T1; T4 depends on T3; reveal depends on the audit interceptor (Sprint 0).
+### Settled: delivery data is read from S3 (+ /tmp cache), never from MySQL; phone_full/content are served only by the reveal endpoints.
 ```
 
-**Feature: Resolver incidente (Sprint 2, Fase 2)**
+**Feature: Resolve incident (Sprint 2, Phase 2)**
 ```
-## Feature: Resolução de incidente
-Tela: incidents.jsx ResolveModal → POST /api/incidents/{id}/resolve → validação §D
-ATENÇÃO: resolve NÃO é tool do LLM (princípio 3) — só via UI + validação server-side.
+## Feature: Incident resolution
+Screen: apps/web/src/incidents/ResolveIncidentModal.tsx → POST /api/incidents/{id}/resolve → validation §D
+WARNING: resolve is NOT an LLM tool (principle 3) — only via UI + server-side validation.
 
-### T1 — Endpoint resolve com validação server-side (§D)
-- actionCategory ∈ enum (provider_recovered/provider_escalated/internal_escalated/false_positive/customer_communicated/monitoring_only/other).
-- actionDescription ≥ 20 chars (≥ 10 no auto_resolved); se category ∈ {provider_escalated, internal_escalated} → escalatedTo obrigatório.
-- Só transição acknowledged|detected|auto_resolved → resolved.
-- Aceite: backend revalida tudo (UI desabilita, mas não é fonte de verdade); escreve incident_activity (status_change) + audit 'incident_resolve'; emite WS incident.updated.
+### T1 — Resolve endpoint with server-side validation (§D)
+- action_category ∈ enum (provider_recovered/provider_escalated/internal_escalated/false_positive/customer_communicated/monitoring_only/other).
+- action_description ≥ 20 chars (≥ 10 on auto_resolved); if category ∈ {provider_escalated, internal_escalated} → escalated_to required.
+- Only transition acknowledged|detected|auto_resolved → resolved.
+- Acceptance: the backend revalidates everything (the UI disables, but it is not the source of truth); writes incident_activity (status_change) + audit 'incident_resolve'; emits WS incident.updated.
 
-### T2 — UI ResolveModal (design-system Dialog)
-- Aceite: campos obrigatórios espelham §D; botão desabilitado até válido; erro server-side exibido.
+### T2 — UI ResolveIncidentModal (in-house dialog)
+- Acceptance: required fields mirror §D; button disabled until valid; server-side error shown.
 ```
 
 ## Quality Bar
 
-- **5 princípios viram critério de aceite**, não comentário: (1) a app roda query/RBAC/dados, o LLM nunca toca o banco; (2) todo dado estruturado vem de tool, senão recusa explícita (`RefusalCard`); (3) ack/resolve/comment NÃO são tools — só UI + validação server-side; (4) toda tool call / reveal / mudança de incidente escreve audit log; (5) PII (telefone, conteúdo de SMS) mascarada por padrão, reveal gera audit.
-- Toda feature de UI nomeia explicitamente tela (componente do protótipo) → endpoint → shape (§C) → tool. Sem esse mapeamento, a tarefa está incompleta.
-- Nenhuma tarefa de Fase 2 entra antes da fundação (Sprint 0) estar pronta: sem schema não há tool; sem audit interceptor não há reveal; sem RBAC não há endpoint.
-- Shapes de resposta são contrato: o critério de aceite cita o mock correspondente em `prototype/data.jsx` (ex.: §C.1 = `MOCK.searchResults[]`).
-- camelCase na API ↔ snake_case no DB: mapeamento sempre no ORM, nunca vazando snake_case pra UI.
-- Decisões pendentes ficam marcadas como bloqueio explícito — não escolha por conta própria política de PII no hot store, thresholds ou local do audit log.
-- Recriar o protótipo ≠ copiar o JSX: tarefa de UI exige usar componentes reais do `atena-design-system`. PT-BR informal nas strings de usuário.
+- **The 5 principles become acceptance criteria**, not comments: (1) the app runs query/RBAC/data, the LLM never touches the database; (2) all structured data comes from a tool, otherwise explicit refusal (`RefusalCard`); (3) ack/resolve/comment are NOT tools — only UI + server-side validation; (4) every tool call / reveal / incident change writes the audit log; (5) PII (phone, SMS content) masked by default, reveal generates audit.
+- Every UI feature explicitly names screen (component in `apps/web/src/`) → endpoint → shape (`@atena/types`) → tool. Without that mapping, the task is incomplete.
+- No Phase 2 task goes in before its foundation is ready: without a data source there is no tool; without the audit interceptor there is no reveal; without RBAC there is no endpoint.
+- Response shapes are a contract: the acceptance criterion cites the matching type in `@atena/types` (e.g. §C.1 = `SearchResultRowInterface`).
+- snake_case at the API ↔ snake_case in the DB, with Prisma Client's camelCase mapped at the edge (services/serializers/DTOs), never leaking camelCase to the UI.
+- Pending decisions stay marked as an explicit blocker — do not choose on your own a PII, threshold or audit-storage policy that is not already settled.
+- Recreating the prototype ≠ copying JSX: UI tasks use the in-house components of `apps/web/src/` on the `--at-*` tokens. Informal PT-BR in user-facing strings.
 
 ## Resource Strategy
 
-- Não criar `scripts/`/`references/`/`assets/` para esta skill: a quebra de feature é um exercício de planejamento textual; os artefatos canônicos já vivem em `docs/design_handoff_atena/`.
-- Se uma feature recorrer sempre aos mesmos shapes, referencie `01-backend-api-contract.md` §C e `02-data-model.md` por seção — não duplique o schema aqui (evita divergir do handoff).
-- Saída esperada é a própria quebra de tarefas (Markdown), não arquivos no repo; mantenha tudo em `SKILL.md`.
+- Do not create `scripts/`/`references/`/`assets/` for this skill: feature breakdown is a textual planning exercise; the canonical artifacts already live in the code, `docs/openapi.yaml` and `docs/design_handoff_atena/`.
+- If a feature keeps reusing the same shapes, reference `@atena/types` and `docs/openapi.yaml` (historically `01-backend-api-contract.md` §C and `02-data-model.md`) by name — do not duplicate the schema here (avoids diverging from the code).
+- The expected output is the task breakdown itself (Markdown), not files in the repo; keep everything in `SKILL.md`.

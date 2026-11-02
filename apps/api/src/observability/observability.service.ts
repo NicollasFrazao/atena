@@ -4,6 +4,15 @@ import type {
   ToolUsageStatInterface,
 } from '@atena/types';
 import { AUDIT_QUERY, type AuditQueryServiceInterface } from '../audit-query/audit-query.interface';
+import {
+  DAYS_PER_WEEK,
+  HOURS_PER_DAY,
+  HUNDRED_PERCENT,
+  MS_PER_HOUR,
+  MS_PER_SECOND,
+  SECONDS_PER_HOUR,
+  SECONDS_PER_MINUTE,
+} from '../common/units';
 import { LLM_PROVIDER, type LlmProviderInterface } from '../llm/llm-provider.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupportGateway } from '../realtime/support.gateway';
@@ -12,8 +21,16 @@ import { estimateCostUsd } from './llm-pricing';
 /** Prefixo do `resource` de auditoria das tools executadas pelo orquestrador. */
 const TOOL_RESOURCE_PREFIX = 'orchestrator:';
 
-/** Milissegundos em uma hora (resolução da janela temporal). */
-const HOUR_MS = 60 * 60 * 1000;
+/** Days of the `30d` window — also the scan-stats window of `all` (persisted retention ceiling). */
+const MONTH_WINDOW_DAYS = 30;
+
+/** Hours of the `30d` window. */
+const MONTH_WINDOW_HOURS = HOURS_PER_DAY * MONTH_WINDOW_DAYS;
+
+/** Percentiles reported per tool latency (p50/p95/p99). */
+const PERCENTILE_50 = 50;
+const PERCENTILE_95 = 95;
+const PERCENTILE_99 = 99;
 
 /**
  * Janelas temporais da tela de observabilidade: horas (`null` = acumulado/sem recorte) + rótulo
@@ -24,15 +41,15 @@ const OBSERVABILITY_WINDOWS: Record<string, {
   label: string
 }> = {
   '24h': {
-    hours: 24,
+    hours: HOURS_PER_DAY,
     label: 'Últimas 24h',
   },
   '7d': {
-    hours: 24 * 7,
+    hours: HOURS_PER_DAY * DAYS_PER_WEEK,
     label: 'Últimos 7 dias',
   },
   '30d': {
-    hours: 24 * 30,
+    hours: MONTH_WINDOW_HOURS,
     label: 'Últimos 30 dias',
   },
   all: {
@@ -70,18 +87,18 @@ interface ChatContentRowInterface {
 /** Resumo de recusas: total e quebra por motivo. */
 interface RefusalsSummaryInterface {
   total: number;
-  by_reason: Array<{
+  by_reason: {
     reason: string;
     count: number
-  }>;
+  }[];
 }
 
 /** Formata uma duração (ms) como `Xh Ym` / `Xm Ys` / `Xs` legível. */
 function formatDurationMs(durationMs: number): string {
-  const totalSeconds = Math.round(durationMs / 1_000);
-  const hours = Math.floor(totalSeconds / 3_600);
-  const minutes = Math.floor((totalSeconds % 3_600) / 60);
-  const seconds = totalSeconds % 60;
+  const totalSeconds = Math.round(durationMs / MS_PER_SECOND);
+  const hours = Math.floor(totalSeconds / SECONDS_PER_HOUR);
+  const minutes = Math.floor((totalSeconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
+  const seconds = totalSeconds % SECONDS_PER_MINUTE;
 
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
@@ -107,10 +124,10 @@ function formatDurationMs(durationMs: number): string {
 @Injectable()
 export class ObservabilityService {
   /**
-   * @param {PrismaService} prisma - Acesso ao audit log e às sessões de chat.
-   * @param {SupportGateway} realtime - Gateway WS (conexões ativas).
-   * @param {AuditQueryServiceInterface} audit - Motor de auditoria (custo de leitura do S3).
-   * @param {LlmProviderInterface} llm - Provider LLM ativo (rótulo provider/modelo).
+   * @param prisma - Acesso ao audit log e às sessões de chat.
+   * @param realtime - Gateway WS (conexões ativas).
+   * @param audit - Motor de auditoria (custo de leitura do S3).
+   * @param llm - Provider LLM ativo (rótulo provider/modelo).
    */
   constructor(
     private readonly prisma: PrismaService,
@@ -122,15 +139,16 @@ export class ObservabilityService {
   /**
    * Monta o snapshot de métricas básicas do assistente, recortado por uma JANELA temporal.
    *
-   * @param {string} [window] - Janela (`24h`/`7d`/`30d`/`all`; default `all` = acumulado).
-   * @returns {Promise<ObservabilityInterface>} Métricas agregadas (snake_case) da janela.
+   * @param [window] - Janela (`24h`/`7d`/`30d`/`all`; default `all` = acumulado).
+   *
+   * @returns Métricas agregadas (snake_case) da janela.
    */
   async snapshot(window = 'all'): Promise<ObservabilityInterface> {
     const resolved = OBSERVABILITY_WINDOWS[window] ?? OBSERVABILITY_WINDOWS.all;
 
     const since = resolved.hours === null
       ? null
-      : new Date(Date.now() - resolved.hours * HOUR_MS);
+      : new Date(Date.now() - resolved.hours * MS_PER_HOUR);
 
     // Recorte temporal por campo de data de cada fonte; `undefined` (sem janela) = acumulado.
     const occurredGte = since
@@ -206,7 +224,7 @@ export class ObservabilityService {
 
     const usage = this.aggregateTokens(assistantMessages);
     // Janela do scan: 'all' usa 30d (teto da retenção persistida).
-    const auditScan = await this.audit.scanStats(resolved.hours ?? 24 * 30);
+    const auditScan = await this.audit.scanStats(resolved.hours ?? MONTH_WINDOW_HOURS);
 
     return {
       period: resolved.label,
@@ -233,9 +251,9 @@ export class ObservabilityService {
   /**
    * Agrega o audit log de tools por nome: chamadas, erros e latência média.
    *
-   * @param {ToolAuditRowInterface[]} rows - Linhas de `tool_call` do audit log.
+   * @param rows - Linhas de `tool_call` do audit log.
    *
-   * @returns {ToolUsageStatInterface[]} Uso por tool, ordenado por chamadas (desc).
+   * @returns Uso por tool, ordenado por chamadas (desc).
    */
   private aggregateTools(rows: ToolAuditRowInterface[]): ToolUsageStatInterface[] {
     const byTool = new Map<string, ToolAccInterface>();
@@ -284,15 +302,15 @@ export class ObservabilityService {
         avg_latency_ms: this.average(acc.latencies),
         p50_ms: this.percentile(
           acc.latencies,
-          50,
+          PERCENTILE_50,
         ),
         p95_ms: this.percentile(
           acc.latencies,
-          95,
+          PERCENTILE_95,
         ),
         p99_ms: this.percentile(
           acc.latencies,
-          99,
+          PERCENTILE_99,
         ),
       }))
       .sort((
@@ -321,9 +339,10 @@ export class ObservabilityService {
   /**
    * Percentil `pct` (0–100) inteiro de uma lista de latências (nearest-rank), ou `null` se vazia.
    *
-   * @param {number[]} values - Latências (ms).
-   * @param {number} pct - Percentil desejado (ex.: 95).
-   * @returns {number | null} Valor do percentil (ms), ou `null`.
+   * @param values - Latências (ms).
+   * @param pct - Percentil desejado (ex.: 95).
+   *
+   * @returns Valor do percentil (ms), ou `null`.
    */
   private percentile(
     values: number[],
@@ -338,7 +357,7 @@ export class ObservabilityService {
       right,
     ) => left - right);
 
-    const rank = Math.ceil((pct / 100) * sorted.length) - 1;
+    const rank = Math.ceil((pct / HUNDRED_PERCENT) * sorted.length) - 1;
 
     const index = Math.min(
       sorted.length - 1,
@@ -354,14 +373,15 @@ export class ObservabilityService {
   /**
    * MTTA: tempo médio detecção→reconhecimento sobre incidentes já reconhecidos.
    *
-   * @param {AckIncidentRowInterface[]} incidents - Incidentes com `acknowledgedAt` preenchido.
+   * @param incidents - Incidentes com `acknowledgedAt` preenchido.
    *
-   * @returns {string | null} Duração média legível, ou `null` se nenhum foi reconhecido.
+   * @returns Duração média legível, ou `null` se nenhum foi reconhecido.
    */
   private meanTimeToAck(incidents: AckIncidentRowInterface[]): string | null {
     const deltas = incidents
-      .filter((incident) => incident.acknowledgedAt != null)
-      .map((incident) => (incident.acknowledgedAt as Date).getTime() - incident.detectedAt.getTime())
+      .flatMap((incident) => (incident.acknowledgedAt == null
+        ? []
+        : [incident.acknowledgedAt.getTime() - incident.detectedAt.getTime()]))
       .filter((deltaMs) => deltaMs >= 0);
 
     if (deltas.length === 0) {
@@ -383,9 +403,9 @@ export class ObservabilityService {
    * Conta recusas a partir de `chat_messages.content.refusal` (persistido pelo orquestrador),
    * agrupando por `reason` (desc). Sem PII — só motivo e contagem.
    *
-   * @param {ChatContentRowInterface[]} messages - Mensagens `assistant` (só `content`).
+   * @param messages - Mensagens `assistant` (só `content`).
    *
-   * @returns {RefusalsSummaryInterface} Total de recusas e quebra por motivo.
+   * @returns Total de recusas e quebra por motivo.
    */
   private aggregateRefusals(messages: ChatContentRowInterface[]): RefusalsSummaryInterface {
     const byReason = new Map<string, number>();
@@ -431,13 +451,14 @@ export class ObservabilityService {
   /**
    * Duração média de sessão (ms) — média de `lastActivity − startedAt` das sessões da janela.
    *
-   * @param {Array<{ startedAt: Date; lastActivity: Date }>} rows - Sessões da janela.
-   * @returns {number | null} Duração média (ms), ou `null` se sem sessão.
+   * @param rows - Sessões da janela.
+   *
+   * @returns Duração média (ms), ou `null` se sem sessão.
    */
-  private avgSessionMs(rows: Array<{
+  private avgSessionMs(rows: {
     startedAt: Date;
     lastActivity: Date
-  }>): number | null {
+  }[]): number | null {
     if (rows.length === 0) {
       return null;
     }
@@ -460,13 +481,14 @@ export class ObservabilityService {
    * Tokens consumidos por hora (buckets cronológicos UTC) na janela — base do gráfico de consumo.
    * Soma `usage` (input+output) das mensagens do assistente, agrupando pelo início da hora de `createdAt`.
    *
-   * @param {ChatContentRowInterface[]} messages - Mensagens `assistant` (`content` + `createdAt`).
-   * @returns {Array<{ at: string; tokens: number }>} Buckets horários (ISO UTC), ordenados.
+   * @param messages - Mensagens `assistant` (`content` + `createdAt`).
+   *
+   * @returns Buckets horários (ISO UTC), ordenados.
    */
-  private tokensHourly(messages: ChatContentRowInterface[]): Array<{
+  private tokensHourly(messages: ChatContentRowInterface[]): {
     at: string;
     tokens: number
-  }> {
+  }[] {
     const byHour = new Map<string, number>();
 
     for (const message of messages) {
@@ -524,9 +546,9 @@ export class ObservabilityService {
    * `tokens`/`cost` são `null` enquanto nenhuma mensagem reporta `usage` (ex.: provider sem usage);
    * `cost` é `null` se o modelo (`BEDROCK_MODEL_ID`) não tem preço na tabela. Sem PII — só contagens.
    *
-   * @param {ChatContentRowInterface[]} messages - Mensagens `assistant` (só `content`).
+   * @param messages - Mensagens `assistant` (só `content`).
    *
-   * @returns {{ tokens: number | null; cost: number | null }} Total de tokens e custo estimado (USD).
+   * @returns Total de tokens e custo estimado (USD).
    */
   private aggregateTokens(messages: ChatContentRowInterface[]): {
     tokens: number | null;

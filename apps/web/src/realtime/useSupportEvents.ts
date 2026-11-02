@@ -15,9 +15,9 @@ const SERVER_EVENTS: WsServerEvent['type'][] = [
  * Conecta no `/ws/support` (socket.io, reconexão automática) e chama `onEvent` a cada
  * evento de incidente. Conecta uma vez (callback via ref, sem reconectar a cada render).
  *
- * @param {(event: WsServerEvent) => void} onEvent - Handler dos eventos do servidor.
+ * @param onEvent - Handler dos eventos do servidor.
  *
- * @returns {{ connected: boolean }} Estado da conexão (p/ a faixa de "WS desconectado").
+ * @returns Estado da conexão (p/ a faixa de "WS desconectado").
  */
 export function useSupportEvents(onEvent: (event: WsServerEvent) => void): { connected: boolean } {
   const handlerRef = useRef(onEvent);
@@ -42,18 +42,18 @@ export function useSupportEvents(onEvent: (event: WsServerEvent) => void): { con
 
       socket.on(
         'connect',
-        () => setConnected(true),
+        () => { setConnected(true); },
       );
 
       socket.on(
         'disconnect',
-        () => setConnected(false),
+        () => { setConnected(false); },
       );
 
       for (const name of SERVER_EVENTS) {
         socket.on(
           name,
-          (payload: WsServerEvent) => handlerRef.current(payload),
+          (payload: WsServerEvent) => { handlerRef.current(payload); },
         );
       }
 

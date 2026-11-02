@@ -21,7 +21,7 @@ export class S3TmpContentCache implements ContentCacheInterface {
   private readonly contentBucket: string;
 
   /**
-   * @param {ConfigService} config - Fonte de `aws.region`, `cache.tmpDir` e `s3.contentBucket`.
+   * @param config - Fonte de `aws.region`, `cache.tmpDir` e `s3.contentBucket`.
    */
   constructor(config: ConfigService) {
     this.s3 = new S3Client({ region: config.get<string>('aws.region') });
@@ -36,8 +36,9 @@ export class S3TmpContentCache implements ContentCacheInterface {
    * (origem durável) e popula o `/tmp`. Falha de hidratação é logada e retorna `null`
    * (o `/tmp` é efêmero/rebuildável; o cache não é fonte de verdade).
    *
-   * @param {string} ref - Ponteiro de conteúdo (`s3://bucket/key` ou key no bucket de conteúdo).
-   * @returns {Promise<Buffer | null>} Conteúdo bruto, ou `null` se não encontrado/falha de hidratação.
+   * @param ref - Ponteiro de conteúdo (`s3://bucket/key` ou key no bucket de conteúdo).
+   *
+   * @returns Conteúdo bruto, ou `null` se não encontrado/falha de hidratação.
    */
   async get(ref: string): Promise<Buffer | null> {
     const localPath = this.localPathFor(ref);
@@ -91,8 +92,9 @@ export class S3TmpContentCache implements ContentCacheInterface {
   /**
    * Conveniência: o mesmo que `get`, decodificado como UTF-8.
    *
-   * @param {string} ref - Ponteiro de conteúdo (ver `get`).
-   * @returns {Promise<string | null>} Conteúdo como texto UTF-8, ou `null` se não encontrado.
+   * @param ref - Ponteiro de conteúdo (ver `get`).
+   *
+   * @returns Conteúdo como texto UTF-8, ou `null` se não encontrado.
    */
   async getText(ref: string): Promise<string | null> {
     const buf = await this.get(ref);
@@ -105,8 +107,9 @@ export class S3TmpContentCache implements ContentCacheInterface {
   /**
    * Caminho determinístico no /tmp para um ref (hash para não vazar key no filesystem).
    *
-   * @param {string} ref - Ponteiro de conteúdo.
-   * @returns {string} Caminho local no `tmpDir`, nomeado pelo SHA-256 hex do `ref`.
+   * @param ref - Ponteiro de conteúdo.
+   *
+   * @returns Caminho local no `tmpDir`, nomeado pelo SHA-256 hex do `ref`.
    */
   private localPathFor(ref: string): string {
     const safe = createHash('sha256').update(ref).digest('hex');
@@ -120,8 +123,11 @@ export class S3TmpContentCache implements ContentCacheInterface {
   /**
    * Resolve `s3://bucket/key` ou uma key relativa ao bucket de conteúdo configurado.
    *
-   * @param {string} ref - Ponteiro de conteúdo (`s3://bucket/key` ou key relativa).
-   * @returns {{ bucket: string; key: string }} Bucket e key do S3 a usar no `GetObjectCommand`.
+   * @param ref - Ponteiro de conteúdo (`s3://bucket/key` ou key relativa).
+   *
+   * @returns Bucket e key do S3 a usar no `GetObjectCommand`.
+   *
+   * @throws {@link Error} when an `s3://` ref has no key (`s3://bucket` without `/key`).
    */
   private parseRef(ref: string): {
     bucket: string;

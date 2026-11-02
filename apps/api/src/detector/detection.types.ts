@@ -37,7 +37,7 @@ export interface DetectorRuleInterface {
 }
 
 /** Métricas de suporte exibidas no incidente (strings legíveis). */
-export interface DetectionMetricsInterface {
+interface DetectionMetricsInterface {
   baseline: string;
   current: string;
   threshold: string;

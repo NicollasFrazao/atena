@@ -46,9 +46,9 @@ export class ShippingDateIndex {
   private readonly flushDebounceMs: number;
 
   /**
-   * @param {string} cacheDir - Diretório (volume persistido) onde o índice é gravado.
-   * @param {number} [maxEntries] - Teto de ids no índice (LRU por inserção). Default 20000.
-   * @param {number} [flushDebounceMs] - Debounce do flush em disco (ms). Default {@link FLUSH_DEBOUNCE_MS}.
+   * @param cacheDir - Diretório (volume persistido) onde o índice é gravado.
+   * @param [maxEntries] - Teto de ids no índice (LRU por inserção). Default 20000.
+   * @param [flushDebounceMs] - Debounce do flush em disco (ms). Default {@link FLUSH_DEBOUNCE_MS}.
    */
   constructor(
     cacheDir: string,
@@ -95,10 +95,9 @@ export class ShippingDateIndex {
    * Registra (ou atualiza) as datas de um envio. Reinsere p/ manter a ordem ~recência (o Map preserva
    * ordem de inserção → o mais antigo sai ao estourar o teto). Ignora `requested_at` ausente/epoch 0.
    *
-   * @param {string} id - Shipping_id (md5).
-   * @param {Date | null | undefined} requestedAt - Instante do envio.
-   * @param {Date | null | undefined} finalizedAt - Instante do desfecho (ou null se pendente).
-   * @returns {void}
+   * @param id - Shipping_id (md5).
+   * @param requestedAt - Instante do envio.
+   * @param finalizedAt - Instante do desfecho (ou null se pendente).
    */
   record(
     id: string,
@@ -137,8 +136,9 @@ export class ShippingDateIndex {
   /**
    * Datas de um envio conhecido (do índice), ou `null` se nunca visto.
    *
-   * @param {string} id - Shipping_id (md5).
-   * @returns {ShippingDatesInterface | null} Datas p/ estreitar a janela, ou `null`.
+   * @param id - Shipping_id (md5).
+   *
+   * @returns Datas p/ estreitar a janela, ou `null`.
    */
   get(id: string): ShippingDatesInterface | null {
     const entry = this.entries.get(id);

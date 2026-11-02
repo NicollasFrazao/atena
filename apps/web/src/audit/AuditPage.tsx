@@ -1,18 +1,18 @@
-import { Fragment, type ReactNode, useState } from 'react';
+import { Fragment, type ReactNode, useState, type JSX } from 'react';
 import {
-  CaretDown,
-  ChatsCircle,
-  CheckCircle,
-  Download,
-  Eye,
-  Flag,
-  Gear,
+  CaretDownIcon as CaretDown,
+  ChatsCircleIcon as ChatsCircle,
+  CheckCircleIcon as CheckCircle,
+  DownloadIcon as Download,
+  EyeIcon as Eye,
+  FlagIcon as Flag,
+  GearIcon as Gear,
   type Icon,
-  MagnifyingGlass,
-  ShieldCheck,
-  UsersThree,
-  Warning,
-  Wrench,
+  MagnifyingGlassIcon as MagnifyingGlass,
+  ShieldCheckIcon as ShieldCheck,
+  UsersThreeIcon as UsersThree,
+  WarningIcon as Warning,
+  WrenchIcon as Wrench,
 } from '@phosphor-icons/react';
 import type {
   AuditActionType,
@@ -31,15 +31,17 @@ import {
   SEVERITY_COLOR,
 } from './audit-labels';
 import { dayKeyInTz, formatDate, formatTime } from '../util/time';
+import { cssValue, cssVar, FONT_WEIGHT } from '../styles/tokens';
+import { MS_PER_DAY } from '../util/units';
 
 /** Período do filtro (recorta `from`). */
 type PeriodType = 'all' | 'today' | '7d' | '30d';
 
 /** Opções do filtro de período. */
-const PERIODS: Array<{
+const PERIODS: {
   id: PeriodType;
   label: string
-}> = [
+}[] = [
   {
     id: 'all',
     label: 'Todo o período',
@@ -58,6 +60,12 @@ const PERIODS: Array<{
   },
 ];
 
+/** Length in days of the "7d" period. */
+const WEEK_PERIOD_DAYS = 7;
+
+/** Length in days of the "30d" period. */
+const MONTH_PERIOD_DAYS = 30;
+
 /** Instante inicial (ISO) do período escolhido; `undefined` para "todo o período". */
 function periodFrom(period: PeriodType): string | undefined {
   if (period === 'all') {
@@ -75,10 +83,10 @@ function periodFrom(period: PeriodType): string | undefined {
   }
 
   const days = period === '7d'
-    ? 7
-    : 30;
+    ? WEEK_PERIOD_DAYS
+    : MONTH_PERIOD_DAYS;
 
-  return new Date(now.getTime() - days * 86_400_000).toISOString();
+  return new Date(now.getTime() - days * MS_PER_DAY).toISOString();
 }
 
 /** Ícone por ação auditada (espelha o protótipo). */
@@ -115,7 +123,7 @@ function formatWhen(iso: string): string {
  * acessos a PII, mudanças de regra, total), filtros (tipo de ação, só-PII, busca) e tabela paginada.
  * Os acessos a PII destacam-se (borda/realce). Append-only — só leitura. Sem PII em claro.
  *
- * @returns {JSX.Element} A tela de audit log.
+ * @returns A tela de audit log.
  */
 export function AuditPage(): JSX.Element {
   const [
@@ -186,22 +194,22 @@ export function AuditPage(): JSX.Element {
     <div style={{
       maxWidth: 1200,
       margin: '0 auto',
-      padding: 'var(--at-space-32)',
+      padding: cssVar.space32,
     }}
     >
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--at-space-12)',
-        marginBottom: 'var(--at-space-4)',
+        gap: cssVar.space12,
+        marginBottom: cssVar.space4,
       }}
       >
         <h1 style={{
           margin: 0,
           flex: 1,
-          fontSize: 'var(--at-fs-24)',
+          fontSize: cssVar.fs24,
           fontWeight: 600,
-          color: 'var(--at-fg)',
+          color: cssVar.fg,
         }}
         >
           Audit log
@@ -211,18 +219,18 @@ export function AuditPage(): JSX.Element {
           onClick={onExport}
           disabled={rows.length === 0}
           style={{
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
-            gap: 'var(--at-space-8)',
+            gap: cssVar.space8,
             height: 36,
             padding: '0 var(--at-space-16)',
-            borderRadius: 'var(--at-radius-4)',
-            border: '1px solid var(--at-border)',
-            background: 'var(--at-white)',
+            borderRadius: cssVar.radius4,
+            border: cssVar.borderLine,
+            background: cssVar.white,
             color: rows.length === 0
-              ? 'var(--at-fg-subtle)'
-              : 'var(--at-fg)',
-            fontSize: 'var(--at-fs-14)',
+              ? cssVar.fgSubtle
+              : cssVar.fg,
+            fontSize: cssVar.fs14,
             fontWeight: 600,
             cursor: rows.length === 0
               ? 'not-allowed'
@@ -234,9 +242,9 @@ export function AuditPage(): JSX.Element {
         </button>
       </div>
       <div style={{
-        fontSize: 'var(--at-fs-14)',
-        color: 'var(--at-fg-muted)',
-        marginBottom: 'var(--at-space-24)',
+        fontSize: cssVar.fs14,
+        color: cssVar.fgMuted,
+        marginBottom: cssVar.space24,
       }}
       >
         Trilha imutável de cada interação no Assistente · retenção de 1 ano · append-only
@@ -245,47 +253,51 @@ export function AuditPage(): JSX.Element {
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 'var(--at-space-12)',
-        marginBottom: 'var(--at-space-24)',
+        gap: cssVar.space12,
+        marginBottom: cssVar.space24,
       }}
       >
         <Kpi
           label="Eventos hoje"
           value={summary?.today}
-          color="var(--at-fg)"
+          color={cssVar.fg}
         />
         <Kpi
           label="Acessos a PII"
           value={summary?.pii}
-          color="var(--at-danger-300)"
+          color={cssVar.danger300}
         />
         <Kpi
           label="Mudanças de regra"
           value={summary?.rule_changes}
-          color="var(--at-info-100)"
+          color={cssVar.info100}
         />
         <Kpi
           label="Total no log"
           value={summary?.total}
-          color="var(--at-fg)"
+          color={cssVar.fg}
         />
       </div>
 
       <div style={{
         display: 'flex',
-        gap: 'var(--at-space-12)',
-        marginBottom: 'var(--at-space-16)',
+        gap: cssVar.space12,
+        marginBottom: cssVar.space16,
         flexWrap: 'wrap',
         alignItems: 'center',
-        padding: 'var(--at-space-12)',
-        background: 'var(--at-white)',
-        border: '1px solid var(--at-border)',
+        padding: cssVar.space12,
+        background: cssVar.white,
+        border: cssVar.borderLine,
         borderRadius: 8,
       }}
       >
         <select
           value={period}
-          onChange={(event) => resetTo(() => setPeriod(event.target.value as PeriodType))}
+          onChange={(event) => {
+            resetTo(() => {
+              setPeriod(event.target.value as PeriodType);
+            });
+          }}
           style={SELECT_STYLE}
         >
           {PERIODS.map((option) => (
@@ -300,7 +312,11 @@ export function AuditPage(): JSX.Element {
 
         <select
           value={user}
-          onChange={(event) => resetTo(() => setUser(event.target.value))}
+          onChange={(event) => {
+            resetTo(() => {
+              setUser(event.target.value);
+            });
+          }}
           style={SELECT_STYLE}
         >
           <option value="">Todos os usuários</option>
@@ -316,7 +332,11 @@ export function AuditPage(): JSX.Element {
 
         <select
           value={action}
-          onChange={(event) => resetTo(() => setAction(event.target.value))}
+          onChange={(event) => {
+            resetTo(() => {
+              setAction(event.target.value);
+            });
+          }}
           style={SELECT_STYLE}
         >
           <option value="">Todos os tipos</option>
@@ -332,24 +352,28 @@ export function AuditPage(): JSX.Element {
 
         <button
           type="button"
-          onClick={() => resetTo(() => setPiiOnly((value) => !value))}
+          onClick={() => {
+            resetTo(() => {
+              setPiiOnly((value) => !value);
+            });
+          }}
           style={{
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
-            gap: 'var(--at-space-4)',
+            gap: cssVar.space4,
             height: 38,
-            padding: '0 var(--at-space-12)',
-            borderRadius: 'var(--at-radius-4)',
+            padding: cssVar.paddingInline12,
+            borderRadius: cssVar.radius4,
             border: `1px solid ${piiOnly
-              ? 'var(--at-danger-200)'
-              : 'var(--at-border)'}`,
+              ? cssVar.danger200
+              : cssVar.border}`,
             background: piiOnly
-              ? 'var(--at-danger-50)'
-              : 'var(--at-white)',
+              ? cssVar.danger50
+              : cssVar.white,
             color: piiOnly
-              ? 'var(--at-danger-300)'
-              : 'var(--at-fg-muted)',
-            fontSize: 'var(--at-fs-12)',
+              ? cssVar.danger300
+              : cssVar.fgMuted,
+            fontSize: cssVar.fs12,
             fontWeight: 600,
             cursor: 'pointer',
           }}
@@ -371,30 +395,34 @@ export function AuditPage(): JSX.Element {
               left: 12,
               top: '50%',
               transform: 'translateY(-50%)',
-              color: 'var(--at-fg-subtle)',
+              color: cssVar.fgSubtle,
             }}
           />
           <input
             value={search}
-            onChange={(event) => resetTo(() => setSearch(event.target.value))}
+            onChange={(event) => {
+              resetTo(() => {
+                setSearch(event.target.value);
+              });
+            }}
             placeholder="Buscar por recurso ou detalhe…"
             style={{
               width: '100%',
               height: 38,
               padding: '0 12px 0 34px',
-              border: '1px solid var(--at-border)',
-              borderRadius: 'var(--at-radius-4)',
+              border: cssVar.borderLine,
+              borderRadius: cssVar.radius4,
               fontFamily: 'inherit',
-              fontSize: 'var(--at-fs-14)',
-              color: 'var(--at-fg)',
+              fontSize: cssVar.fs14,
+              color: cssVar.fg,
             }}
           />
         </div>
       </div>
 
       <div style={{
-        background: 'var(--at-white)',
-        border: '1px solid var(--at-border)',
+        background: cssVar.white,
+        border: cssVar.borderLine,
         borderRadius: 8,
         overflow: 'hidden',
       }}
@@ -405,7 +433,7 @@ export function AuditPage(): JSX.Element {
         }}
         >
           <thead>
-            <tr style={{ background: 'var(--at-bg-soft)' }}>
+            <tr style={{ background: cssVar.bgSoft }}>
               {[
                 'Quando',
                 'Usuário',
@@ -419,12 +447,12 @@ export function AuditPage(): JSX.Element {
                   style={{
                     textAlign: 'left',
                     padding: '9px 14px',
-                    fontSize: 'var(--at-fs-12)',
+                    fontSize: cssVar.fs12,
                     fontWeight: 600,
-                    color: 'var(--at-fg-muted)',
+                    color: cssVar.fgMuted,
                     textTransform: 'uppercase',
                     letterSpacing: 0.4,
-                    borderBottom: '1px solid var(--at-border)',
+                    borderBottom: cssVar.borderLine,
                   }}
                 >
                   {column}
@@ -438,9 +466,11 @@ export function AuditPage(): JSX.Element {
                 key={entry.id}
                 entry={entry}
                 isOpen={openId === entry.id}
-                onToggle={() => setOpenId((current) => (current === entry.id
-                  ? null
-                  : entry.id))}
+                onToggle={() => {
+                  setOpenId((current) => (current === entry.id
+                    ? null
+                    : entry.id));
+                }}
               />
             ))}
           </tbody>
@@ -448,10 +478,10 @@ export function AuditPage(): JSX.Element {
         {!audit.isLoading && rows.length === 0
           ? (
             <div style={{
-              padding: 'var(--at-space-24)',
+              padding: cssVar.space24,
               textAlign: 'center',
-              fontSize: 'var(--at-fs-14)',
-              color: 'var(--at-fg-muted)',
+              fontSize: cssVar.fs14,
+              color: cssVar.fgMuted,
             }}
             >
               Nenhum evento para os filtros atuais.
@@ -464,30 +494,34 @@ export function AuditPage(): JSX.Element {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'flex-end',
-        gap: 'var(--at-space-12)',
-        marginTop: 'var(--at-space-16)',
-        fontSize: 'var(--at-fs-12)',
-        color: 'var(--at-fg-muted)',
+        gap: cssVar.space12,
+        marginTop: cssVar.space16,
+        fontSize: cssVar.fs12,
+        color: cssVar.fgMuted,
       }}
       >
         <PagerButton
           label="‹ Anterior"
           disabled={page <= 1}
-          onClick={() => setPage((value) => Math.max(
-            1,
-            value - 1,
-          ))}
+          onClick={() => {
+            setPage((value) => Math.max(
+              1,
+              value - 1,
+            ));
+          }}
         />
-        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ fontVariantNumeric: cssValue.tabularNums }}>
           Página {page} de {totalPages}
         </span>
         <PagerButton
           label="Próxima ›"
           disabled={page >= totalPages}
-          onClick={() => setPage((value) => Math.min(
-            totalPages,
-            value + 1,
-          ))}
+          onClick={() => {
+            setPage((value) => Math.min(
+              totalPages,
+              value + 1,
+            ));
+          }}
         />
       </div>
     </div>
@@ -498,12 +532,12 @@ export function AuditPage(): JSX.Element {
 const SELECT_STYLE = {
   height: 38,
   padding: '0 12px',
-  border: '1px solid var(--at-border)',
-  borderRadius: 'var(--at-radius-4)',
+  border: cssVar.borderLine,
+  borderRadius: cssVar.radius4,
   fontFamily: 'inherit',
-  fontSize: 'var(--at-fs-14)',
-  color: 'var(--at-fg)',
-  background: 'var(--at-white)',
+  fontSize: cssVar.fs14,
+  color: cssVar.fg,
+  background: cssVar.white,
 } as const;
 
 /** Card de KPI. */
@@ -511,23 +545,23 @@ function Kpi({
   label,
   value,
   color,
-}: {
+}: Readonly<{
   label: string;
   value: number | undefined;
   color: string
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <div style={{
-      background: 'var(--at-white)',
-      border: '1px solid var(--at-border)',
+      background: cssVar.white,
+      border: cssVar.borderLine,
       borderRadius: 8,
-      padding: 'var(--at-space-16)',
+      padding: cssVar.space16,
     }}
     >
       <div style={{
-        fontSize: 'var(--at-fs-12)',
+        fontSize: cssVar.fs12,
         fontWeight: 600,
-        color: 'var(--at-fg-subtle)',
+        color: cssVar.fgSubtle,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
       }}
@@ -535,12 +569,12 @@ function Kpi({
         {label}
       </div>
       <div style={{
-        fontFamily: 'var(--at-font-heading)',
-        fontSize: 'var(--at-fs-32)',
+        fontFamily: cssVar.fontHeading,
+        fontSize: cssVar.fs32,
         fontWeight: 700,
         lineHeight: 1.1,
-        marginTop: 'var(--at-space-4)',
-        fontVariantNumeric: 'tabular-nums',
+        marginTop: cssVar.space4,
+        fontVariantNumeric: cssValue.tabularNums,
         color,
       }}
       >
@@ -555,11 +589,11 @@ function AuditRow({
   entry,
   isOpen,
   onToggle,
-}: {
+}: Readonly<{
   entry: AuditLogEntryInterface;
   isOpen: boolean;
   onToggle: () => void
-}): JSX.Element {
+}>): JSX.Element {
   const isPii = entry.severity === 'pii';
   const color = SEVERITY_COLOR[entry.severity];
   const ActionIcon = ACTION_ICON[entry.action];
@@ -569,7 +603,7 @@ function AuditRow({
     : 'transparent';
 
   const rowBackground = isOpen
-    ? 'var(--at-bg-soft)'
+    ? cssVar.bgSoft
     : piiBackground;
 
   return (
@@ -577,16 +611,16 @@ function AuditRow({
       <tr
         onClick={onToggle}
         style={{
-          borderBottom: '1px solid var(--at-border)',
+          borderBottom: cssVar.borderLine,
           cursor: 'pointer',
           background: rowBackground,
         }}
       >
         <td style={{
           padding: '9px 14px',
-          fontFamily: 'ui-monospace, Menlo, monospace',
-          fontSize: 'var(--at-fs-12)',
-          color: 'var(--at-fg-muted)',
+          fontFamily: cssValue.fontMono,
+          fontSize: cssVar.fs12,
+          color: cssVar.fgMuted,
           whiteSpace: 'nowrap',
         }}
         >
@@ -595,8 +629,8 @@ function AuditRow({
         <td
           style={{
             padding: '9px 14px',
-            fontSize: 'var(--at-fs-14)',
-            color: 'var(--at-fg)',
+            fontSize: cssVar.fs14,
+            color: cssVar.fg,
           }}
           title={entry.user_id ?? undefined}
         >
@@ -604,16 +638,16 @@ function AuditRow({
         </td>
         <td style={{ padding: '9px 14px' }}>
           <span style={{
-            display: 'inline-flex',
+            display: cssValue.inlineFlex,
             alignItems: 'center',
-            gap: 'var(--at-space-4)',
-            fontSize: 'var(--at-fs-14)',
+            gap: cssVar.space4,
+            fontSize: cssVar.fs14,
             fontWeight: isPii
-              ? 600
-              : 400,
+              ? FONT_WEIGHT.semibold
+              : FONT_WEIGHT.regular,
             color: isPii
               ? color
-              : 'var(--at-fg)',
+              : cssVar.fg,
           }}
           >
             <ActionIcon
@@ -626,17 +660,17 @@ function AuditRow({
         </td>
         <td style={{
           padding: '9px 14px',
-          fontFamily: 'ui-monospace, Menlo, monospace',
-          fontSize: 'var(--at-fs-12)',
-          color: 'var(--at-fg-muted)',
+          fontFamily: cssValue.fontMono,
+          fontSize: cssVar.fs12,
+          color: cssVar.fgMuted,
         }}
         >
           {entry.resource}
         </td>
         <td style={{
           padding: '9px 14px',
-          fontSize: 'var(--at-fs-12)',
-          color: 'var(--at-fg-muted)',
+          fontSize: cssVar.fs12,
+          color: cssVar.fgMuted,
         }}
         >
           {entry.detail ?? '—'}
@@ -644,7 +678,7 @@ function AuditRow({
         <td style={{
           padding: '9px 8px',
           textAlign: 'right',
-          color: 'var(--at-fg-subtle)',
+          color: cssVar.fgSubtle,
         }}
         >
           <CaretDown
@@ -661,8 +695,8 @@ function AuditRow({
       {isOpen
         ? (
           <tr style={{
-            borderBottom: '1px solid var(--at-border)',
-            background: 'var(--at-bg-soft)',
+            borderBottom: cssVar.borderLine,
+            background: cssVar.bgSoft,
           }}
           >
             <td
@@ -682,18 +716,19 @@ function AuditRow({
  * Detalhe expansível de um evento de auditoria (campos crus + nota de imutabilidade), como no
  * protótipo. Aberto ao clicar na linha.
  *
- * @param {{ entry: AuditLogEntryInterface }} props - O evento.
- * @returns {JSX.Element} O painel de detalhe.
+ * @param props - O evento.
+ *
+ * @returns O painel de detalhe.
  */
-function AuditDetail({ entry }: { entry: AuditLogEntryInterface }): JSX.Element {
-  const fields: Array<[string, ReactNode]> = [
+function AuditDetail({ entry }: Readonly<{ entry: AuditLogEntryInterface }>): JSX.Element {
+  const fields: [string, ReactNode][] = [
     [
       'ID',
-      <code style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{entry.id}</code>,
+      <code style={{ fontFamily: cssValue.fontMono }}>{entry.id}</code>,
     ],
     [
       'Timestamp',
-      <code style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{formatWhen(entry.occurred_at)}</code>,
+      <code style={{ fontFamily: cssValue.fontMono }}>{formatWhen(entry.occurred_at)}</code>,
     ],
     [
       'Usuário',
@@ -705,7 +740,7 @@ function AuditDetail({ entry }: { entry: AuditLogEntryInterface }): JSX.Element 
     ],
     [
       'Recurso',
-      <code style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{entry.resource}</code>,
+      <code style={{ fontFamily: cssValue.fontMono }}>{entry.resource}</code>,
     ],
     [
       'Detalhe',
@@ -722,7 +757,7 @@ function AuditDetail({ entry }: { entry: AuditLogEntryInterface }): JSX.Element 
       display: 'grid',
       gridTemplateColumns: 'auto 1fr',
       gap: 'var(--at-space-4) var(--at-space-16)',
-      fontSize: 'var(--at-fs-12)',
+      fontSize: cssVar.fs12,
       alignItems: 'baseline',
     }}
     >
@@ -733,24 +768,24 @@ function AuditDetail({ entry }: { entry: AuditLogEntryInterface }): JSX.Element 
         <Fragment key={key}>
           <div style={{
             fontWeight: 600,
-            color: 'var(--at-fg-muted)',
+            color: cssVar.fgMuted,
           }}
           >
             {key}
           </div>
-          <div style={{ color: 'var(--at-fg)' }}>{node}</div>
+          <div style={{ color: cssVar.fg }}>{node}</div>
         </Fragment>
       ))}
       <div style={{
         gridColumn: '1 / -1',
-        marginTop: 'var(--at-space-8)',
-        paddingTop: 'var(--at-space-8)',
-        borderTop: '1px solid var(--at-border)',
+        marginTop: cssVar.space8,
+        paddingTop: cssVar.space8,
+        borderTop: cssVar.borderLine,
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--at-space-4)',
-        fontSize: 'var(--at-fs-12)',
-        color: 'var(--at-fg-subtle)',
+        gap: cssVar.space4,
+        fontSize: cssVar.fs12,
+        color: cssVar.fgSubtle,
       }}
       >
         <ShieldCheck size={12} />
@@ -760,16 +795,19 @@ function AuditDetail({ entry }: { entry: AuditLogEntryInterface }): JSX.Element 
   );
 }
 
+/** Opacity of a pager button that cannot move further. */
+const DISABLED_PAGER_OPACITY = 0.6;
+
 /** Botão de paginação. */
 function PagerButton({
   label,
   disabled,
   onClick,
-}: {
+}: Readonly<{
   label: string;
   disabled: boolean;
   onClick: () => void
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <button
       type="button"
@@ -777,20 +815,20 @@ function PagerButton({
       disabled={disabled}
       style={{
         height: 30,
-        padding: '0 var(--at-space-12)',
-        borderRadius: 'var(--at-radius-4)',
-        border: '1px solid var(--at-border)',
-        background: 'var(--at-white)',
+        padding: cssVar.paddingInline12,
+        borderRadius: cssVar.radius4,
+        border: cssVar.borderLine,
+        background: cssVar.white,
         color: disabled
-          ? 'var(--at-fg-subtle)'
-          : 'var(--at-fg)',
-        fontSize: 'var(--at-fs-12)',
+          ? cssVar.fgSubtle
+          : cssVar.fg,
+        fontSize: cssVar.fs12,
         fontWeight: 600,
         cursor: disabled
           ? 'not-allowed'
           : 'pointer',
         opacity: disabled
-          ? 0.6
+          ? DISABLED_PAGER_OPACITY
           : 1,
       }}
     >

@@ -7,6 +7,7 @@ import type {
   PaginatedEnvelopeInterface,
   SearchResultRowInterface,
 } from '@atena/types';
+import { MS_PER_DAY } from '../common/units';
 import { ShippingsService } from '../shippings/shippings.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListIncidentsDto } from './dto/list-incidents.dto';
@@ -22,7 +23,46 @@ const RELATED_MAX_LIMIT = 5000;
 const TOP_CAMPAIGNS = 5;
 
 /** Lookback default (ms) quando o incidente não tem janela de detecção precisa (ex.: seed). */
-const RELATED_DEFAULT_LOOKBACK_MS = 24 * 60 * 60_000;
+const RELATED_DEFAULT_LOOKBACK_MS = MS_PER_DAY;
+
+/** Default page size of the incident list (`limit` absent). */
+const DEFAULT_INCIDENTS_LIMIT = 20;
+
+/** Message of the 404 when the incident does not exist. */
+const INCIDENT_NOT_FOUND = 'Incidente não encontrado';
+
+/**
+ * An incident row as this service reads it. The schema declares the detection window columns
+ * NOT NULL, but the service tolerates a row without them (falls back to a default lookback and
+ * exposes `window_from`/`window_to` as `null`), so they are read as optional.
+ */
+type IncidentRowType = Omit<Incident, 'detectionWindowStart' | 'detectionWindowEnd'> & {
+  detectionWindowStart?: Date | null;
+  detectionWindowEnd?: Date | null;
+};
+
+/**
+ * Window of the impacted shippings of an incident: its detection window, or, without one, the
+ * default lookback ending at the detection instant.
+ *
+ * @param incident - The incident row.
+ *
+ * @returns The window to read the impacted shippings from.
+ */
+function impactWindow(incident: IncidentRowType): {
+  from: Date;
+  to: Date
+} {
+  const to = incident.detectionWindowEnd ?? incident.detectedAt;
+
+  const from = incident.detectionWindowStart
+    ?? new Date(to.getTime() - RELATED_DEFAULT_LOOKBACK_MS);
+
+  return {
+    from,
+    to,
+  };
+}
 
 /**
  * Agrupa as linhas por `campaign_id` e devolve os códigos com mais ocorrências (top {@link TOP_CAMPAIGNS}),
@@ -30,13 +70,14 @@ const RELATED_DEFAULT_LOOKBACK_MS = 24 * 60 * 60_000;
  * (ver follow-up de modelo de dado), então as contagens tendem a 1 — passam a refletir destinatários
  * quando o grão virar `campaign_id + phone`.
  *
- * @param {SearchResultRowInterface[]} rows - Amostra de mensagens impactadas.
- * @returns {Array<{ campaign_id: string; count: number }>} Top códigos de envio por ocorrência.
+ * @param rows - Amostra de mensagens impactadas.
+ *
+ * @returns Top códigos de envio por ocorrência.
  */
-function topCampaigns(rows: SearchResultRowInterface[]): Array<{
+function topCampaigns(rows: SearchResultRowInterface[]): {
   campaign_id: string;
   count: number
-}> {
+}[] {
   const counts = new Map<string, number>();
 
   for (const row of rows) {
@@ -69,25 +110,24 @@ function topCampaigns(rows: SearchResultRowInterface[]): Array<{
 /**
  * Display de um incidente, guardado em `Incident.detectionPayload` (Json) pelo
  * detector — o que não cabe nas colunas estruturadas.
- *
- * @property {string} [rule] - Nome legível da regra/anomalia.
- * @property {string} [window] - Janela temporal (rótulo legível).
- * @property {string} [summary] - Resumo legível do incidente.
- * @property {{ baseline: string; current: string; threshold: string; sample: string }} [metrics] - Métricas de suporte.
- * @property {number} [relatedShippings] - Quantidade de envios relacionados.
- * @property {string[]} [relatedShippingIds] - Ids EXATOS dos envios impactados (persistidos pelo detector).
  */
 interface DetectionPayloadInterface {
+  /** Nome legível da regra/anomalia. */
   rule?: string;
+  /** Janela temporal (rótulo legível). */
   window?: string;
+  /** Resumo legível do incidente. */
   summary?: string;
+  /** Métricas de suporte. */
   metrics?: {
     baseline: string;
     current: string;
     threshold: string;
     sample: string
   };
+  /** Quantidade de envios relacionados. */
   relatedShippings?: number;
+  /** Ids EXATOS dos envios impactados (persistidos pelo detector). */
   relatedShippingIds?: string[];
 }
 
@@ -110,8 +150,8 @@ const EMPTY_METRICS = {
 @Injectable()
 export class IncidentsService {
   /**
-   * @param {PrismaService} prisma - Cliente Prisma para incidentes/atividades.
-   * @param {ShippingsService} shippingsService - Busca de envios (S3) p/ a amostra de envios relacionados.
+   * @param prisma - Cliente Prisma para incidentes/atividades.
+   * @param shippingsService - Busca de envios (S3) p/ a amostra de envios relacionados.
    */
   constructor(
     private readonly prisma: PrismaService,
@@ -121,13 +161,14 @@ export class IncidentsService {
   /**
    * Lista incidentes paginados, com filtros opcionais (`list_incidents`, §C.5).
    *
-   * @param {ListIncidentsDto} q - Filtros (status/severity/dimension, CSV) e paginação.
-   * @returns {Promise<PaginatedEnvelopeInterface<IncidentInterface>>} Envelope paginado de incidentes.
+   * @param query - Filtros (status/severity/dimension, CSV) e paginação.
+   *
+   * @returns Envelope paginado de incidentes.
    */
   async list(query: ListIncidentsDto): Promise<PaginatedEnvelopeInterface<IncidentInterface>> {
     const startedAt = Date.now();
     const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const limit = query.limit ?? DEFAULT_INCIDENTS_LIMIT;
 
     const where: Prisma.IncidentWhereInput = {};
 
@@ -178,8 +219,10 @@ export class IncidentsService {
   /**
    * Retorna um incidente e suas atividades (`get_incident`).
    *
-   * @param {string} id - Id do incidente.
-   * @returns {Promise<IncidentInterface & { activities: IncidentActivityInterface[] }>} Incidente + atividades (ordem cronológica).
+   * @param id - Id do incidente.
+   *
+   * @returns Incidente + atividades (ordem cronológica).
+   *
    * @throws {NotFoundException} Se o incidente não existir.
    */
   async get(id: string): Promise<IncidentInterface & { activities: IncidentActivityInterface[] }> {
@@ -192,7 +235,7 @@ export class IncidentsService {
       throw new NotFoundException({
         error: {
           code: 'not_found',
-          message: 'Incidente não encontrado',
+          message: INCIDENT_NOT_FOUND,
         },
       });
     }
@@ -218,10 +261,12 @@ export class IncidentsService {
    * cai no modo contagem (`related_shippings`). A janela é recortada à data mínima confiável pelo
    * próprio `ShippingsService` (mesma política do search), então incidentes antigos só não trazem dado.
    *
-   * @param {string} id - Id do incidente.
-   * @param {number} [limit] - Tamanho da amostra (default {@link RELATED_SAMPLE_LIMIT}; teto
+   * @param id - Id do incidente.
+   * @param [limit] - Tamanho da amostra (default {@link RELATED_SAMPLE_LIMIT}; teto
    *   {@link RELATED_MAX_LIMIT}). O download CSV pede um limite maior sob demanda.
-   * @returns {Promise<IncidentShippingsInterface>} Amostra (rows + total) ou `available: false`.
+   *
+   * @returns Amostra (rows + total) ou `available: false`.
+   *
    * @throws {NotFoundException} Se o incidente não existir.
    */
   async shippings(
@@ -244,7 +289,7 @@ export class IncidentsService {
       throw new NotFoundException({
         error: {
           code: 'not_found',
-          message: 'Incidente não encontrado',
+          message: INCIDENT_NOT_FOUND,
         },
       });
     }
@@ -263,20 +308,12 @@ export class IncidentsService {
       };
     }
 
-    const to = incident.detectionWindowEnd ?? incident.detectedAt;
-
-    const from = incident.detectionWindowStart
-      ?? new Date(to.getTime() - RELATED_DEFAULT_LOOKBACK_MS);
-
     const rows = await this.shippingsService.byIds(
       impactedIds.slice(
         0,
         sampleSize,
       ),
-      {
-        from,
-        to,
-      },
+      impactWindow(incident),
     );
 
     return {
@@ -292,8 +329,10 @@ export class IncidentsService {
    * persistidos pelo detector, na janela de detecção — e devolve o caminho do arquivo. Base do
    * download auditado do detalhe (`GET /incidents/:id/shippings/export`). Sem ids → CSV só com header.
    *
-   * @param {string} id - Id do incidente.
-   * @returns {Promise<string>} Caminho do CSV gerado (o controller envia com BOM e remove ao fim).
+   * @param id - Id do incidente.
+   *
+   * @returns Caminho do CSV gerado (o controller envia com BOM e remove ao fim).
+   *
    * @throws {NotFoundException} Se o incidente não existir.
    */
   async exportShippingsCsv(id: string): Promise<string> {
@@ -303,7 +342,7 @@ export class IncidentsService {
       throw new NotFoundException({
         error: {
           code: 'not_found',
-          message: 'Incidente não encontrado',
+          message: INCIDENT_NOT_FOUND,
         },
       });
     }
@@ -311,20 +350,12 @@ export class IncidentsService {
     const payload = (incident.detectionPayload ?? {}) as DetectionPayloadInterface;
     const impactedIds = payload.relatedShippingIds ?? [];
 
-    const to = incident.detectionWindowEnd ?? incident.detectedAt;
-
-    const from = incident.detectionWindowStart
-      ?? new Date(to.getTime() - RELATED_DEFAULT_LOOKBACK_MS);
-
     return this.shippingsService.exportByIdsCsvFile(
       impactedIds.slice(
         0,
         RELATED_MAX_LIMIT,
       ),
-      {
-        from,
-        to,
-      },
+      impactWindow(incident),
     );
   }
 
@@ -332,10 +363,11 @@ export class IncidentsService {
    * Normaliza um `Incident` do Prisma para o shape de borda (§C.5), combinando
    * colunas estruturadas com o `detectionPayload` (Json) e derivando `assignee`.
    *
-   * @param {Incident} record - Registro de incidente do Prisma.
-   * @returns {IncidentInterface} Incidente em snake_case (sem PII).
+   * @param record - Registro de incidente do Prisma.
+   *
+   * @returns Incidente em snake_case (sem PII).
    */
-  private toIncident(record: Incident): IncidentInterface {
+  private toIncident(record: IncidentRowType): IncidentInterface {
     const payload = (record.detectionPayload ?? {}) as DetectionPayloadInterface;
 
     return {

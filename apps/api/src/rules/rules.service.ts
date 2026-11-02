@@ -26,8 +26,8 @@ import { UpdateRuleDto } from './dto/update-rule.dto';
 @Injectable()
 export class RulesService {
   /**
-   * @param {PrismaService} prisma - Acesso à tabela `anomaly_rules`.
-   * @param {AuditService} audit - Gravação no audit log (append-only).
+   * @param prisma - Acesso à tabela `anomaly_rules`.
+   * @param audit - Gravação no audit log (append-only).
    */
   constructor(
     private readonly prisma: PrismaService,
@@ -37,7 +37,7 @@ export class RulesService {
   /**
    * Lista todas as regras (a tela de Regras carrega o conjunto completo).
    *
-   * @returns {Promise<AnomalyRuleInterface[]>} Regras normalizadas (snake_case).
+   * @returns Regras normalizadas (snake_case).
    */
   async list(): Promise<AnomalyRuleInterface[]> {
     const rows = await this.prisma.anomalyRule.findMany({ orderBy: { id: 'asc' } });
@@ -48,11 +48,12 @@ export class RulesService {
   /**
    * Edita os campos permitidos de uma regra, marca o editor e audita a mudança.
    *
-   * @param {string} id - Id da regra.
-   * @param {UpdateRuleDto} dto - Campos a atualizar (parcial; `rule_type` imutável).
-   * @param {string | undefined} userId - Editor (`sub`).
+   * @param id - Id da regra.
+   * @param dto - Campos a atualizar (parcial; `rule_type` imutável).
+   * @param userId - Editor (`sub`).
    *
-   * @returns {Promise<AnomalyRuleInterface>} Regra atualizada (snake_case).
+   * @returns Regra atualizada (snake_case).
+   *
    * @throws {NotFoundException} Se a regra não existir.
    */
   async update(
@@ -123,9 +124,9 @@ export class RulesService {
   /**
    * Normaliza um `AnomalyRule` do Prisma para o shape de borda (snake_case).
    *
-   * @param {AnomalyRule} rule - Registro de regra do Prisma.
+   * @param rule - Registro de regra do Prisma.
    *
-   * @returns {AnomalyRuleInterface} Regra em snake_case (`threshold` numérico).
+   * @returns Regra em snake_case (`threshold` numérico).
    */
   private toRule(rule: AnomalyRule): AnomalyRuleInterface {
     return {

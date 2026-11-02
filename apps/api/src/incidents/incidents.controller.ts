@@ -19,15 +19,16 @@ import { IncidentsService } from './incidents.service';
 @Controller('incidents')
 export class IncidentsController {
   /**
-   * @param {IncidentsService} incidents - Serviço de leitura de incidentes.
+   * @param incidents - Serviço de leitura de incidentes.
    */
   constructor(private readonly incidents: IncidentsService) {}
 
   /**
    * `GET /incidents` — lista paginada de incidentes (`list_incidents`, §C.5).
    *
-   * @param {ListIncidentsDto} query - Filtros (status/severity/dimension) e paginação.
-   * @returns {Promise<PaginatedEnvelopeInterface<IncidentInterface>>} Envelope paginado.
+   * @param query - Filtros (status/severity/dimension) e paginação.
+   *
+   * @returns Envelope paginado.
    */
   @Get()
   @Audit('tool_call', 'info')
@@ -38,8 +39,9 @@ export class IncidentsController {
   /**
    * `GET /incidents/:id` — incidente + atividades (`get_incident`).
    *
-   * @param {string} id - Id do incidente.
-   * @returns {Promise<IncidentInterface & { activities: IncidentActivityInterface[] }>} Incidente e atividades.
+   * @param id - Id do incidente.
+   *
+   * @returns Incidente e atividades.
    */
   @Get(':id')
   @Audit('tool_call', 'info')
@@ -52,9 +54,10 @@ export class IncidentsController {
    * (busca escopada pela dimensão + janela de detecção). UI-only (detalhe do incidente).
    * `limit` (opcional) aumenta a amostra para o download CSV sob demanda.
    *
-   * @param {string} id - Id do incidente.
-   * @param {string} [limit] - Tamanho da amostra (default no serviço; teto 5000).
-   * @returns {Promise<IncidentShippingsInterface>} Amostra (rows + total) ou `available: false`.
+   * @param id - Id do incidente.
+   * @param [limit] - Tamanho da amostra (default no serviço; teto 5000).
+   *
+   * @returns Amostra (rows + total) ou `available: false`.
    */
   @Get(':id/shippings')
   @Audit('tool_call', 'info')
@@ -75,9 +78,8 @@ export class IncidentsController {
    * detector) como CSV. Telefone **EM CLARO**: auditado como `export_report` (severidade `pii`). O CSV
    * é gerado pelo DuckDB e enviado em stream com BOM UTF-8 (Excel pt-BR); o temporário é removido ao fim.
    *
-   * @param {string} id - Id do incidente.
-   * @param {Response} res - Resposta Express (stream do arquivo).
-   * @returns {Promise<void>}
+   * @param id - Id do incidente.
+   * @param res - Resposta Express (stream do arquivo).
    */
   @Get(':id/shippings/export')
   // CSV com telefone em claro → exige `pii:reveal` ALÉM de `incidents:view`. O PermissionsGuard usa

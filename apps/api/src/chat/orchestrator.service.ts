@@ -165,8 +165,9 @@ const SYSTEM_PROMPT =
  * módulo, para não envelhecer num servidor longo). Sem essa âncora temporal o modelo trata datas de
  * 2026 como "futuras" e recusa consultas válidas (ex.: hoje) em vez de chamar a tool.
  *
- * @param {Date} now - Instante atual (injetável para teste).
- * @returns {string} O system prompt base + a referência de data atual e a regra passado/futuro.
+ * @param now - Instante atual (injetável para teste).
+ *
+ * @returns O system prompt base + a referência de data atual e a regra passado/futuro.
  */
 function buildSystemPrompt(now: Date): string {
   const timeZone = appTimeZone();
@@ -198,9 +199,10 @@ function buildSystemPrompt(now: Date): string {
  * Entrega `total` + as linhas retornadas (as mais recentes) + `returned`; o conjunto completo sai
  * pelo Exportar CSV (o card, via SSE/histórico, mantém o envelope cheio). Demais tools: passthrough.
  *
- * @param {string} name - Nome da tool.
- * @param {unknown} result - Resultado bruto da tool.
- * @returns {unknown} Resultado projetado para o modelo.
+ * @param name - Nome da tool.
+ * @param result - Resultado bruto da tool.
+ *
+ * @returns Resultado projetado para o modelo.
  */
 export function toolResultForLlm(
   name: string,
@@ -240,8 +242,9 @@ export function toolResultForLlm(
  * Base p/ reusar a janela quando o modelo pede os envios de uma campanha que veio de uma busca anterior
  * SEM repassar a data: injetamos a janela em vez de depender do modelo (que tende a errar) ou falhar.
  *
- * @param {LlmMessageInterface[]} messages - Conversa (histórico + turno atual).
- * @returns {{ date_from: string; date_to: string } | null} Janela do último search, ou `null`.
+ * @param messages - Conversa (histórico + turno atual).
+ *
+ * @returns Janela do último search, ou `null`.
  */
 export function lastSearchWindow(
   messages: LlmMessageInterface[],
@@ -284,8 +287,9 @@ export function lastSearchWindow(
  * quando o modelo a omite: busca por `campaign_id` e trilha por `shipping_id`. Em ambas o id costuma
  * vir de um search recente — a janela já está no histórico.
  *
- * @param {LlmToolUseInterface} chunk - Tool-use pedido pelo modelo.
- * @returns {boolean} `true` se a chamada precisa de janela e qualifica para o reuso.
+ * @param chunk - Tool-use pedido pelo modelo.
+ *
+ * @returns `true` se a chamada precisa de janela e qualifica para o reuso.
  */
 function needsReusedWindow(chunk: LlmToolUseInterface): boolean {
   return (
@@ -305,9 +309,10 @@ function needsReusedWindow(chunk: LlmToolUseInterface): boolean {
  * conclui "sem resultados" ou cai no guard `*_window_required`). Com janela, sem id qualificador, ou
  * sem janela anterior: devolve os args originais (o guard então pede a data). Demais tools: passthrough.
  *
- * @param {LlmToolUseInterface} chunk - Tool-use pedido pelo modelo.
- * @param {LlmMessageInterface[]} messages - Conversa (histórico + turno atual) p/ achar a janela.
- * @returns {Record<string, unknown>} Args efetivos (possivelmente com a janela injetada).
+ * @param chunk - Tool-use pedido pelo modelo.
+ * @param messages - Conversa (histórico + turno atual) p/ achar a janela.
+ *
+ * @returns Args efetivos (possivelmente com a janela injetada).
  */
 export function injectReusedWindow(
   chunk: LlmToolUseInterface,
@@ -317,11 +322,9 @@ export function injectReusedWindow(
     return chunk.args;
   }
 
-  const hasWindow = Boolean(
-    chunk.args.date_from
-    || chunk.args.date_to
-    || chunk.args.date_range,
-  );
+  const hasWindow = Boolean(chunk.args.date_from)
+    || Boolean(chunk.args.date_to)
+    || Boolean(chunk.args.date_range);
 
   if (hasWindow) {
     return chunk.args;
@@ -353,10 +356,11 @@ export function injectReusedWindow(
  * agora é um CHUTE do modelo (não houve nova mensagem do usuário), e re-escanear seria desperdício.
  * Determinístico: o modelo costuma ignorar o prompt e adivinhar a data; isto força o pedido sem scan.
  *
- * @param {LlmToolUseInterface} chunk - Tool-use pedido pelo modelo.
- * @param {Record<string, unknown>} args - Args efetivos (pós-injeção de janela).
- * @param {Set<string>} pendingWindowIds - Ids com tentativa sem janela neste turno (mutado aqui).
- * @returns {{ error: { code: string; message: string } } | null} Erro de "pede a data", ou `null` p/ executar.
+ * @param chunk - Tool-use pedido pelo modelo.
+ * @param args - Args efetivos (pós-injeção de janela).
+ * @param pendingWindowIds - Ids com tentativa sem janela neste turno (mutado aqui).
+ *
+ * @returns Erro de "pede a data", ou `null` p/ executar.
  */
 export function windowClarification(
   chunk: LlmToolUseInterface,
@@ -387,11 +391,9 @@ export function windowClarification(
     ? String(args.campaign_id)
     : String(args.shipping_id);
 
-  const hasWindow = Boolean(
-    args.date_from
-    || args.date_to
-    || args.date_range,
-  );
+  const hasWindow = Boolean(args.date_from)
+    || Boolean(args.date_to)
+    || Boolean(args.date_range);
 
   if (
     hasWindow
@@ -425,8 +427,9 @@ export function windowClarification(
  * mensagens consecutivas no provider agrupa os vários blocos de um turno como o Converse exige. O
  * texto final do turno vem por último (depois dos resultados), espelhando o fluxo real.
  *
- * @param {ChatMessageInterface[]} history - Mensagens persistidas da sessão (ordem cronológica).
- * @returns {LlmMessageInterface[]} Conversa para o LLM, com as tools dos turnos passados reidratadas.
+ * @param history - Mensagens persistidas da sessão (ordem cronológica).
+ *
+ * @returns Conversa para o LLM, com as tools dos turnos passados reidratadas.
  */
 export function historyToConvo(history: ChatMessageInterface[]): LlmMessageInterface[] {
   const convo: LlmMessageInterface[] = [];
@@ -687,8 +690,9 @@ const TOOL_SPECS: LlmToolSpecInterface[] = [
  * das `HttpException` de domínio (ex.: `window_required`) — assim o LLM vê a mensagem real (e age,
  * ex.: pede a janela ao usuário) em vez do genérico "Bad Request Exception".
  *
- * @param {unknown} err - Erro lançado pela execução da tool.
- * @returns {{ code: string; message: string }} Código e mensagem para o `tool_result` de erro.
+ * @param err - Erro lançado pela execução da tool.
+ *
+ * @returns Código e mensagem para o `tool_result` de erro.
  */
 function toolError(err: unknown): {
   code: string;
@@ -729,7 +733,8 @@ function toolError(err: unknown): {
  * como `campaign_id` no search_shippings — como campaign_id é um UUID, a busca não acharia nada.
  * Orienta o modelo a abrir a trilha DIRETO em vez de buscar por campaign_id.
  *
- * @param {Record<string, unknown>} args - Args crus da tool search_shippings.
+ * @param args - Args crus da tool search_shippings.
+ *
  * @throws {BadRequestException} Se `campaign_id` tiver formato de shipping_id (hash 32 hex).
  */
 function assertCampaignIdNotShippingId(args: Record<string, unknown>): void {
@@ -763,8 +768,9 @@ function assertCampaignIdNotShippingId(args: Record<string, unknown>): void {
  * datas só-dia são interpretadas no fuso do operador (`date_to` cobre o dia inteiro) e `date_range`
  * é suportado — sem isso, a trilha-direta por data cortaria envios do fim do dia (data crua = UTC).
  *
- * @param {Record<string, unknown>} args - Args crus da tool (vindos do modelo).
- * @returns {AuditWindowInterface | undefined} Janela resolvida, ou `undefined`.
+ * @param args - Args crus da tool (vindos do modelo).
+ *
+ * @returns Janela resolvida, ou `undefined`.
  */
 function windowFromArgs(args: Record<string, unknown>): AuditWindowInterface | undefined {
   return resolveWindow({
@@ -788,8 +794,9 @@ function windowFromArgs(args: Record<string, unknown>): AuditWindowInterface | u
  * - `window_from`/`window_to` → datetime naive no fuso (sem `Z`): o LLM cita em BRT E repassa direto
  *   ao `generate_delivery_report`, onde naive é reinterpretado no fuso → mesma janela UTC (sem shift).
  *
- * @param {Awaited<ReturnType<IncidentsService['get']>>} detail - Incidente + atividades (UTC).
- * @returns {Record<string, unknown>} Incidente com horários no fuso do operador (para o LLM).
+ * @param detail - Incidente + atividades (UTC).
+ *
+ * @returns Incidente com horários no fuso do operador (para o LLM).
  */
 function incidentForOperator(
   detail: Awaited<ReturnType<IncidentsService['get']>>,
@@ -841,8 +848,9 @@ function incidentForOperator(
  * texto em UTC). Usa naive COM SEGUNDOS (`toNaiveDatetimeInTz`, não `formatInstantInTz`): o card ainda
  * parseia o `at` para calcular a DURAÇÃO e o formatador do web é naive-aware (exibe sem deslocar).
  *
- * @param {ShippingTrailInterface | null} trail - Trilha do {@link ShippingsService.getTrail} (ou `null`).
- * @returns {ShippingTrailInterface | null} Trilha com `events[].at` no fuso do operador (naive), ou `null`.
+ * @param trail - Trilha do {@link ShippingsService.getTrail} (ou `null`).
+ *
+ * @returns Trilha com `events[].at` no fuso do operador (naive), ou `null`.
  */
 function trailForOperator(trail: ShippingTrailInterface | null): ShippingTrailInterface | null {
   if (!trail) {
@@ -868,8 +876,9 @@ function trailForOperator(trail: ShippingTrailInterface | null): ShippingTrailIn
  * ANTES de entregar ao LLM — senão a prosa cita a hora do `Z` cru (mesma "alucinação" da trilha). O
  * card é naive-aware (exibe sem deslocar) e `dayWindow` usa só o prefixo `YYYY-MM-DD` (= dia BRT).
  *
- * @param {Awaited<ReturnType<ShippingsService['search']>>} page - Página da busca (linhas + agregados).
- * @returns {Awaited<ReturnType<ShippingsService['search']>>} Página com datas das linhas no fuso do operador.
+ * @param page - Página da busca (linhas + agregados).
+ *
+ * @returns Página com datas das linhas no fuso do operador.
  */
 function searchForOperator(
   page: Awaited<ReturnType<ShippingsService['search']>>,
@@ -899,8 +908,9 @@ function searchForOperator(
  * prosa citar "erro genérico" em vez de "generic_error" (o card já traduz na exibição; aqui é para o
  * TEXTO do assistente não vazar o código cru). Demais campos do relatório intactos.
  *
- * @param {Awaited<ReturnType<ReportsService['generateDelivery']>>} report - Relatório de entregabilidade.
- * @returns {Awaited<ReturnType<ReportsService['generateDelivery']>>} Relatório com `top_errors.code` legível.
+ * @param report - Relatório de entregabilidade.
+ *
+ * @returns Relatório com `top_errors.code` legível.
  */
 function reportWithReadableErrors(
   report: Awaited<ReturnType<ReportsService['generateDelivery']>>,
@@ -919,8 +929,9 @@ function reportWithReadableErrors(
  * entregar ao LLM — senão a prosa cita o pico/vale na hora do `Z` cru (mesma "alucinação" da trilha/
  * busca). O card é naive-aware (HourlyChart formata sem deslocar; posiciona por índice, não por `at`).
  *
- * @param {Awaited<ReturnType<ReportsService['generateDelivery']>>} report - Relatório de entregabilidade.
- * @returns {Awaited<ReturnType<ReportsService['generateDelivery']>>} Relatório com `hourly[].at` no fuso do operador.
+ * @param report - Relatório de entregabilidade.
+ *
+ * @returns Relatório com `hourly[].at` no fuso do operador.
  */
 function reportForOperator(
   report: Awaited<ReturnType<ReportsService['generateDelivery']>>,
@@ -995,11 +1006,24 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/** Words of the user's question kept in the heuristic (fallback) session title. */
+const HEURISTIC_TITLE_MAX_WORDS = 8;
+
+/** Characters kept in the heuristic (fallback) session title. */
+const HEURISTIC_TITLE_MAX_CHARS = 60;
+
+/** Characters kept in the session title generated by the LLM. */
+const LLM_TITLE_MAX_CHARS = 80;
+
+/** Characters of the assistant's answer sent as context to the title prompt (keeps the call small). */
+const TITLE_PROMPT_ANSWER_CHARS = 400;
+
 /**
  * Título heurístico (fallback do auto-título): primeiras palavras da pergunta do usuário.
  *
- * @param {string} userText - Primeira mensagem do usuário.
- * @returns {string} Título curto (≤8 palavras, ≤60 chars).
+ * @param userText - Primeira mensagem do usuário.
+ *
+ * @returns Título curto (≤8 palavras, ≤60 chars).
  */
 function heuristicTitle(userText: string): string {
   const words = userText
@@ -1011,13 +1035,13 @@ function heuristicTitle(userText: string): string {
     .split(' ')
     .slice(
       0,
-      8,
+      HEURISTIC_TITLE_MAX_WORDS,
     )
     .join(' ');
 
   const trimmed = words.slice(
     0,
-    60,
+    HEURISTIC_TITLE_MAX_CHARS,
   ).trim();
 
   return trimmed.length > 0
@@ -1046,8 +1070,9 @@ const TRAILING_TRIM_CHARS = new Set([
  * Normaliza a saída do LLM em um título: pega a 1ª linha, remove aspas/ponto final das pontas e
  * limita a 80 chars. Trim por conjunto de caracteres (sem regex) — determinístico e O(n).
  *
- * @param {string} raw - Texto bruto devolvido pelo modelo.
- * @returns {string} Título limpo (pode ser vazio se o modelo não produziu nada útil).
+ * @param raw - Texto bruto devolvido pelo modelo.
+ *
+ * @returns Título limpo (pode ser vazio se o modelo não produziu nada útil).
  */
 function cleanTitle(raw: string): string {
   const firstLine = raw.trim().split('\n')[0] ?? '';
@@ -1076,9 +1101,28 @@ function cleanTitle(raw: string): string {
     )
     .slice(
       0,
-      80,
+      LLM_TITLE_MAX_CHARS,
     )
     .trim();
+}
+
+/**
+ * The state of one chat turn that a tool cycle reads and appends to. The arrays and the set are
+ * mutated in place: the next turn of the loop reads what the tool cycle left in them.
+ */
+interface ToolTurnContextInterface {
+  /** Accumulated conversation (receives the assistant's `tool_use` block). */
+  convo: LlmMessageInterface[];
+  /** Tools already invoked in the turn (to persist). */
+  toolsUsed: ChatToolInvocationInterface[];
+  /** Tool results to append to the conversation of the next turn. */
+  toolMessages: LlmMessageInterface[];
+  /** User running the chat (scopes and audits the tool). */
+  userId: string;
+  /** Chat session of the turn. */
+  sessionId: string;
+  /** Ids whose search/trail was refused for lack of a window in this turn (see `windowClarification`). */
+  pendingWindowIds: Set<string>;
 }
 
 /**
@@ -1097,15 +1141,17 @@ function cleanTitle(raw: string): string {
 @Injectable()
 export class OrchestratorService {
   /**
-   * @param {LlmProviderInterface} llm - Provider LLM selecionado (fake em dev | bedrock em prod).
-   * @param {ChatService} chat - Persistência/leitura de mensagens da sessão.
-   * @param {ShippingsService} shippings - Tools `search_shippings` / `get_shipping_trail`.
-   * @param {AnalysisService} analysis - Tool `analyze_shipping_content`.
-   * @param {ReportsService} reports - Tools `generate_delivery_report` / `generate_incident_report`.
-   * @param {CatalogService} catalog - Tools `list_providers` / `list_customers`.
-   * @param {IncidentsService} incidents - Tools `list_incidents` / `get_incident`.
-   * @param {AuditService} audit - Auditoria das tools executadas pelo orquestrador.
+   * @param llm - Provider LLM selecionado (fake em dev | bedrock em prod).
+   * @param chat - Persistência/leitura de mensagens da sessão.
+   * @param shippings - Tools `search_shippings` / `get_shipping_trail`.
+   * @param analysis - Tool `analyze_shipping_content`.
+   * @param reports - Tools `generate_delivery_report` / `generate_incident_report`.
+   * @param catalog - Tools `list_providers` / `list_customers`.
+   * @param incidents - Tools `list_incidents` / `get_incident`.
+   * @param audit - Auditoria das tools executadas pelo orquestrador.
+   * @param [metrics] - Custom metrics (optional).
    */
+  // eslint-disable-next-line @typescript-eslint/max-params -- Nest injects dependencies through constructor parameters
   constructor(
     @Inject(LLM_PROVIDER) private readonly llm: LlmProviderInterface,
     private readonly chat: ChatService,
@@ -1126,9 +1172,10 @@ export class OrchestratorService {
    * (`tool_progress`*) → `tool_result` → `text_delta` → `done`, ou `refusal`.
    * O `tool_progress` (0..N) reporta as etapas da varredura no S3 entre `tool_call` e `tool_result`.
    *
-   * @param {string} sessionId - Id da sessão (já validada como existente).
-   * @param {string} userText - Texto enviado pelo usuário.
-   * @returns {AsyncGenerator<ChatStreamEvent>} Sequência de eventos de stream.
+   * @param sessionId - Id da sessão (já validada como existente).
+   * @param userText - Texto enviado pelo usuário.
+   *
+   * @returns Sequência de eventos de stream.
    */
   async *run(
     sessionId: string,
@@ -1187,12 +1234,14 @@ export class OrchestratorService {
         } else if (chunk.type === 'tool_use') {
           yield* this.handleToolUse(
             chunk,
-            convo,
-            toolsUsed,
-            toolMessages,
-            userId,
-            sessionId,
-            pendingWindowIds,
+            {
+              convo,
+              toolsUsed,
+              toolMessages,
+              userId,
+              sessionId,
+              pendingWindowIds,
+            },
           );
         } else if (chunk.type === 'usage') {
           inputTokens += chunk.inputTokens;
@@ -1299,9 +1348,10 @@ export class OrchestratorService {
    * Gera um título curto (≤6 palavras) para a sessão a partir da 1ª troca, via LLM (sem tools).
    * Em caso de erro/saída vazia, cai numa heurística sobre a pergunta do usuário.
    *
-   * @param {string} userText - Primeira mensagem do usuário.
-   * @param {string} assistantText - Resposta final do assistente (contexto extra).
-   * @returns {Promise<string>} Título conciso (≤80 chars).
+   * @param userText - Primeira mensagem do usuário.
+   * @param assistantText - Resposta final do assistente (contexto extra).
+   *
+   * @returns Título conciso (≤80 chars).
    */
   private async generateTitle(
     userText: string,
@@ -1319,7 +1369,7 @@ export class OrchestratorService {
             role: 'user',
             content: `Pergunta do analista: "${userText}"\n\nResumo da resposta: "${assistantText.slice(
               0,
-              400,
+              TITLE_PROMPT_ANSWER_CHARS,
             )}"`,
           }],
           tools: [],
@@ -1348,8 +1398,9 @@ export class OrchestratorService {
    * RESPOSTA para o chamador acumular em `finalText`. Extraído de {@link run} para manter a
    * complexidade cognitiva baixa.
    *
-   * @param {ThinkingSplitResultInterface} split - Porções classificadas (raciocínio / resposta).
-   * @returns {Generator<ChatStreamEvent, string>} Eventos a emitir; retorna o texto da resposta.
+   * @param split - Porções classificadas (raciocínio / resposta).
+   *
+   * @returns Eventos a emitir; retorna o texto da resposta.
    */
   private *emitSplit(split: ThinkingSplitResultInterface): Generator<ChatStreamEvent, string> {
     if (split.thinking) {
@@ -1374,8 +1425,9 @@ export class OrchestratorService {
    * esgotado ainda pedindo tools): emite um `text_delta` de fallback e o devolve; senão devolve o
    * texto original. Extraído do laço principal para manter a complexidade do `run` dentro do limite.
    *
-   * @param {string} finalText - Texto acumulado do turno final.
-   * @returns {Generator<ChatStreamEvent, string>} Texto efetivo (original, ou o fallback).
+   * @param finalText - Texto acumulado do turno final.
+   *
+   * @returns Texto efetivo (original, ou o fallback).
    */
   private *emitFallbackIfEmpty(finalText: string): Generator<ChatStreamEvent, string> {
     if (finalText.trim() !== '') {
@@ -1396,21 +1448,25 @@ export class OrchestratorService {
    * resultado em `convo`/`toolsUsed`/`toolMessages` (mutados por referência) para o próximo turno.
    * Extraído de {@link run} para manter cada um sob o limite de complexidade cognitiva.
    *
-   * @param {LlmToolUseInterface} chunk - Pedido de tool do modelo (nome, args, id).
-   * @param {LlmMessageInterface[]} convo - Conversa acumulada (recebe o bloco `tool_use` do assistente).
-   * @param {ChatToolInvocationInterface[]} toolsUsed - Tools já invocadas no turno (para persistir).
-   * @param {LlmMessageInterface[]} toolMessages - Resultados de tool a anexar à conversa do próximo turno.
-   * @returns {AsyncGenerator<ChatStreamEvent>} Eventos SSE do ciclo da tool.
+   * @param chunk - Pedido de tool do modelo (nome, args, id).
+   * @param context - The turn's state: the lists the tool cycle appends to and who runs it (see
+   *   {@link ToolTurnContextInterface}).
+   *
+   * @returns Eventos SSE do ciclo da tool.
    */
   private async *handleToolUse(
     chunk: LlmToolUseInterface,
-    convo: LlmMessageInterface[],
-    toolsUsed: ChatToolInvocationInterface[],
-    toolMessages: LlmMessageInterface[],
-    userId: string,
-    sessionId: string,
-    pendingWindowIds: Set<string>,
+    context: ToolTurnContextInterface,
   ): AsyncGenerator<ChatStreamEvent> {
+    const {
+      convo,
+      toolsUsed,
+      toolMessages,
+      userId,
+      sessionId,
+      pendingWindowIds,
+    } = context;
+
     // Reuso determinístico da janela: o modelo às vezes pede os envios de uma campanha (campaign_id) ou
     // a trilha de um envio (shipping_id) vindos de uma busca anterior SEM repassar a data — o guard
     // recusaria e o modelo tende a errar (conclui "sem resultados" ou ignora). Se há a janela de um
@@ -1499,8 +1555,8 @@ export class OrchestratorService {
       chunk.name,
       args,
       userId,
-      (progress) => channel.push(progress),
-    ).finally(() => channel.close());
+      (progress) => { channel.push(progress); },
+    ).finally(() => { channel.close(); });
 
     for await (const progress of channel.drain()) {
       yield {
@@ -1579,11 +1635,11 @@ export class OrchestratorService {
   /**
    * Anexa `usage` (tokens de entrada/saída) ao conteúdo da mensagem, quando houve consumo.
    *
-   * @param {ChatMessageContentInterface} content - Conteúdo base da mensagem do assistente.
-   * @param {number} inputTokens - Tokens de entrada acumulados no turno.
-   * @param {number} outputTokens - Tokens de saída acumulados no turno.
+   * @param content - Conteúdo base da mensagem do assistente.
+   * @param inputTokens - Tokens de entrada acumulados no turno.
+   * @param outputTokens - Tokens de saída acumulados no turno.
    *
-   * @returns {ChatMessageContentInterface} Conteúdo com `usage` (ou inalterado se sem consumo).
+   * @returns Conteúdo com `usage` (ou inalterado se sem consumo).
    */
   private withUsage(
     content: ChatMessageContentInterface,
@@ -1606,10 +1662,12 @@ export class OrchestratorService {
   /**
    * Executa uma tool server-side com auditoria, capturando erros.
    *
-   * @param {ToolNameType} name - Nome da tool pedida pelo modelo.
-   * @param {Record<string, unknown>} args - Argumentos pedidos pelo modelo.
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento (repassado às tools de auditoria).
-   * @returns {Promise<{ status; result; durationMs }>} Status, resultado e duração total da tool.
+   * @param name - Nome da tool pedida pelo modelo.
+   * @param args - Argumentos pedidos pelo modelo.
+   * @param userId - User who runs the tool (recorded in its audit entry).
+   * @param [onProgress] - Callback de andamento (repassado às tools de auditoria).
+   *
+   * @returns Status, resultado e duração total da tool.
    */
   private async runTool(
     name: ToolNameType,
@@ -1704,9 +1762,10 @@ export class OrchestratorService {
    * Roteia o `search_shippings`: por `incident_id` (mensagens exatas do incidente) ou busca normal por
    * filtros/janela. Mantém o {@link execute} simples (uma linha) e a guarda de id no mesmo lugar.
    *
-   * @param {Record<string, unknown>} args - Args da tool.
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento (só a busca normal usa).
-   * @returns {Promise<Awaited<ReturnType<ShippingsService['search']>>>} Envelope da busca.
+   * @param args - Args da tool.
+   * @param [onProgress] - Callback de andamento (só a busca normal usa).
+   *
+   * @returns Envelope da busca.
    */
   private runSearch(
     args: Record<string, unknown>,
@@ -1737,9 +1796,10 @@ export class OrchestratorService {
    * busca, pra a contagem do chat bater com o card do incidente (e com o GET /incidents/:id/shippings).
    * `total` = total impactado; `breakdown` é sobre as linhas trazidas (exato quando todas cabem no limite).
    *
-   * @param {string} incidentId - UUID do incidente.
-   * @param {Record<string, unknown>} args - Args da tool (usa `limit`).
-   * @returns {Promise<Awaited<ReturnType<ShippingsService['search']>>>} Envelope de busca dos impactados.
+   * @param incidentId - UUID do incidente.
+   * @param args - Args da tool (usa `limit`).
+   *
+   * @returns Envelope de busca dos impactados.
    */
   private async searchIncidentShippings(
     incidentId: string,
@@ -1793,10 +1853,12 @@ export class OrchestratorService {
   /**
    * Roteia o nome da tool para o serviço correspondente (a aplicação executa, não a IA).
    *
-   * @param {ToolNameType} name - Nome da tool.
-   * @param {Record<string, unknown>} args - Argumentos da tool.
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento (só as tools que varrem o S3 usam).
-   * @returns {Promise<unknown>} Resultado da tool (shape conforme §C).
+   * @param name - Nome da tool.
+   * @param args - Argumentos da tool.
+   * @param [onProgress] - Callback de andamento (só as tools que varrem o S3 usam).
+   *
+   * @returns Resultado da tool (shape conforme §C).
+   *
    * @throws {Error} Se a tool for desconhecida ou os argumentos forem inválidos.
    */
   private execute(
@@ -1899,15 +1961,20 @@ export class OrchestratorService {
 
       case 'generate_incident_report':
         return this.reports.generateIncident(args);
-      default:
-        throw new Error(`Tool desconhecida: ${name}`);
+
+      default: {
+        // `name` comes from the model: at run time it can be a tool outside `ToolNameType`.
+        const unknownName: string = name;
+
+        throw new Error(`Tool desconhecida: ${unknownName}`);
+      }
     }
   }
 
   /**
    * Monta a recusa estruturada (pedido fora de escopo / sem tool aplicável).
    *
-   * @returns {{ reason: string; explanation: string; can_do: string[] }} Recusa com alternativas possíveis.
+   * @returns Recusa com alternativas possíveis.
    */
   private buildRefusal(): {
     reason: string;

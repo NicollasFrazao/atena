@@ -2,7 +2,7 @@ import type { SessionUserInterface } from '@atena/types';
 
 /**
  * Fixtures SINTÉTICAS para a suíte e2e hermética. Os shapes espelham as respostas reais da API
- * (capturadas do backend), mas TODO dado pessoal foi substituído por valores fictícios: nenhum
+ * (capturadas do backend), mas todo dado pessoal foi substituído por valores fictícios: nenhum
  * e-mail, nome ou telefone real. Métricas/contagens/ids de cliente (numéricos) são agregados — não
  * são PII. Mantê-las fiéis ao contrato é proposital: se `@atena/types` mudar, o type-check quebra
  * aqui e sinaliza fixture desatualizada.

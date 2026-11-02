@@ -4,12 +4,11 @@ import type { WsServerEvent } from '@atena/types';
 /**
  * Contexto do realtime: uma ÚNICA conexão `/ws/support` (no {@link RealtimeProvider}) faz fan-out
  * dos eventos para vários assinantes — evita abrir um socket por consumidor (chat, banner, lista).
- *
- * @property {(handler: (event: WsServerEvent) => void) => () => void} subscribe - Assina; devolve o cancelamento.
- * @property {boolean} connected - Status da conexão.
  */
 export interface RealtimeContextInterface {
+  /** Assina; devolve o cancelamento. */
   subscribe: (handler: (event: WsServerEvent) => void) => () => void;
+  /** Status da conexão. */
   connected: boolean;
 }
 
@@ -20,8 +19,7 @@ export const RealtimeContext = createContext<RealtimeContextInterface | null>(nu
  * Registra um handler para os eventos do `/ws/support` (via a conexão única do provider). O handler
  * é mantido por ref, então re-renders não re-assinam.
  *
- * @param {(event: WsServerEvent) => void} handler - Chamado a cada evento do servidor.
- * @returns {void}
+ * @param handler - Chamado a cada evento do servidor.
  */
 export function useRealtimeEvent(handler: (event: WsServerEvent) => void): void {
   const ctx = useContext(RealtimeContext);
@@ -35,7 +33,9 @@ export function useRealtimeEvent(handler: (event: WsServerEvent) => void): void 
         return undefined;
       }
 
-      return ctx.subscribe((event) => ref.current(event));
+      return ctx.subscribe((event) => {
+        ref.current(event);
+      });
     },
     [ctx],
   );
@@ -44,7 +44,7 @@ export function useRealtimeEvent(handler: (event: WsServerEvent) => void): void 
 /**
  * Status da conexão do realtime (para a faixa de "WS desconectado").
  *
- * @returns {boolean} `true` se conectado.
+ * @returns `true` se conectado.
  */
 export function useRealtimeConnected(): boolean {
   return useContext(RealtimeContext)?.connected ?? false;

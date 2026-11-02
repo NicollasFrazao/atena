@@ -1,10 +1,12 @@
 import {
+  formatInstantInTz,
   resolveBoundInTz,
   startOfDayInTz,
   startOfNamedDayInTz,
   startOfRecentDays,
   toNaiveDatetimeInTz,
   tzOffsetMinutes,
+  wallClockToUtc,
 } from './tz';
 
 const BRT = 'America/Sao_Paulo';
@@ -126,5 +128,52 @@ describe('tz (edge de fuso)', () => {
       BRT,
       false,
     ).toISOString()).toBe(utc);
+  });
+
+  it('formatInstantInTz renders a Date or an ISO string as DD/MM/YYYY às HH:MM in the zone', () => {
+    expect(formatInstantInTz(
+      new Date('2026-06-23T19:40:00Z'),
+      BRT,
+    )).toBe('23/06/2026 às 16:40');
+
+    expect(formatInstantInTz(
+      '2026-01-05T02:07:00Z',
+      BRT,
+    )).toBe('04/01/2026 às 23:07');
+  });
+
+  it('formatInstantInTz and toNaiveDatetimeInTz return an unparseable value unchanged', () => {
+    expect(formatInstantInTz(
+      'not-a-date',
+      BRT,
+    )).toBe('not-a-date');
+
+    expect(toNaiveDatetimeInTz(
+      'not-a-date',
+      BRT,
+    )).toBe('not-a-date');
+  });
+
+  it('toNaiveDatetimeInTz accepts a Date as well as a string', () => {
+    expect(toNaiveDatetimeInTz(
+      new Date('2026-06-23T19:40:05Z'),
+      BRT,
+    )).toBe('2026-06-23T16:40:05');
+  });
+
+  it('wallClockToUtc refines the offset when the naive guess lands on the other side of a DST change', () => {
+    // 2026-03-08 02:30 does not exist in New York (clocks jump 02:00 EST → 03:00 EDT). The first guess
+    // uses EST (-300); the refined instant is in EDT (-240), so the result is resolved with EDT.
+    expect(wallClockToUtc(
+      {
+        year: 2026,
+        month: 3,
+        day: 8,
+        hour: 2,
+        minute: 30,
+        second: 0,
+      },
+      'America/New_York',
+    ).toISOString()).toBe('2026-03-08T06:30:00.000Z');
   });
 });

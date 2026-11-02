@@ -1,37 +1,25 @@
+import { nonEmpty } from '../common/text.util';
+
 /**
  * Configuração tipada da Atena, lida do ambiente.
  *
  * O app lê SEMPRE um único `.env`, GERADO EM RUNTIME e NUNCA versionado
  * (em produção via SSM/Secrets Manager; em local via `make env` a partir do .env.example).
  * Veja .env.example para a lista de chaves.
- *
- * @property {{ port: number; env: string }} app - HTTP: porta de escuta e ambiente (NODE_ENV).
- * @property {{ url: string }} database - Conexão do Prisma (MySQL); `DATABASE_URL`.
- * @property {{ region: string }} aws - Região AWS usada por Bedrock/S3.
- * @property {{ modelId: string }} bedrock - Id do modelo no Bedrock (usado quando `llm.provider === 'bedrock'`).
- * @property {{ provider: string }} llm - Provider LLM ativo: `'fake'` (dev/local, sem credencial) | `'bedrock'` (produção).
- * @property {{ logsBucket: string; logsPrefix: string; contentBucket: string }} s3 - Buckets/prefixo de logs e bucket de conteúdo.
- * @property {{ tmpDir: string }} cache - Diretório do cache transitório read-through (decisão #8) — não é fonte de verdade.
- * @property {object} auth - Login social institucional (OIDC), provider plugável; default Microsoft 365 (Entra ID).
- * @property {string} auth.provider - Identificador do provider de autenticação (ex.: `microsoft-entra`).
- * @property {string} auth.allowedDomain - Domínio de e-mail institucional permitido.
- * @property {boolean} auth.devBypass - Em dev, resolve um usuário stub (com papéis) quando não há sessão; `false` em produção.
- * @property {object} auth.oidc - Credenciais/endereços OIDC do provider.
- * @property {string} auth.oidc.issuerUrl - URL do issuer OIDC.
- * @property {string} auth.oidc.clientId - Client ID da aplicação OIDC.
- * @property {string} auth.oidc.clientSecret - Client secret da aplicação OIDC.
- * @property {string} auth.oidc.redirectUri - URI de callback após o login.
- * @property {string} auth.sessionSecret - Segredo usado para assinar a sessão.
  */
-export interface AtenaConfig {
+interface AtenaConfig {
+  /** HTTP: porta de escuta e ambiente (NODE_ENV). */
   app: {
     port: number;
     env: string;
     /** Fuso de exibição/janela (IANA, ex.: `America/Sao_Paulo`). Parâmetro único do edge de fuso. */
     timezone: string;
   };
+  /** Conexão do Prisma (MySQL); `DATABASE_URL`. */
   database: { url: string };
+  /** Região AWS usada por Bedrock/S3. */
   aws: { region: string };
+  /** Id do modelo no Bedrock (usado quando `llm.provider === 'bedrock'`). */
   bedrock: {
     modelId: string;
     apiKey: string;
@@ -39,6 +27,7 @@ export interface AtenaConfig {
   };
   /** Provider LLM ativo: 'fake' (dev/local, sem credencial) | 'bedrock' (produção). */
   llm: { provider: string };
+  /** Buckets/prefixo de logs e bucket de conteúdo. */
   s3: {
     logsBucket: string;
     logsPrefix: string;
@@ -94,15 +83,24 @@ export interface AtenaConfig {
   };
   /** Login social institucional (OIDC). Provider plugável; default Microsoft 365 (Entra ID). */
   auth: {
+    /** Identificador do provider de autenticação (ex.: `microsoft-entra`). */
     provider: string;
+    /** Domínio de e-mail institucional permitido. */
     allowedDomain: string;
+    /** Em dev, resolve um usuário stub (com papéis) quando não há sessão; `false` em produção. */
     devBypass: boolean;
+    /** Credenciais/endereços OIDC do provider. */
     oidc: {
+      /** URL do issuer OIDC. */
       issuerUrl: string;
+      /** Client ID da aplicação OIDC. */
       clientId: string;
+      /** Client secret da aplicação OIDC. */
       clientSecret: string;
+      /** URI de callback após o login. */
       redirectUri: string;
     };
+    /** Segredo usado para assinar a sessão. */
     sessionSecret: string;
     /** Cookie de sessão (JWT assinado) emitido após o login OIDC. */
     session: {
@@ -121,6 +119,24 @@ export interface AtenaConfig {
     adminEmails: string[];
   };
 }
+
+/** Default HTTP port of the API (`PORT`). */
+export const DEFAULT_APP_PORT = 3000;
+
+/** Default cap on the tokens of one Bedrock response (`BEDROCK_MAX_TOKENS`). */
+export const DEFAULT_BEDROCK_MAX_TOKENS = 1024;
+
+/** Default minimum terminal volume before a detector evaluates a customer (`DETECT_MIN_VOLUME`). */
+export const DEFAULT_DETECT_MIN_TERMINAL_VOLUME = 20;
+
+/** Default number of lookback windows in a detector baseline (`DETECT_BASELINE_WINDOWS`). */
+export const DEFAULT_DETECT_BASELINE_WINDOWS = 8;
+
+/** Default chat retention in days (`CHAT_RETENTION_DAYS`). */
+export const DEFAULT_CHAT_RETENTION_DAYS = 90;
+
+/** Default lifetime in hours of the session cookie (`AUTH_SESSION_TTL_HOURS`). */
+export const DEFAULT_SESSION_TTL_HOURS = 8;
 
 /** Lê um inteiro do ambiente com fallback. Centraliza o parse dos knobs numéricos do motor. */
 const intEnv = (
@@ -161,17 +177,17 @@ export const AUDIT_QUERY_DEFAULTS = {
  * defaults para variáveis ausentes (ex.: porta 3000, `llm.provider = 'fake'`,
  * região `us-east-1`). Avaliado uma vez na inicialização do módulo.
  *
- * @returns {AtenaConfig} Configuração tipada da aplicação.
+ * @returns Configuração tipada da aplicação.
  */
 export default (): AtenaConfig => ({
   app: {
-    port: Number.parseInt(
-      process.env.PORT ?? '3000',
-      10,
+    port: intEnv(
+      'PORT',
+      DEFAULT_APP_PORT,
     ),
     env: process.env.NODE_ENV ?? 'development',
     // Fuso de exibição/janela do operador (IANA). Default BRT; trocar habilita outro fuso sem mudar lógica.
-    timezone: process.env.APP_TIMEZONE || 'America/Sao_Paulo',
+    timezone: nonEmpty(process.env.APP_TIMEZONE) ?? 'America/Sao_Paulo',
   },
   database: {
     url: process.env.DATABASE_URL ?? '',
@@ -184,9 +200,9 @@ export default (): AtenaConfig => ({
     modelId: process.env.BEDROCK_MODEL_ID ?? '',
     // API key (Bearer) do Bedrock; vazia → fallback pro fake provider (ver LlmModule).
     apiKey: process.env.AWS_BEARER_TOKEN_BEDROCK ?? '',
-    maxTokens: Number.parseInt(
-      process.env.BEDROCK_MAX_TOKENS ?? '1024',
-      10,
+    maxTokens: intEnv(
+      'BEDROCK_MAX_TOKENS',
+      DEFAULT_BEDROCK_MAX_TOKENS,
     ),
   },
   llm: {
@@ -217,7 +233,7 @@ export default (): AtenaConfig => ({
       AUDIT_QUERY_DEFAULTS.defaultWindowDays,
     ),
     // Data mínima de consulta (ISO): barra dados pré-contrato enriquecido; vazio/0 desliga.
-    minQueryDate: process.env.ATENA_AUDIT_MIN_QUERY_DATE || null,
+    minQueryDate: nonEmpty(process.env.ATENA_AUDIT_MIN_QUERY_DATE) ?? null,
 
     // — Vidas de cache / reconciliação —
     // Partição "settled" (cacheável) só depois deste tempo fechada; partições recentes vão live.
@@ -296,23 +312,23 @@ export default (): AtenaConfig => ({
     // Liga o @Interval agendado; o trigger manual POST /api/dev/detect roda independente disto.
     enabled: process.env.DETECT_ENABLED === 'true',
     // Guarda de volume: dev baixo p/ disparar no seed; produção ≥ 500 (anomaly-scenarios.md).
-    minTerminalVolume: Number.parseInt(
-      process.env.DETECT_MIN_VOLUME ?? '20',
-      10,
+    minTerminalVolume: intEnv(
+      'DETECT_MIN_VOLUME',
+      DEFAULT_DETECT_MIN_TERMINAL_VOLUME,
     ),
     // Nº de janelas de lookback p/ o baseline (μ/σ) por cliente.
-    baselineWindows: Number.parseInt(
-      process.env.DETECT_BASELINE_WINDOWS ?? '8',
-      10,
+    baselineWindows: intEnv(
+      'DETECT_BASELINE_WINDOWS',
+      DEFAULT_DETECT_BASELINE_WINDOWS,
     ),
   },
   retention: {
     // Job diário de retenção do chat; CHAT_RETENTION_ENABLED=false desliga (default ligado).
     enabled: process.env.CHAT_RETENTION_ENABLED !== 'false',
     // Apaga sessões (e suas mensagens) inativas há mais de N dias. Bate com o rótulo do Histórico.
-    chatDays: Number.parseInt(
-      process.env.CHAT_RETENTION_DAYS ?? '90',
-      10,
+    chatDays: intEnv(
+      'CHAT_RETENTION_DAYS',
+      DEFAULT_CHAT_RETENTION_DAYS,
     ),
   },
   auth: {
@@ -332,9 +348,9 @@ export default (): AtenaConfig => ({
     sessionSecret: process.env.SESSION_SECRET ?? '',
     session: {
       cookieName: 'atena_session',
-      ttlHours: Number.parseInt(
-        process.env.AUTH_SESSION_TTL_HOURS ?? '8',
-        10,
+      ttlHours: intEnv(
+        'AUTH_SESSION_TTL_HOURS',
+        DEFAULT_SESSION_TTL_HOURS,
       ),
       // Cross-origin (web:5173/8080 ↔ api:3000): SameSite=None exige Secure. Secure é aceito em
       // http://localhost (contexto seguro) e obrigatório em prod HTTPS.

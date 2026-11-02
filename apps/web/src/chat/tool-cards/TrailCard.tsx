@@ -1,10 +1,11 @@
+import type { JSX } from 'react';
 import {
-  ArrowSquareOut,
-  Broadcast,
-  ClockCounterClockwise,
-  Flag,
-  PaperPlaneTilt,
-  Tray,
+  ArrowSquareOutIcon as ArrowSquareOut,
+  BroadcastIcon as Broadcast,
+  ClockCounterClockwiseIcon as ClockCounterClockwise,
+  FlagIcon as Flag,
+  PaperPlaneTiltIcon as PaperPlaneTilt,
+  TrayIcon as Tray,
   type Icon,
 } from '@phosphor-icons/react';
 import { type ShippingEventType, type ShippingTrailInterface } from '@atena/types';
@@ -13,12 +14,25 @@ import { ToolResultFrame } from './ToolResultFrame';
 import { StatusPill } from './StatusPill';
 import { RevealField } from './RevealField';
 import { formatDateTimeSeconds, TONE_COLORS, type StatusToneType } from './format';
+import { cssValue, cssVar } from '../../styles/tokens';
+import {
+  HOURS_PER_DAY,
+  MINUTES_PER_HOUR,
+  MS_PER_MINUTE,
+  MS_PER_SECOND,
+  SECONDS_PER_DAY,
+  SECONDS_PER_HOUR,
+  SECONDS_PER_MINUTE,
+} from '../../util/units';
+
+/** Ícone + tom de um tipo de evento da trilha. */
+interface EventVisualInterface {
+  icon: Icon;
+  tone: StatusToneType;
+}
 
 /** Ícone + tom por tipo de evento da trilha. */
-const EVENT_VISUALS: Record<ShippingEventType, {
-  icon: Icon;
-  tone: StatusToneType
-}> = {
+const EVENT_VISUALS: Record<ShippingEventType, EventVisualInterface> = {
   api_request: {
     icon: ArrowSquareOut,
     tone: 'neutral',
@@ -41,15 +55,24 @@ const EVENT_VISUALS: Record<ShippingEventType, {
   },
 };
 
+/**
+ * The same map, indexed by any string: the trail arrives in a tool result over SSE and can carry an
+ * event type this build does not know, which is drawn as `routing`.
+ */
+const VISUALS_BY_RECEIVED_TYPE: Partial<Record<string, EventVisualInterface>> = EVENT_VISUALS;
+
 /** Rótulo legível do canal do envio (`campaign_type`). */
 const CHANNEL_LABELS: Record<string, string> = {
   sms: 'SMS',
   sms_flash: 'SMS Flash',
 };
 
+/** Below this duration the seconds keep one decimal (`4.2 s`); from it on they are whole (`12 s`). */
+const DECIMAL_SECONDS_BELOW_MS = 10_000;
+
 /** Duração da trilha (último − primeiro evento): `4.2 s`, `12 s`, `3m 07s`, `2h 05m`, `1d 0h` ou `—`. */
 function trailDuration(events: ShippingTrailInterface['events']): string {
-  const firstEvent = events[0];
+  const firstEvent = events.at(0);
   const lastEvent = events.at(-1);
 
   if (
@@ -69,17 +92,17 @@ function trailDuration(events: ShippingTrailInterface['events']): string {
     return '—';
   }
 
-  if (ms < 60_000) {
-    return `${(ms / 1000).toFixed(ms < 10_000
+  if (ms < MS_PER_MINUTE) {
+    return `${(ms / MS_PER_SECOND).toFixed(ms < DECIMAL_SECONDS_BELOW_MS
       ? 1
       : 0)} s`;
   }
 
-  const totalSeconds = Math.round(ms / 1000);
-  const seconds = totalSeconds % 60;
-  const minutes = Math.floor(totalSeconds / 60) % 60;
-  const hours = Math.floor(totalSeconds / 3600) % 24;
-  const days = Math.floor(totalSeconds / 86_400);
+  const totalSeconds = Math.round(ms / MS_PER_SECOND);
+  const seconds = totalSeconds % SECONDS_PER_MINUTE;
+  const minutes = Math.floor(totalSeconds / SECONDS_PER_MINUTE) % MINUTES_PER_HOUR;
+  const hours = Math.floor(totalSeconds / SECONDS_PER_HOUR) % HOURS_PER_DAY;
+  const days = Math.floor(totalSeconds / SECONDS_PER_DAY);
 
   if (days > 0) {
     return `${days}d ${hours}h`;
@@ -103,18 +126,19 @@ function trailDuration(events: ShippingTrailInterface['events']): string {
  * duração / telefone), status final no header e timeline vertical dos eventos. Telefone e conteúdo
  * ficam mascarados por padrão, com reveal auditado sob demanda ({@link RevealField}).
  *
- * @param {object} props - Trilha do envio + janela do contexto.
- * @param {ShippingTrailInterface} props.result - Trilha (cabeçalho + eventos).
- * @param {RevealWindowInterface} [props.window] - Janela do contexto (escopa o reveal de telefone/conteúdo).
- * @returns {JSX.Element} O card da trilha.
+ * @param props - Trilha do envio + janela do contexto.
+ * @param props.result - Trilha (cabeçalho + eventos).
+ * @param [props.window] - Janela do contexto (escopa o reveal de telefone/conteúdo).
+ *
+ * @returns O card da trilha.
  */
 export function TrailCard({
   result,
   window,
-}: {
+}: Readonly<{
   result: ShippingTrailInterface;
   window?: RevealWindowInterface
-}): JSX.Element {
+}>): JSX.Element {
   const attempts = result.events.filter((event) => event.type === 'provider_attempt').length;
   const duration = trailDuration(result.events);
 
@@ -130,8 +154,8 @@ export function TrailCard({
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 'var(--at-space-12)',
-          marginBottom: 'var(--at-space-16)',
+          gap: cssVar.space12,
+          marginBottom: cssVar.space16,
         }}
         >
           <SummaryItem
@@ -141,10 +165,10 @@ export function TrailCard({
           <div style={{ minWidth: 0 }}>
             <FieldLabel>App</FieldLabel>
             <div style={{
-              marginTop: 'var(--at-space-4)',
-              fontFamily: 'ui-monospace, Menlo, monospace',
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg)',
+              marginTop: cssVar.space4,
+              fontFamily: cssValue.fontMono,
+              fontSize: cssVar.fs12,
+              color: cssVar.fg,
               wordBreak: 'break-all',
             }}
             >
@@ -154,10 +178,10 @@ export function TrailCard({
           <div style={{ minWidth: 0 }}>
             <FieldLabel>ID da campanha</FieldLabel>
             <div style={{
-              marginTop: 'var(--at-space-4)',
-              fontFamily: 'ui-monospace, Menlo, monospace',
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg)',
+              marginTop: cssVar.space4,
+              fontFamily: cssValue.fontMono,
+              fontSize: cssVar.fs12,
+              color: cssVar.fg,
               wordBreak: 'break-all',
             }}
             >
@@ -173,9 +197,9 @@ export function TrailCard({
           <div>
             <FieldLabel>Telefone</FieldLabel>
             <div style={{
-              marginTop: 'var(--at-space-4)',
-              fontSize: 'var(--at-fs-12)',
-              color: 'var(--at-fg)',
+              marginTop: cssVar.space4,
+              fontSize: cssVar.fs12,
+              color: cssVar.fg,
             }}
             >
               <RevealField
@@ -211,14 +235,14 @@ export function TrailCard({
             top: 6,
             bottom: 6,
             width: 1,
-            background: 'var(--at-border)',
+            background: cssVar.border,
           }}
           />
           {result.events.map((
             event,
             index,
           ) => {
-            const visual = EVENT_VISUALS[event.type] ?? EVENT_VISUALS.routing;
+            const visual = VISUALS_BY_RECEIVED_TYPE[event.type] ?? EVENT_VISUALS.routing;
             const colors = TONE_COLORS[visual.tone];
             const EventIcon = visual.icon;
             const isLast = index === result.events.length - 1;
@@ -230,7 +254,7 @@ export function TrailCard({
                   position: 'relative',
                   paddingBottom: isLast
                     ? 0
-                    : 'var(--at-space-16)',
+                    : cssVar.space16,
                 }}
               >
                 <div style={{
@@ -241,7 +265,7 @@ export function TrailCard({
                   placeItems: 'center',
                   width: 24,
                   height: 24,
-                  borderRadius: 'var(--at-radius-4)',
+                  borderRadius: cssVar.radius4,
                   background: colors.background,
                   color: colors.color,
                   boxShadow: '0 0 0 3px var(--at-white)',
@@ -252,31 +276,31 @@ export function TrailCard({
                 <div style={{
                   display: 'flex',
                   alignItems: 'baseline',
-                  gap: 'var(--at-space-8)',
+                  gap: cssVar.space8,
                   flexWrap: 'wrap',
                 }}
                 >
                   <span style={{
-                    fontSize: 'var(--at-fs-14)',
+                    fontSize: cssVar.fs14,
                     fontWeight: 600,
-                    color: 'var(--at-fg)',
+                    color: cssVar.fg,
                   }}
                   >
                     {event.label}
                   </span>
                   <code style={{
-                    fontFamily: 'ui-monospace, Menlo, monospace',
+                    fontFamily: cssValue.fontMono,
                     fontSize: 11,
-                    color: 'var(--at-fg-subtle)',
+                    color: cssVar.fgSubtle,
                   }}
                   >
                     {formatDateTimeSeconds(event.at)}
                   </code>
                 </div>
                 <div style={{
-                  marginTop: 'var(--at-space-2)',
-                  fontSize: 'var(--at-fs-12)',
-                  color: 'var(--at-fg-muted)',
+                  marginTop: cssVar.space2,
+                  fontSize: cssVar.fs12,
+                  color: cssVar.fgMuted,
                 }}
                 >
                   {event.detail}
@@ -287,16 +311,16 @@ export function TrailCard({
         </div>
 
         <div style={{
-          marginTop: 'var(--at-space-16)',
+          marginTop: cssVar.space16,
           padding: '10px 12px',
-          background: 'var(--at-bg-soft)',
+          background: cssVar.bgSoft,
           border: '1px dashed var(--at-border)',
-          borderRadius: 'var(--at-radius-4)',
+          borderRadius: cssVar.radius4,
           fontSize: 11,
-          color: 'var(--at-fg-muted)',
+          color: cssVar.fgMuted,
           display: 'flex',
           alignItems: 'baseline',
-          gap: 'var(--at-space-8)',
+          gap: cssVar.space8,
           flexWrap: 'wrap',
         }}
         >
@@ -323,12 +347,12 @@ export function TrailCard({
 }
 
 /** Rótulo curto em maiúsculas usado nos campos de resumo. */
-function FieldLabel({ children }: { children: string }): JSX.Element {
+function FieldLabel({ children }: Readonly<{ children: string }>): JSX.Element {
   return (
     <div style={{
       fontSize: 10,
       fontWeight: 600,
-      color: 'var(--at-fg-subtle)',
+      color: cssVar.fgSubtle,
       textTransform: 'uppercase',
       letterSpacing: 0.5,
     }}
@@ -342,18 +366,18 @@ function FieldLabel({ children }: { children: string }): JSX.Element {
 function SummaryItem({
   label,
   value,
-}: {
+}: Readonly<{
   label: string;
   value: string
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <div>
       <FieldLabel>{label}</FieldLabel>
       <div style={{
-        marginTop: 'var(--at-space-2)',
-        fontSize: 'var(--at-fs-14)',
+        marginTop: cssVar.space2,
+        fontSize: cssVar.fs14,
         fontWeight: 600,
-        color: 'var(--at-fg)',
+        color: cssVar.fg,
       }}
       >
         {value}

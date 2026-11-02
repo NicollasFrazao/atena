@@ -32,10 +32,10 @@ const DEV_ROLES: RoleType[] = ['admin'];
 @Injectable()
 export class AuthGuard implements CanActivate {
   /**
-   * @param {Reflector} reflector - Lê a marca `@Public()` do handler/controller.
-   * @param {ConfigService} config - `auth.devBypass`, `auth.allowedDomain`, nome do cookie.
-   * @param {AuthService} authService - Verifica o JWT do cookie (identidade).
-   * @param {UsersService} users - Resolve papéis/status do banco.
+   * @param reflector - Lê a marca `@Public()` do handler/controller.
+   * @param config - `auth.devBypass`, `auth.allowedDomain`, nome do cookie.
+   * @param authService - Verifica o JWT do cookie (identidade).
+   * @param users - Resolve papéis/status do banco.
    */
   constructor(
     private readonly reflector: Reflector,
@@ -48,8 +48,10 @@ export class AuthGuard implements CanActivate {
    * Libera rotas públicas; caso contrário resolve o usuário (cookie + banco, ou stub de dev) e o
    * injeta em `request.user`.
    *
-   * @param {ExecutionContext} context - Contexto de execução do NestJS.
-   * @returns {Promise<boolean>} `true` se a rota é pública ou há usuário resolvido.
+   * @param context - Contexto de execução do NestJS.
+   *
+   * @returns `true` se a rota é pública ou há usuário resolvido.
+   *
    * @throws {UnauthorizedException} Se não for pública e não houver usuário.
    */
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -89,11 +91,12 @@ export class AuthGuard implements CanActivate {
    * Resolve o usuário a partir do cookie de sessão: identidade (JWT) + papéis/permissões/status
    * (banco). Retorna `undefined` se não houver cookie; cookie inválido/expirado lança 401.
    *
-   * @param {Request} request - Requisição Express (com `cookies` do cookie-parser).
-   * @returns {Promise<AuthenticatedUserInterface | undefined>} Usuário, ou `undefined` se ausente.
+   * @param request - Requisição Express (com `cookies` do cookie-parser).
+   *
+   * @returns Usuário, ou `undefined` se ausente.
    */
   private async fromSessionCookie(
-    request: Request & { cookies?: Record<string, string> },
+    request: Omit<Request, 'cookies'> & { cookies?: Partial<Record<string, string>> },
   ): Promise<AuthenticatedUserInterface | undefined> {
     const cookieName = this.config.get<string>('auth.session.cookieName') ?? 'atena_session';
     const token = request.cookies?.[cookieName];
@@ -132,8 +135,9 @@ export class AuthGuard implements CanActivate {
   /**
    * Indica se o e-mail é de um super admin (definido só pelo `auth.adminEmails`/env).
    *
-   * @param {string} email - E-mail do usuário.
-   * @returns {boolean} `true` se estiver na allowlist de super admins.
+   * @param email - E-mail do usuário.
+   *
+   * @returns `true` se estiver na allowlist de super admins.
    */
   private isSuperAdminEmail(email: string): boolean {
     return emailInAllowlist(
@@ -145,7 +149,7 @@ export class AuthGuard implements CanActivate {
   /**
    * Usuário stub de desenvolvimento (`admin`), quando `auth.devBypass` está ligado.
    *
-   * @returns {AuthenticatedUserInterface | undefined} Usuário de dev, ou `undefined` se o bypass
+   * @returns Usuário de dev, ou `undefined` se o bypass
    *   estiver desligado (produção).
    */
   private devUser(): AuthenticatedUserInterface | undefined {

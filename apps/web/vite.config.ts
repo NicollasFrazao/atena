@@ -2,19 +2,53 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const DEV_SERVER_PORT = 5173;
+
 /**
- * Config do Vite do app web da Atena. `server.port` 5173 (default); a API fica em
- * `VITE_API_URL` (default http://localhost:3000) — CORS já habilitado no backend.
+ * The coverage gate of the standards is 80% on all four metrics. The web app is far below it:
+ * the unit tests cover the logic modules (SSE parsing, reveal, formatting, time, the chat hook),
+ * while the pages and components are covered only by the Playwright suite, which does not report
+ * coverage. Until component tests exist, the gate is a ratchet at the measured floor (2026-11-01:
+ * statements 16.47%, branches 54.54%, functions 42.14%, lines 16.47%), so coverage cannot drop.
+ * Raise these numbers with every test added, up to 80.
+ * See .context/docs/tech-debt.md, "Web unit coverage below the 80% gate".
+ */
+const COVERAGE_FLOOR = {
+  statements: 16,
+  branches: 54,
+  functions: 42,
+  lines: 16,
+};
+
+/**
+ * Vite config of the web app. `server.port` is 5173; the API is at `VITE_API_URL`
+ * (default http://localhost:3000), with CORS already enabled on the backend.
  */
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: DEV_SERVER_PORT,
     strictPort: false,
   },
   test: {
     environment: 'node',
-    // Unit (vitest) vive em `src`. Os `e2e/**` são specs do Playwright (browser) — runner próprio.
+    // Vitest runs the unit tests in `src`; `e2e/**` are Playwright specs with their own runner.
     include: ['src/**/*.{spec,test}.{ts,tsx}'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.{spec,test}.{ts,tsx}',
+        // Entry point: mounts the app into the DOM; the Playwright suite is its check.
+        'src/main.tsx',
+        'src/vite-env.d.ts',
+      ],
+      reporter: [
+        'text-summary',
+        'text',
+        'lcov',
+      ],
+      thresholds: COVERAGE_FLOOR,
+    },
   },
 });

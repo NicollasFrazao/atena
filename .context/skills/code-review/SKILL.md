@@ -10,74 +10,88 @@ scaffoldVersion: "2.0.0"
 ---
 ## Workflow
 
-> ESTADO DO REPO: ainda não há código de produção — só specs e o protótipo de design. Este checklist é a DIREÇÃO de revisão para quando o backend NestJS e o frontend React começarem. O protótipo (`prototype/*.jsx`) é referência de design, NÃO deve ser copiado como código de produção.
+> REPOSITORY STATE: production code exists — `apps/api` (NestJS 11 + Prisma/MySQL), `apps/web` (React 18 + Vite) and `packages/types` (`@atena/types`). This checklist is what reviews of that code apply. The original design prototype (`prototype/*.jsx`) was a design reference, is NOT included in the repo, and must never be copied as production code.
 
-1. Entenda o que a mudança toca: chat/stream, tool/endpoint, incidente, regra, audit, WS, ou UI. Cada área tem invariantes próprias (abaixo).
-2. Verifique os 5 princípios não-negociáveis primeiro — são bloqueantes:
-   - IA é intérprete: o app roda query/RBAC/dados; o LLM nunca toca o banco.
-   - LLM não fabrica dados: todo número/fato vem de tool_result; senão, recusa explícita.
-   - Estado de incidente não é tool: ack/resolve/comment só via UI + validação server-side.
-   - Tudo auditado: ações sensíveis gravam `audit_log` via interceptor global.
-   - PII mascarada por padrão: reveal de telefone/conteúdo gera audit.
-3. Cheque RBAC por endpoint: guard NestJS aplicado; relatórios gerenciais, editar regras e ver audit são `support_lead`.
-4. Cheque o contrato de API: camelCase na resposta, snake_case no DB mapeado no ORM, ISO 8601 UTC, envelope `{ rows, page, totalPages, total, latencyMs }`, erro `{ error: { code, message } }`.
-5. Cheque shapes contra `prototype/data.jsx` — o frontend e o backend devem bater com os mocks que viraram contrato.
-6. Frontend: usa `atena-design-system` (não recria Button/Badge/Card); ícones Phosphor; cores Plankton + semânticas (Thanos fora da v1); PT-BR informal (`você`).
-7. Validação de mutação de incidente: confirme que o backend revalida (não confia na UI) — categoria no enum, `actionDescription` ≥ 20 chars, `escalatedTo` se `*_escalated`, transição de status permitida.
-8. Aponte os achados mais impactantes primeiro; explique o porquê citando o princípio ou o doc do handoff; elogie padrões corretos.
+1. Understand what the change touches: chat/stream, tool/endpoint, incident, rule, audit, WS, or UI. Each area has its own invariants (below).
+2. Check the 5 non-negotiable principles first — they are blocking:
+   - The AI is an interpreter: the app runs query/RBAC/data; the LLM never touches the database.
+   - The LLM does not fabricate data: every number/fact comes from a tool_result; otherwise, explicit refusal.
+   - Incident state is not a tool: ack/resolve/comment only via UI + server-side validation.
+   - Everything audited: sensitive actions write `audit_log` via the global interceptor (`@Audit`) or, for incident/rule changes, from the service.
+   - PII masked by default: phone/content reveal generates an audit entry.
+3. Check per-endpoint RBAC: `@Requires(perm)` guard applied, with the right permission from `apps/api/src/auth/rbac/permissions.ts` (e.g. `rules:edit` and `pii:reveal` for `support_lead`+, `users:manage` for admin; `reports:view` and `audit:view` are in the `viewer` base set).
+4. Check the API contract: snake_case in every request/response (Prisma Client's camelCase mapped at the edge), snake_case in the DB, ISO 8601 UTC, envelope `{ rows, page, total_pages, total, latency_ms }`, error `{ error: { code, message } }`. Also check the code style (`.context/docs/code-style.md`) and that `npm run lint` passes.
+5. Check shapes against `@atena/types` (and `docs/openapi.yaml`) — frontend and backend must match the shared types that became the contract.
+6. Frontend: reuses the in-house components of `apps/web/src/` with the `--at-*` tokens (there is no external `atena-design-system` package; do not recreate Button/Badge/Card); Phosphor icons; Plankton + semantic colors (Thanos out of v1); informal PT-BR (`você`) in the user-facing copy.
+7. Incident mutation validation: confirm the backend revalidates (does not trust the UI) — category within the enum, `action_description` ≥ 20 chars, `escalated_to` if `*_escalated`, allowed status transition.
+8. Point out the most impactful findings first; explain why by citing the principle or the handoff/context doc; praise correct patterns.
 
 ## Examples
 
-**Achado bloqueante — PII vazando sem reveal/audit:**
+**Blocking finding — PII leaking without reveal/audit:**
 ```ts
-// PROBLEMA (viola Princípio 5 + 4):
-return rows.map(m => ({ id: m.message_id, phoneFull: m.phone_e164, status: m.final_status }));
+// PROBLEM (violates Principle 5 + 4):
+return rows.map((record) => ({ id: record.id, phone_full: record.phoneE164, status: record.finalStatus }));
 
-// CORREÇÃO: mascarar por padrão; phoneFull só sob reveal autorizado, gravando audit.
-return rows.map(m => ({ id: m.messageId, phoneMasked: mask(m.phoneE164), status: m.finalStatus }));
-// reveal → endpoint dedicado + auditLog({ action: 'reveal_phone', resource: `msg/${id}`, severity: 'pii' })
+// FIX: mask by default; phone_full only under an authorized reveal, writing an audit entry.
+return rows.map((record) => ({
+  id: record.id,
+  phone_masked: maskPhone(record.phoneE164),
+  status: record.finalStatus,
+}));
+// reveal → dedicated endpoint (POST /api/shippings/:id/reveal-phone) with
+// @Requires('pii:reveal') + @Audit('reveal_phone', 'pii')
 ```
 
-**Achado bloqueante — ack/resolve exposto como tool:**
+**Blocking finding — ack/resolve exposed as a tool:**
 ```ts
-// PROBLEMA (viola Princípio 3): resolver incidente não pode ser tool do LLM.
-tools.register('resolve_incident', resolveIncidentHandler);
+// PROBLEM (violates Principle 3): resolving an incident cannot be an LLM tool.
+export const TOOL_NAMES = [
+  // ...
+  'resolve_incident',
+] as const;
 
-// CORREÇÃO: remover do catálogo de tools. Resolve só por REST + UI:
-// POST /api/incidents/{id}/resolve  com validação server-side (§D do contrato).
+// FIX: remove it from the tool catalog. Resolve only through REST + UI:
+// POST /api/incidents/{id}/resolve with server-side validation (§D of the contract).
 ```
 
-**Achado — contrato de API fora do padrão:**
+**Finding — API contract out of the standard:**
 ```ts
-// PROBLEMA: envelope errado e snake_case vazando.
-return { data: rows, meta: { page } };           // ❌
+// PROBLEM: wrong envelope and camelCase leaking.
+return { data: rows, meta: { page, totalPages } };   // wrong
 
-// CORREÇÃO:
-return { rows, page, totalPages, total, latencyMs };  // ✅ envelope canônico, camelCase
+// FIX:
+return {
+  rows,
+  page,
+  total_pages: totalPages,
+  total,
+  latency_ms: latencyMs,
+};   // right: canonical envelope, snake_case
 ```
 
-**Elogio + nota leve — frontend reusa o design system:**
+**Praise + light note — the frontend reuses the in-house components:**
 ```tsx
-// BOM: usa StatusPill/SeverityBadge do design system em vez de recriar.
-<SeverityBadge severity="critical" />   // só confirme PT-BR informal na microcopy
+// GOOD: uses the in-house StatusPill/SeverityBadge instead of recreating them.
+<SeverityBadge severity="critical" />   // just confirm informal PT-BR in the microcopy
 ```
 
 ## Quality Bar
 
-- Os 5 princípios são bloqueantes; qualquer violação trava a aprovação.
-- PII mascarada por padrão; reveal sempre gera audit (`reveal_phone`/`reveal_content`, severity `pii`).
-- Toda ação sensível grava `audit_log` (`tool_call`, `incident_*`, `export_report`, `rule_update`, `session_start`).
-- Estado de incidente nunca é tool; ack/resolve/comment só por REST + UI com validação dupla server-side.
-- LLM nunca toca o banco; o app é quem roda query/RBAC. Nenhum número na resposta da IA sem `tool_result`.
-- RBAC por endpoint via guard; checar papel correto (`support_analyst` vs `support_lead`).
-- Contrato: camelCase API / snake_case DB no ORM, ISO 8601 UTC, envelope paginado, `{ error: { code, message } }`.
-- Shapes batem com `prototype/data.jsx`; divergência é defeito de contrato.
-- Frontend usa `atena-design-system` e Phosphor; não recriar componentes; paleta Plankton + semânticas; PT-BR informal.
-- `policy.json` bloqueia `.env`/`.pem`/`.key`/`*secret*` — nenhum segredo no diff.
+- The 5 principles are blocking; any violation stops the approval.
+- PII masked by default; reveal always generates an audit entry (`reveal_phone`/`reveal_content`, severity `pii`).
+- Every sensitive action writes `audit_log` (`tool_call`, `incident_*`, `export_report`, `rule_update`, `session_start`, `user_role_update`, `user_status_update`).
+- Incident state is never a tool; ack/resolve/comment only through REST + UI with double server-side validation.
+- The LLM never touches the database; the app runs query/RBAC. No number in the AI's answer without a `tool_result`.
+- Per-endpoint RBAC via `@Requires(perm)`; check the right permission (and therefore role) per `permissions.ts`.
+- Contract: snake_case API (mapped at the edge from Prisma Client's camelCase) / snake_case DB, ISO 8601 UTC, paginated envelope, `{ error: { code, message } }`.
+- Shapes match `@atena/types` / `docs/openapi.yaml`; divergence is a contract defect.
+- Frontend uses the in-house components on the `--at-*` tokens and Phosphor; do not recreate components; Plankton + semantic palette; informal PT-BR in the UI copy.
+- `policy.json` blocks `.env`/`.pem`/`.key`/`*secret*` — no secret in the diff.
 
 ## Resource Strategy
 
-- O checklist canônico de segurança/PII vive em `.context/docs/security.md` e na `security-audit` skill; cite-os em vez de duplicar.
-- Adicione `references/` só se um checklist por área (chat, incidents, ws) crescer demais para caber aqui.
-- Não crie `scripts/` de lint enquanto não houver código; quando houver, regras de ESLint/guard de PII seriam candidatas.
-- Não revise o protótipo como se fosse produção — ele é referência de design.
+- The canonical security/PII checklist lives in `.context/docs/security.md` and in the `security-audit` skill; cite them instead of duplicating.
+- Add `references/` only if a per-area checklist (chat, incidents, ws) grows too large to fit here.
+- Lint already exists (ESLint flat config in `apps/api/eslint.config.mjs`, with local rules such as `local/one-per-line`); a PII guard rule would be a candidate for `scripts/`/lint.
+- Review the real code; the original prototype was only a design reference.

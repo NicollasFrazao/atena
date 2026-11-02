@@ -17,6 +17,13 @@ import type {
   AuditWindowInterface,
 } from '../audit-query/audit-query.types';
 import { appTimeZone, formatInstantInTz, resolveBoundInTz, startOfRecentDays } from '../audit-query/tz';
+import {
+  DAYS_PER_WEEK,
+  MINUTES_PER_HOUR,
+  MS_PER_DAY,
+  MS_PER_MINUTE,
+  MS_PER_SECOND,
+} from '../common/units';
 import { PrismaService } from '../prisma/prisma.service';
 import { DeliveryExportDto } from './dto/delivery-export.dto';
 import { DeliveryReportDto } from './dto/delivery-report.dto';
@@ -25,27 +32,38 @@ import { IncidentReportDto } from './dto/incident-report.dto';
 /**
  * Janela temporal de um preset de `date_range`.
  *
- * @property {number | null} ms - Tamanho da janela em ms a partir de agora; `null` = sem limite inferior (todo o período).
- * @property {string} label - Rótulo legível usado em `window` na resposta.
+ * ms - Tamanho da janela em ms a partir de agora; `null` = sem limite inferior (todo o período).
+ *
+ * label - Rótulo legível usado em `window` na resposta.
  */
 interface WindowPresetInterface {
   ms: number | null;
   label: string;
 }
 
-/** Milissegundos em um dia (janela rolante de `24h` e conversão de presets em dias). */
-const DAY_MS = 24 * 60 * 60 * 1000;
+/** Days of the `30d` preset. */
+const MONTH_PRESET_DAYS = 30;
 
 /** Captura `YYYY-MM-DD` + (opcional) `HH:MM` de uma entrada de data/datetime para o rótulo legível. */
 const BOUND_PARTS = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/;
+
+/** Capture-group index of each field of {@link BOUND_PARTS}. */
+const BOUND_GROUP = {
+  year: 1,
+  month: 2,
+  day: 3,
+  hour: 4,
+  minute: 5,
+} as const;
 
 /**
  * Formata um limite da janela (`date_from`/`date_to`) de forma amigável: `DD/MM/AAAA` (só-dia) ou
  * `DD/MM/AAAA HH:MM` (com hora) — sem o `T` cru do ISO. Devolve o valor original se não casar.
  *
- * @param {string | undefined} value - Limite cru (`YYYY-MM-DD` ou ISO).
- * @param {string} fallback - Texto quando o limite é ausente (ex.: `início`/`agora`).
- * @returns {string} Limite legível.
+ * @param value - Limite cru (`YYYY-MM-DD` ou ISO).
+ * @param fallback - Texto quando o limite é ausente (ex.: `início`/`agora`).
+ *
+ * @returns Limite legível.
  */
 function humanBound(
   value: string | undefined,
@@ -61,10 +79,10 @@ function humanBound(
     return value;
   }
 
-  const date = `${match[3]}/${match[2]}/${match[1]}`;
+  const date = `${match[BOUND_GROUP.day]}/${match[BOUND_GROUP.month]}/${match[BOUND_GROUP.year]}`;
 
-  return match[4]
-    ? `${date} às ${match[4]}:${match[5]}`
+  return match[BOUND_GROUP.hour]
+    ? `${date} às ${match[BOUND_GROUP.hour]}:${match[BOUND_GROUP.minute]}`
     : date;
 }
 
@@ -72,9 +90,10 @@ function humanBound(
  * Rótulo legível de uma janela explícita: `DD/MM/AAAA` quando é um único dia inteiro; senão
  * `<de> → <até>` humanizado. Sem `T` cru.
  *
- * @param {string} [from] - `date_from` cru.
- * @param {string} [to] - `date_to` cru.
- * @returns {string} Rótulo da janela.
+ * @param [from] - `date_from` cru.
+ * @param [to] - `date_to` cru.
+ *
+ * @returns Rótulo da janela.
  */
 function explicitWindowLabel(
   from?: string,
@@ -107,15 +126,15 @@ const DATE_ONLY_BOUND = /^\d{4}-\d{2}-\d{2}$/;
 /** Presets aceitos em `date_range` (default `'24h'`). */
 const WINDOW_PRESETS: Record<string, WindowPresetInterface> = {
   '24h': {
-    ms: 24 * 60 * 60 * 1000,
+    ms: MS_PER_DAY,
     label: 'Últimas 24h',
   },
   '7d': {
-    ms: 7 * 24 * 60 * 60 * 1000,
+    ms: DAYS_PER_WEEK * MS_PER_DAY,
     label: 'Últimos 7 dias',
   },
   '30d': {
-    ms: 30 * 24 * 60 * 60 * 1000,
+    ms: MONTH_PRESET_DAYS * MS_PER_DAY,
     label: 'Últimos 30 dias',
   },
   all: {
@@ -127,9 +146,11 @@ const WINDOW_PRESETS: Record<string, WindowPresetInterface> = {
 /**
  * Janela resolvida do relatório: o intervalo a consultar + o rótulo legível exibido em `window`.
  *
- * @property {AuditWindowInterface} window - Intervalo `[from, to)` a consultar no motor.
- * @property {string} label - Rótulo legível (preset ou intervalo) devolvido na resposta.
- * @property {boolean} explicit - `true` se veio de `date_from`/`date_to` (data nomeada pelo usuário);
+ * window - Intervalo `[from, to)` a consultar no motor.
+ *
+ * label - Rótulo legível (preset ou intervalo) devolvido na resposta.
+ *
+ * explicit - `true` se veio de `date_from`/`date_to` (data nomeada pelo usuário);
  *   `false` se é preset rolante/default (clampável pela guarda em vez de rejeitado).
  */
 interface ResolvedReportWindowInterface {
@@ -142,8 +163,9 @@ interface ResolvedReportWindowInterface {
  * Resolve a janela do relatório: `date_from`/`date_to` (ISO, precedência) → preset `date_range`
  * → default `24h`. Devolve a janela e o rótulo legível.
  *
- * @param {DeliveryReportDto} dto - Janela pedida.
- * @returns {ResolvedReportWindowInterface} Janela resolvida + rótulo.
+ * @param dto - Janela pedida.
+ *
+ * @returns Janela resolvida + rótulo.
  */
 function resolveReportWindow(
   dto: {
@@ -208,11 +230,12 @@ function resolveReportWindow(
  * Início (UTC) da janela de um preset: `all` = sem limite; `24h` = rolante (`agora − 24h`); `7d`/`30d`
  * = N dias-calendário **no fuso** (início do dia mais antigo). Espelha {@link resolveWindow} do motor.
  *
- * @param {string} key - Atalho (`24h`/`7d`/`30d`/`all`).
- * @param {WindowPresetInterface} preset - Preset resolvido (ms/label).
- * @param {string} timeZone - Fuso de exibição (IANA).
- * @param {Date} now - Instante de referência.
- * @returns {Date | null} Início da janela em UTC, ou `null` (sem limite inferior).
+ * @param key - Atalho (`24h`/`7d`/`30d`/`all`).
+ * @param preset - Preset resolvido (ms/label).
+ * @param timeZone - Fuso de exibição (IANA).
+ * @param now - Instante de referência.
+ *
+ * @returns Início da janela em UTC, ou `null` (sem limite inferior).
  */
 function presetWindowStart(
   key: string,
@@ -229,7 +252,7 @@ function presetWindowStart(
   }
 
   return startOfRecentDays(
-    Math.round(preset.ms / DAY_MS) - 1,
+    Math.round(preset.ms / MS_PER_DAY) - 1,
     timeZone,
     now,
   );
@@ -239,8 +262,9 @@ function presetWindowStart(
  * Monta o `csv_url` (caminho sob `/api`) do export do relatório a partir da MESMA janela/filtros que
  * o geraram — o front baixa por essa URL (`GET /reports/delivery/export`).
  *
- * @param {DeliveryReportDto} dto - Janela e filtros do relatório gerado.
- * @returns {string} Caminho do export com a query string (ex.: `/reports/delivery/export?date_range=24h`).
+ * @param dto - Janela e filtros do relatório gerado.
+ *
+ * @returns Caminho do export com a query string (ex.: `/reports/delivery/export?date_range=24h`).
  */
 function deliveryExportUrl(dto: DeliveryReportDto): string {
   const params = new URLSearchParams();
@@ -298,8 +322,9 @@ function deliveryExportUrl(dto: DeliveryReportDto): string {
  * Eco dos filtros aplicados ao relatório (só as chaves definidas) — o front mostra no card de qual
  * cliente/provedor/status é o recorte. Devolve `undefined` se nenhum filtro foi informado (= todos).
  *
- * @param {DeliveryReportDto['filters']} filters - Filtros do recorte (opcionais, snake_case).
- * @returns {DeliveryReportInterface['filters']} O eco enxuto, ou `undefined` se vazio.
+ * @param filters - Filtros do recorte (opcionais, snake_case).
+ *
+ * @returns O eco enxuto, ou `undefined` se vazio.
  */
 function echoedFilters(filters: DeliveryReportDto['filters']): DeliveryReportInterface['filters'] {
   if (!filters) {
@@ -336,11 +361,11 @@ function formatDuration(
 
   const totalMin = Math.max(
     0,
-    Math.round((to.getTime() - from.getTime()) / 60_000),
+    Math.round((to.getTime() - from.getTime()) / MS_PER_MINUTE),
   );
 
-  const hours = Math.floor(totalMin / 60);
-  const minutes = totalMin % 60;
+  const hours = Math.floor(totalMin / MINUTES_PER_HOUR);
+  const minutes = totalMin % MINUTES_PER_HOUR;
 
   if (hours === 0) {
     return `${minutes}m`;
@@ -375,16 +400,17 @@ function avgSecondsOrNull(values: number[]): number | null {
  * Top dimensões afetadas: agrupa os incidentes por `dimension_type`+`dimension_value`, conta e
  * mantém a pior severidade do grupo. Ignora incidentes sem `dimension_value` (ex.: dimensão global).
  *
- * @param {Array<{ dimensionType: string; dimensionValue: string | null; severity: string }>} rows - Incidentes resolvidos.
- * @param {number} limit - Máximo de dimensões devolvidas (desc. por contagem).
- * @returns {AffectedDimensionInterface[]} Dimensões afetadas ordenadas por contagem.
+ * @param rows - Incidentes resolvidos.
+ * @param limit - Máximo de dimensões devolvidas (desc. por contagem).
+ *
+ * @returns Dimensões afetadas ordenadas por contagem.
  */
 function topAffectedDimensions(
-  rows: Array<{
+  rows: {
     dimensionType: string;
     dimensionValue: string | null;
     severity: string
-  }>,
+  }[],
   limit = 12,
 ): AffectedDimensionInterface[] {
   const byKey = new Map<string, AffectedDimensionInterface>();
@@ -446,8 +472,8 @@ function topAffectedDimensions(
 @Injectable()
 export class ReportsService {
   /**
-   * @param {AuditQueryServiceInterface} audit - Motor de consulta de auditoria (entregabilidade).
-   * @param {PrismaService} prisma - Acesso aos incidentes (relatório de incidentes).
+   * @param audit - Motor de consulta de auditoria (entregabilidade).
+   * @param prisma - Acesso aos incidentes (relatório de incidentes).
    */
   constructor(
     @Inject(AUDIT_QUERY) private readonly audit: AuditQueryServiceInterface,
@@ -458,10 +484,11 @@ export class ReportsService {
   /**
    * Gera o relatório de entregabilidade para a janela/filtros informados.
    *
-   * @param {DeliveryReportDto} dto - Janela (`date_range`), agrupamento e filtros opcionais.
-   * @param {AuditProgressCallback} [onProgress] - Callback de andamento da varredura (etapas do motor).
-   * @param {AbortSignal} [signal] - Cancela a varredura no S3 se abortado (ex.: cliente desconectou do stream).
-   * @returns {Promise<DeliveryReportInterface>} Relatório agregado (totais, por provider, hourly, top_errors, csv_url).
+   * @param dto - Janela (`date_range`), agrupamento e filtros opcionais.
+   * @param [onProgress] - Callback de andamento da varredura (etapas do motor).
+   * @param [signal] - Cancela a varredura no S3 se abortado (ex.: cliente desconectou do stream).
+   *
+   * @returns Relatório agregado (totais, por provider, hourly, top_errors, csv_url).
    */
   async generateDelivery(
     dto: DeliveryReportDto,
@@ -504,8 +531,9 @@ export class ReportsService {
    * entregabilidade — base do download do relatório (`GET /reports/delivery/export`, auditado como
    * `export_report` · `pii`). Mesma resolução de janela/guarda do {@link generateDelivery}.
    *
-   * @param {DeliveryExportDto} dto - Janela + filtros (flat, da query string).
-   * @returns {Promise<string>} Caminho do CSV gerado (o controller envia com BOM e remove ao fim).
+   * @param dto - Janela + filtros (flat, da query string).
+   *
+   * @returns Caminho do CSV gerado (o controller envia com BOM e remove ao fim).
    */
   async exportDelivery(dto: DeliveryExportDto): Promise<string> {
     const { window } = this.effectiveWindow(dto);
@@ -522,8 +550,9 @@ export class ReportsService {
    * Resolve a janela efetiva do relatório (preset/explícita) e aplica a guarda de data mínima:
    * data nomeada pelo usuário é rejeitada se cair antes do contrato; preset rolante é recortado.
    *
-   * @param {{ date_from?: string; date_to?: string; date_range?: string }} dto - Janela pedida.
-   * @returns {{ window: AuditWindowInterface; label: string }} Janela efetiva + rótulo legível.
+   * @param dto - Janela pedida.
+   *
+   * @returns Janela efetiva + rótulo legível.
    */
   private effectiveWindow(dto: {
     date_from?: string;
@@ -581,9 +610,9 @@ export class ReportsService {
   /**
    * Gera o relatório de incidentes resolvidos (§C.6) na janela/filtros informados.
    *
-   * @param {IncidentReportDto} dto - Janela (`date_range`) e filtros opcionais (severidade/dimensão).
+   * @param dto - Janela (`date_range`) e filtros opcionais (severidade/dimensão).
    *
-   * @returns {Promise<IncidentReportInterface>} Total, contagem por severidade e a lista resolvida.
+   * @returns Total, contagem por severidade e a lista resolvida.
    */
   async generateIncident(dto: IncidentReportDto): Promise<IncidentReportInterface> {
     const preset = WINDOW_PRESETS[dto.date_range ?? '24h'] ?? WINDOW_PRESETS['24h'];
@@ -623,11 +652,11 @@ export class ReportsService {
 
     for (const row of rows) {
       if (row.acknowledgedAt) {
-        ackSeconds.push((row.acknowledgedAt.getTime() - row.detectedAt.getTime()) / 1000);
+        ackSeconds.push((row.acknowledgedAt.getTime() - row.detectedAt.getTime()) / MS_PER_SECOND);
       }
 
       if (row.resolvedAt) {
-        resolveSeconds.push((row.resolvedAt.getTime() - row.detectedAt.getTime()) / 1000);
+        resolveSeconds.push((row.resolvedAt.getTime() - row.detectedAt.getTime()) / MS_PER_SECOND);
       }
     }
 
@@ -667,9 +696,9 @@ export class ReportsService {
   /**
    * Normaliza um incidente resolvido para o shape de borda (§C.6).
    *
-   * @param {Incident & { rule: AnomalyRule }} incident - Incidente resolvido (com a regra).
+   * @param incident - Incidente resolvido (com a regra).
    *
-   * @returns {ResolvedIncidentInterface} Incidente resolvido em snake_case.
+   * @returns Incidente resolvido em snake_case.
    */
   private toResolvedIncident(incident: Incident & { rule: AnomalyRule }): ResolvedIncidentInterface {
     const payload = (incident.detectionPayload ?? {}) as { rule?: string };

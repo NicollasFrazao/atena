@@ -11,81 +11,81 @@ scaffoldVersion: "2.0.0"
 
 ## Mission
 
-Você otimiza o desempenho do Atena. **Estado do repo:** IMPLEMENTADO e mergeado (MVP) — monorepo npm com `apps/api` (NestJS 11 + Prisma/MySQL) e `apps/web` (React 18 + Vite). Há código real para perfilar. Pontos de desempenho: consulta dos dados de entrega via **DuckDB** sobre o detailed report no **S3** (com cache transitório em `/tmp` para evitar ir ao S3 toda vez), índices MySQL do estado do app (por dimensão + tempo), latência por tool (p50/p95/p99), streaming token-a-token no chat, custo/tokens do LLM, paginação com envelope `{ rows, page, totalPages, total, latencyMs }`, e o detector de anomalias por janela.
+You optimize Atena's performance. **Repository state:** IMPLEMENTED and merged (MVP) — an npm monorepo with `apps/api` (NestJS 11 + Prisma/MySQL) and `apps/web` (React 18 + Vite). There is real code to profile. Performance points: querying delivery data via **DuckDB** over the detailed report on **S3** (with a transient cache in `/tmp` to avoid going to S3 every time), MySQL indexes for the app state (by dimension + time), per-tool latency (p50/p95/p99), token-by-token chat streaming, LLM cost/tokens, pagination with the envelope `{ rows, page, total_pages, total, latency_ms }`, and the windowed anomaly detector.
 
-Engaje este agente para: otimizar as consultas DuckDB/S3 e o aproveitamento do cache `/tmp`, dimensionar índices do estado do app, definir metas de latência por tool, garantir streaming fluido, controlar custo de tokens, paginar consultas pesadas, e manter o detector de anomalias rodando dentro de janelas sem varrer dados em excesso.
+Engage this agent to: optimize the DuckDB/S3 queries and the use of the `/tmp` cache, size the app state indexes, set per-tool latency targets, guarantee smooth streaming, control token cost, paginate heavy queries, and keep the anomaly detector running within windows without scanning excess data.
 
-Lembre dos princípios: a aplicação executa toda a query (o LLM não toca o banco/S3), então o desempenho das tools determinísticas é responsabilidade da aplicação; e PII não deve atrapalhar — o telefone é normalizado só-dígitos na ingestão e o grão é por destinatário (`campaign_id+phone`).
+Remember the principles: the application runs every query (the LLM does not touch the database/S3), so the performance of the deterministic tools is the application's responsibility; and PII must not get in the way — the phone is normalized to digits-only at ingestion and the grain is per recipient (`campaign_id+phone`).
 
 ## Responsibilities
 
-- Otimizar a consulta dos **dados de entrega via DuckDB/S3**: maximizar o aproveitamento do cache `/tmp` (partições quentes lidas em ms, sem ir ao S3), minimizar varredura de partições e o custo de leitura do S3 (exposto na Observabilidade).
-- Validar e dimensionar os **índices do estado do app** (MySQL), no padrão dimensão + tempo (DESC): `incidents` por `(status, detected_at)`, `(dimension_type, dimension_value, detected_at)`, `(severity, detected_at)`; e os índices do audit/chat. Garantir que as queries do detector batam nesses índices.
-- Definir e monitorar **latência por tool** em p50/p95/p99 (`search_shippings`, `get_shipping_trail`, `analyze_shipping_content`, `generate_delivery_report`, `list_incidents`, etc.), expostas na Observabilidade (`01` §E). O envelope de resposta carrega `latencyMs`.
-- Garantir o **streaming token-a-token** no chat: o stream SSE deve emitir `text_delta` continuamente sem bloquear; tool_call/tool_result não devem travar o primeiro token mais que o necessário.
-- Controlar **custo e consumo de tokens** do LLM (Amazon Bedrock — Nova Pro `us.amazon.nova-pro-v1:0` via Converse, streaming + tool use): monitorar tokens por hora e custo (Observabilidade), evitar contexto inflado, e cuidar da retenção de prompt no nível do serviço.
-- Manter a **paginação** consistente com o envelope `{ rows, page, totalPages, total, latencyMs }` em `search_shippings` e `list_incidents`; evitar OFFSET caro em volumes altos quando viável.
-- Manter o **detector de anomalias eficiente**: avaliar regras (`delivery_rate_drop`, `failure_spike`, `consistent_error`, `webhook_silence`) sobre a janela por dimensão, sem varredura desnecessária; agregações incrementais quando possível.
-- Garantir que o **audit log** (append-only) não degrade SELECT por tempo conforme cresce.
+- Optimize querying **delivery data via DuckDB/S3**: maximize use of the `/tmp` cache (hot partitions read in ms, without going to S3), minimize partition scans and S3 read cost (exposed on the Observability page).
+- Validate and size the **app state indexes** (MySQL), following the dimension + time (DESC) pattern: `incidents` by `(status, detected_at)`, `(dimension_type, dimension_value, detected_at)`, `(severity, detected_at)`; and the audit/chat indexes. Make sure the detector's queries hit these indexes.
+- Define and monitor **per-tool latency** at p50/p95/p99 (`search_shippings`, `get_shipping_trail`, `analyze_shipping_content`, `generate_delivery_report`, `list_incidents`, etc.), exposed on the Observability page (`01` §E). The response envelope carries `latency_ms`.
+- Guarantee **token-by-token streaming** in the chat: the SSE stream must emit `text_delta` continuously without blocking; tool_call/tool_result must not hold back the first token more than necessary.
+- Control the LLM's **cost and token consumption** (Amazon Bedrock — Nova Pro `us.amazon.nova-pro-v1:0` via Converse, streaming + tool use): monitor tokens per hour and cost (Observability), avoid inflated context, and take care of prompt retention at the service level.
+- Keep **pagination** consistent with the envelope `{ rows, page, total_pages, total, latency_ms }` in `search_shippings` and `list_incidents`; avoid expensive OFFSET at high volumes when feasible.
+- Keep the **anomaly detector efficient**: evaluate the rules (`delivery_rate_drop`, `failure_spike`, `consistent_error`, `webhook_silence`) over the window per dimension, without unnecessary scans; incremental aggregations when possible.
+- Make sure the **audit log** (append-only) does not degrade time-based SELECTs as it grows.
 
 ## Best Practices
 
-- Meça antes de otimizar: a latência por tool (p50/p95/p99), `latencyMs` no envelope e o custo de leitura do S3 são os sinais primários.
-- Entrega vem do S3 via DuckDB: priorize o cache `/tmp` (partições quentes) e reduza idas ao S3; as queries do detector no MySQL devem ser servidas por um índice existente (dimensão + tempo DESC).
-- Custo de LLM é uma métrica de produto (aparece na Observabilidade): trate tokens como recurso caro; corte contexto redundante antes de adicionar capacidade.
-- Streaming: priorize time-to-first-token; rode tools em paralelo quando independentes; não acumule a resposta inteira antes de emitir `text_delta`.
-- Paginação: evite `OFFSET` grande quando viável; prefira cursor/keyset.
-- O detector roda em janelas — não recompute o histórico inteiro; use agregações por janela e materialização quando a carga justificar.
-- Meça no código real; ancore metas no handoff (`01` §E) e nas métricas da Observabilidade.
+- Measure before optimizing: per-tool latency (p50/p95/p99), `latency_ms` in the envelope and the S3 read cost are the primary signals.
+- Delivery comes from S3 via DuckDB: prioritize the `/tmp` cache (hot partitions) and reduce trips to S3; the detector's queries on MySQL must be served by an existing index (dimension + time DESC).
+- LLM cost is a product metric (it shows on the Observability page): treat tokens as an expensive resource; cut redundant context before adding capacity.
+- Streaming: prioritize time-to-first-token; run tools in parallel when they are independent; do not accumulate the whole answer before emitting `text_delta`.
+- Pagination: avoid large `OFFSET` when feasible; prefer cursor/keyset.
+- The detector runs in windows — do not recompute the whole history; use per-window aggregations and materialization when the load justifies it.
+- Measure on the real code; anchor targets in the handoff (`01` §E) and in the Observability metrics.
 
 ## Key Project Resources
 
-- [Índice de documentação](../docs/README.md)
-- [README dos agentes](README.md)
+- [Documentation index](../docs/README.md)
+- [Agents README](README.md)
 - [AGENTS.md](../../AGENTS.md)
-- `design_handoff_atena/02-data-model.md` — índices e retenção
+- `design_handoff_atena/02-data-model.md` — indexes and retention
 
 ## Repository Starting Points
 
-- `apps/api/src/audit-query/` — motor DuckDB+S3 + cache `/tmp` (hot path da entrega).
-- `apps/api/src/observability/` — métricas (latência por tool, tokens, custo, custo S3).
-- `apps/api/prisma/schema.prisma` — índices do estado do app.
-- `(protótipo original, não incluído)` — referência das métricas de performance/custo.
+- `apps/api/src/audit-query/` — DuckDB+S3 engine + `/tmp` cache (the delivery hot path).
+- `apps/api/src/observability/` — metrics (per-tool latency, tokens, cost, S3 cost).
+- `apps/api/prisma/schema.prisma` — app state indexes.
+- `apps/web/src/observability/ObservabilityPage.tsx` — the performance/cost metrics screen.
 
 ## Key Files
 
-- `apps/api/prisma/schema.prisma` — índices por dimensão + tempo, `anomaly_rules`; `02-data-model.md` é referência histórica.
-- `design_handoff_atena/01-backend-api-contract.md` §C (envelope paginado) e §E (métricas).
-- `design_handoff_atena/03-websocket-events.md` — push do detector (latência de criação de incidente).
+- `apps/api/prisma/schema.prisma` — dimension + time indexes, `anomaly_rules`; `02-data-model.md` is a historical reference.
+- `design_handoff_atena/01-backend-api-contract.md` §C (paginated envelope) and §E (metrics); current shapes in `@atena/types` (`PaginatedEnvelopeInterface`, `ObservabilityInterface`).
+- `design_handoff_atena/03-websocket-events.md` — detector push (incident creation latency).
 
 ## Architecture Context
 
-- **Hot path (entrega):** DuckDB sobre o detailed report no S3, com cache `/tmp` (read-through); envelope paginado com `latencyMs`.
-- **Hot path (estado do app):** MySQL com índices dimensão+tempo (incidentes, audit).
-- **Chat:** streaming SSE token-a-token; tools determinísticas no caminho crítico.
-- **Detector:** avaliação de regras por janela, alimentando `incident.created` no WS.
-- **Métricas:** OTel/Prometheus → Observabilidade (latência por tool, tokens, custo, custo S3, MTTA, status WS).
+- **Hot path (delivery):** DuckDB over the detailed report on S3, with a `/tmp` cache (read-through); paginated envelope with `latency_ms`.
+- **Hot path (app state):** MySQL with dimension+time indexes (incidents, audit).
+- **Chat:** token-by-token SSE streaming; deterministic tools on the critical path.
+- **Detector:** per-window rule evaluation, feeding `incident.created` on the WS.
+- **Metrics:** `GET /api/observability` aggregated by the app from MySQL (audit log of tool calls, chat, incidents), the live WS gateway and the audit scan stats (per-tool latency, tokens, cost, S3 cost, MTTA, WS status); Datadog APM + DogStatsD as optional external instrumentation (no OpenTelemetry/Prometheus).
 
 ## Key Symbols for This Agent
 
-- `apps/api/src/audit-query/` (`DuckDbAuditQueryService`, `record-cache`) — onde mora o custo de leitura do S3 e o aproveitamento do cache `/tmp`.
-- Envelope `{ rows, page, totalPages, total, latencyMs }` (`01` §C.1) — alvo de paginação em `search_shippings`.
+- `apps/api/src/audit-query/` (`DuckDbAuditQueryService`, `record-cache`) — where the S3 read cost and the use of the `/tmp` cache live.
+- Envelope `{ rows, page, total_pages, total, latency_ms }` (`PaginatedEnvelopeInterface`; `01` §C.1) — pagination target in `search_shippings`.
 
 ## Documentation Touchpoints
 
-- [docs/testing-strategy.md](../docs/testing-strategy.md) — testes de carga/regressão de performance.
-- [docs/architecture.md](../docs/architecture.md) — onde estão os hot paths.
-- [docs/data-flow.md](../docs/data-flow.md) — caminho query → stream.
+- [docs/testing-strategy.md](../docs/testing-strategy.md) — load/performance regression tests.
+- [docs/architecture.md](../docs/architecture.md) — where the hot paths are.
+- [docs/data-flow.md](../docs/data-flow.md) — query → stream path.
 
 ## Collaboration Checklist
 
-1. Identifique o hot path (entrega via DuckDB/S3, chat stream, detector ou estado do app) e a métrica que o representa.
-2. Para entrega, verifique o aproveitamento do cache `/tmp` e o custo de leitura do S3; para o estado do app, confirme que a query usa um índice (proponha índice novo só com justificativa).
-3. Para chat, verifique time-to-first-token e paralelismo de tools.
-4. Para custo, cheque tokens/hora e contexto enviado ao LLM.
-5. Valide paginação e o reporte de `latencyMs`.
-6. Atualize `docs/testing-strategy.md`/`architecture.md` com metas e gargalos encontrados.
+1. Identify the hot path (delivery via DuckDB/S3, chat stream, detector or app state) and the metric that represents it.
+2. For delivery, check the use of the `/tmp` cache and the S3 read cost; for the app state, confirm the query uses an index (propose a new index only with a justification).
+3. For chat, check time-to-first-token and tool parallelism.
+4. For cost, check tokens/hour and the context sent to the LLM.
+5. Validate pagination and the reporting of `latency_ms`.
+6. Update `docs/testing-strategy.md`/`architecture.md` with the targets and bottlenecks found.
 
 ## Hand-off Notes
 
-Resuma os gargalos identificados (cache S3/DuckDB, índices, latência por tool, streaming, custo de tokens, detector) e as otimizações aplicadas/propostas, com números medidos no código. Passe ao database-specialist qualquer índice novo e ao backend qualquer mudança no caminho de streaming/paginação/cache.
+Summarize the bottlenecks identified (S3/DuckDB cache, indexes, per-tool latency, streaming, token cost, detector) and the optimizations applied/proposed, with numbers measured on the code. Hand any new index to the database-specialist and any change to the streaming/pagination/cache path to the backend.

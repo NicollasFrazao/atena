@@ -8,7 +8,7 @@ import { apiFetch } from './client';
 /**
  * Lista as sessões de chat (mais recentes primeiro): `GET /chat/sessions`.
  *
- * @returns {Promise<ChatSessionListItemInterface[]>} Resumo das sessões.
+ * @returns Resumo das sessões.
  */
 export function listSessions(): Promise<ChatSessionListItemInterface[]> {
   return apiFetch('/chat/sessions');
@@ -17,8 +17,9 @@ export function listSessions(): Promise<ChatSessionListItemInterface[]> {
 /**
  * Mensagens persistidas de uma sessão, em ordem cronológica: `GET /chat/sessions/:id/messages`.
  *
- * @param {string} id - Id da sessão.
- * @returns {Promise<ChatMessageInterface[]>} Mensagens da sessão.
+ * @param id - Id da sessão.
+ *
+ * @returns Mensagens da sessão.
  */
 export function getSessionMessages(id: string): Promise<ChatMessageInterface[]> {
   return apiFetch(`/chat/sessions/${id}/messages`);
@@ -27,9 +28,10 @@ export function getSessionMessages(id: string): Promise<ChatMessageInterface[]> 
 /**
  * Renomeia uma sessão (título do cabeçalho/histórico): `PATCH /chat/sessions/:id`.
  *
- * @param {string} id - Id da sessão.
- * @param {string} title - Novo título (1–200 chars).
- * @returns {Promise<{ session_id: string; title: string }>} Sessão renomeada.
+ * @param id - Id da sessão.
+ * @param title - Novo título (1–200 chars).
+ *
+ * @returns Sessão renomeada.
  */
 export function renameSession(
   id: string,
@@ -50,9 +52,10 @@ export function renameSession(
 /**
  * Fixa/desafixa uma sessão no histórico: `PATCH /chat/sessions/:id` com `{ pinned }`.
  *
- * @param {string} id - Id da sessão.
- * @param {boolean} pinned - `true` fixa, `false` desafixa.
- * @returns {Promise<{ session_id: string; title: string; pinned: boolean }>} Sessão atualizada.
+ * @param id - Id da sessão.
+ * @param pinned - `true` fixa, `false` desafixa.
+ *
+ * @returns Sessão atualizada.
  */
 export function setSessionPinned(
   id: string,
@@ -74,28 +77,11 @@ export function setSessionPinned(
 /**
  * Query da lista de sessões (react-query).
  *
- * @returns {UseQueryResult<ChatSessionListItemInterface[]>} Estado da query.
+ * @returns Estado da query.
  */
 export function useSessions(): UseQueryResult<ChatSessionListItemInterface[]> {
   return useQuery({
     queryKey: ['sessions'],
     queryFn: listSessions,
-  });
-}
-
-/**
- * Query das mensagens de uma sessão (habilitada só quando `id` é não-nulo).
- *
- * @param {string | null} id - Id da sessão (ou `null` para desabilitar).
- * @returns {UseQueryResult<ChatMessageInterface[]>} Estado da query.
- */
-export function useSessionMessages(id: string | null): UseQueryResult<ChatMessageInterface[]> {
-  return useQuery({
-    queryKey: [
-      'session-messages',
-      id,
-    ],
-    queryFn: () => getSessionMessages(id as string),
-    enabled: id !== null,
   });
 }

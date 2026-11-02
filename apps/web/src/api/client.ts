@@ -1,5 +1,6 @@
 import type { ApiErrorInterface } from '@atena/types';
 import { API_URL } from './config';
+import { HTTP_STATUS_NO_CONTENT, HTTP_STATUS_UNAUTHORIZED } from './http-status';
 
 /** Erro de API no shape do contrato (`{ error: { code, message } }`) + status HTTP. */
 export class ApiError extends Error {
@@ -19,15 +20,29 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The JSON body of an error response as it may really arrive: a gateway, a proxy or a crash can
+ * answer with any JSON (or none), so every level of the contract shape may be missing.
+ */
+export type ApiErrorBodyType = {
+  error?: Partial<ApiErrorInterface['error']>;
+} | null;
+
+/**
+ * The fetch options {@link apiFetch} accepts. Headers are a plain record because they are merged
+ * over the default `Content-Type` by spreading.
+ */
+export type ApiFetchInitType = Omit<RequestInit, 'headers'> & {
+  headers?: Record<string, string>;
+};
+
 /** Handler de 401 (sessão expirada) registrado pelo App p/ abrir o overlay. */
 let unauthorizedHandler: (() => void) | null = null;
 
 /**
  * Registra o callback chamado quando a API responde 401 (sessão expirada).
  *
- * @param {() => void} handler - Ação (ex.: abrir overlay de re-login).
- *
- * @returns {void}
+ * @param handler - Ação (ex.: abrir overlay de re-login).
  */
 export function setUnauthorizedHandler(handler: () => void): void {
   unauthorizedHandler = handler;
@@ -36,8 +51,6 @@ export function setUnauthorizedHandler(handler: () => void): void {
 /**
  * Dispara o handler de 401 (sessão expirada). Exposto porque o stream SSE do chat (`sse.ts`) não
  * passa pelo `apiFetch`, mas precisa abrir o MESMO overlay de re-login num 401.
- *
- * @returns {void}
  */
 export function notifyUnauthorized(): void {
   unauthorizedHandler?.();
@@ -47,16 +60,18 @@ export function notifyUnauthorized(): void {
  * Fetch tipado contra a API da Atena (prefixo `/api`, JSON, shape de erro do contrato).
  * Em 401, dispara o handler de sessão expirada antes de lançar.
  *
- * @template T - Tipo do corpo de resposta esperado.
- * @param {string} path - Caminho sob `/api` (ex.: `/chat/sessions`).
- * @param {RequestInit} [init] - Opções do fetch (method/body/headers).
+ * @param path - Caminho sob `/api` (ex.: `/chat/sessions`).
+ * @param [init] - Opções do fetch (method/body/headers).
  *
- * @returns {Promise<T>} Corpo JSON tipado (ou `undefined` em 204).
+ * @returns Corpo JSON tipado (ou `undefined` em 204).
+ *
  * @throws {ApiError} Em respostas não-2xx (incluindo 401).
+ *
+ * @template T - Tipo do corpo de resposta esperado.
  */
 export async function apiFetch<T>(
   path: string,
-  init?: RequestInit,
+  init?: ApiFetchInitType,
 ): Promise<T> {
   const response = await fetch(
     `${API_URL}/api${path}`,
@@ -71,18 +86,18 @@ export async function apiFetch<T>(
     },
   );
 
-  if (response.status === 401) {
+  if (response.status === HTTP_STATUS_UNAUTHORIZED) {
     notifyUnauthorized();
 
     throw new ApiError(
       'unauthorized',
       'Sessão expirada',
-      401,
+      HTTP_STATUS_UNAUTHORIZED,
     );
   }
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as ApiErrorInterface | null;
+    const body = (await response.json().catch(() => null)) as ApiErrorBodyType;
 
     throw new ApiError(
       body?.error?.code ?? 'error',
@@ -91,7 +106,7 @@ export async function apiFetch<T>(
     );
   }
 
-  if (response.status === 204) {
+  if (response.status === HTTP_STATUS_NO_CONTENT) {
     return undefined as T;
   }
 

@@ -1,5 +1,6 @@
 import { type ShippingStatusType } from '@atena/types';
 import { APP_TIMEZONE } from '../../util/time';
+import { cssVar } from '../../styles/tokens';
 
 /** Tom semântico de um status, usado para colorir pills/badges. */
 export type StatusToneType = 'success' | 'danger' | 'warning' | 'neutral';
@@ -13,20 +14,20 @@ export interface ToneColorsInterface {
 /** Mapa de tom semântico → tokens de cor (texto + fundo claro). */
 export const TONE_COLORS: Record<StatusToneType, ToneColorsInterface> = {
   success: {
-    color: 'var(--at-success-300)',
-    background: 'var(--at-success-50)',
+    color: cssVar.success300,
+    background: cssVar.success50,
   },
   danger: {
-    color: 'var(--at-danger-300)',
-    background: 'var(--at-danger-50)',
+    color: cssVar.danger300,
+    background: cssVar.danger50,
   },
   warning: {
-    color: 'var(--at-warning-300)',
-    background: 'var(--at-warning-50)',
+    color: cssVar.warning300,
+    background: cssVar.warning50,
   },
   neutral: {
-    color: 'var(--at-fg-muted)',
-    background: 'var(--at-bg-soft)',
+    color: cssVar.fgMuted,
+    background: cssVar.bgSoft,
   },
 };
 
@@ -52,18 +53,21 @@ const STATUS_TONES: Record<ShippingStatusType, StatusToneType> = {
  * Resolve rótulo (pt-BR) e tom de um status de entrega; cai em "neutral" para
  * valores fora do contrato.
  *
- * @param {string} status - Status bruto vindo do `result`.
- * @returns {{ label: string; tone: StatusToneType }} Rótulo e tom.
+ * @param status - Status bruto vindo do `result`.
+ *
+ * @returns Rótulo e tom.
  */
 export function describeStatus(status: string): {
   label: string;
   tone: StatusToneType
 } {
-  const known = status as ShippingStatusType;
+  // The raw status can be any string, so the maps are read through string-indexed partial views.
+  const labels: Partial<Record<string, string>> = STATUS_LABELS;
+  const tones: Partial<Record<string, StatusToneType>> = STATUS_TONES;
 
   return {
-    label: STATUS_LABELS[known] ?? status,
-    tone: STATUS_TONES[known] ?? 'neutral',
+    label: labels[status] ?? status,
+    tone: tones[status] ?? 'neutral',
   };
 }
 
@@ -79,9 +83,10 @@ const NAIVE_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
  *   exibida em UTC dá exatamente os mesmos componentes), o que mantém a exibição correta e
  *   independente do fuso do navegador.
  *
- * @param {string} iso - Instante (ISO absoluto OU naive no fuso).
- * @param {Intl.DateTimeFormatOptions} options - Campos a exibir (dia/mês/hora/…).
- * @returns {string} Data formatada, ou o valor original se não parseável.
+ * @param iso - Instante (ISO absoluto OU naive no fuso).
+ * @param options - Campos a exibir (dia/mês/hora/…).
+ *
+ * @returns Data formatada, ou o valor original se não parseável.
  */
 function formatInTz(
   iso: string,
@@ -120,8 +125,9 @@ const DATE_TIME_FIELDS: Intl.DateTimeFormatOptions = {
  * Formata um instante de forma legível em pt-BR (dd/MM HH:mm) no fuso do app; aceita ISO absoluto
  * (`Z`/offset) ou naive (já no fuso). Devolve o valor original se não for parseável.
  *
- * @param {string} iso - Instante (ISO absoluto OU naive no fuso).
- * @returns {string} Data formatada ou o valor original.
+ * @param iso - Instante (ISO absoluto OU naive no fuso).
+ *
+ * @returns Data formatada ou o valor original.
  */
 export function formatDateTime(iso: string): string {
   return formatInTz(
@@ -135,8 +141,9 @@ export function formatDateTime(iso: string): string {
  * ciclo de vida (queued → sent → delivered) costumam cair no mesmo minuto, então sem os segundos
  * parecem simultâneos e contradizem a duração (ex.: 4 s). Devolve o original se não for parseável.
  *
- * @param {string} iso - Instante (ISO absoluto OU naive no fuso).
- * @returns {string} Data formatada com segundos, ou o valor original.
+ * @param iso - Instante (ISO absoluto OU naive no fuso).
+ *
+ * @returns Data formatada com segundos, ou o valor original.
  */
 export function formatDateTimeSeconds(iso: string): string {
   return formatInTz(
@@ -148,15 +155,35 @@ export function formatDateTimeSeconds(iso: string): string {
   );
 }
 
+/** Digits of the Brazilian country code (`55`). */
+const COUNTRY_CODE_DIGITS = 2;
+
+/** Digits of a Brazilian landline without the country code: area code + 8. */
+const LANDLINE_LOCAL_DIGITS = 10;
+
+/** Digits of a Brazilian mobile number without the country code: area code + 9. */
+const MOBILE_LOCAL_DIGITS = 11;
+
+/** Digits of a Brazilian landline with the country code. */
+const LANDLINE_FULL_DIGITS = COUNTRY_CODE_DIGITS + LANDLINE_LOCAL_DIGITS;
+
+/** Digits of a Brazilian mobile number with the country code. */
+const MOBILE_FULL_DIGITS = COUNTRY_CODE_DIGITS + MOBILE_LOCAL_DIGITS;
+
+/** Digits after the hyphen of a displayed phone number. */
+const PHONE_SUFFIX_DIGITS = 4;
+
 /**
  * Formata um telefone para exibição (espelha o `maskPhone` do backend, mas com os dígitos completos):
  * BR móvel `+55 (13) 99188-4678`. Como o telefone é gravado só-dígitos, o valor revelado vem cru
  * (ex.: `5513991884678`) — esta função o deixa legível. Não-BR/curto: prefixa `+` nos dígitos.
  *
- * @param {string} raw - Telefone (dígitos ou qualquer formato).
- * @returns {string} Telefone formatado para leitura.
+ * @param raw - Telefone (dígitos ou qualquer formato). It can be missing when a response breaks
+ *   the contract; that yields an empty string.
+ *
+ * @returns Telefone formatado para leitura.
  */
-export function formatPhone(raw: string): string {
+export function formatPhone(raw: string | null | undefined): string {
   const digits = (raw ?? '').replace(
     /\D/g,
     '',
@@ -166,13 +193,13 @@ export function formatPhone(raw: string): string {
   // dígitos = 10/11 — ex.: SMS Flash/zapsms grava sem o 55). Em ambos extrai-se o "local" (DDD + número)
   // e exibe-se +55 (DDD) — sem isso, um BR sem DDI vira "+47..." parecendo número estrangeiro.
   const local = digits.startsWith('55')
-    && (digits.length === 12 || digits.length === 13)
+    && (digits.length === LANDLINE_FULL_DIGITS || digits.length === MOBILE_FULL_DIGITS)
     ? digits.slice(2)
     : digits;
 
   if (
-    local.length === 10
-    || local.length === 11
+    local.length === LANDLINE_LOCAL_DIGITS
+    || local.length === MOBILE_LOCAL_DIGITS
   ) {
     const area = local.slice(
       0,
@@ -183,13 +210,13 @@ export function formatPhone(raw: string): string {
 
     return `+55 (${area}) ${rest.slice(
       0,
-      -4,
-    )}-${rest.slice(-4)}`;
+      -PHONE_SUFFIX_DIGITS,
+    )}-${rest.slice(-PHONE_SUFFIX_DIGITS)}`;
   }
 
   return digits
     ? `+${digits}`
-    : raw;
+    : raw ?? '';
 }
 
 /**
@@ -198,8 +225,9 @@ export function formatPhone(raw: string): string {
  * Defensivo com `null`/`undefined` (ex.: relatório antigo persistido, sem um campo novo do contrato)
  * → formata como `0` em vez de estourar (`undefined.toLocaleString`).
  *
- * @param {number | null | undefined} value - Valor a formatar.
- * @returns {string} Número formatado (ex.: `184.320`).
+ * @param value - Valor a formatar.
+ *
+ * @returns Número formatado (ex.: `184.320`).
  */
 export function formatNumber(value: number | null | undefined): string {
   return (value ?? 0).toLocaleString('pt-BR');
