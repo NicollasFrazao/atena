@@ -181,8 +181,8 @@ describe('S3TmpContentCache', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects an s3:// ref without a key instead of guessing the bucket', async () => {
-    await expect(newCache().get('s3://bucket-only')).rejects.toThrow('Ref S3 inválida (sem key): s3://bucket-only');
+  it('returns null for an s3:// ref without a key, without guessing the bucket or calling S3', async () => {
+    await expect(newCache().get('s3://bucket-only')).resolves.toBeNull();
     expect(send).not.toHaveBeenCalled();
   });
 });
