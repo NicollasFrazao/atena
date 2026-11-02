@@ -139,23 +139,23 @@ export function HourlyChart({
     ? formatBucket(points[hover].at)
     : null;
 
-  // Rótulos do eixo: mostra a DATA quando ela muda (1º rótulo sempre; depois, a cada virada de dia).
-  let previousDate: string | null = null;
+  // Axis labels show the DATE when it changes: always on the first label, then at each new day.
+  const labels = labelIndices(points.length).map((index) => ({
+    index,
+    ...formatBucket(points[index].at),
+  }));
 
-  const axis = labelIndices(points.length).map((index) => {
-    const {
-      date,
-      hour,
-    } = formatBucket(points[index].at);
-
-    const showDate = date !== previousDate;
-    previousDate = date;
+  const axis = labels.map((
+    label,
+    position,
+  ) => {
+    const showDate = position === 0 || label.date !== labels[position - 1].date;
 
     return {
-      index,
+      index: label.index,
       text: showDate
-        ? `${date} ${hour}`
-        : hour,
+        ? `${label.date} ${label.hour}`
+        : label.hour,
     };
   });
 
