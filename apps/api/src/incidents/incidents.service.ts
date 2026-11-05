@@ -7,7 +7,6 @@ import type {
   PaginatedEnvelopeInterface,
   SearchResultRowInterface,
 } from '@atena/types';
-import { MS_PER_DAY } from '../common/units';
 import { ShippingsService } from '../shippings/shippings.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListIncidentsDto } from './dto/list-incidents.dto';
@@ -22,9 +21,6 @@ const RELATED_MAX_LIMIT = 5000;
 /** Quantos códigos de envio (campaign_id) exibir no resumo do detalhe (top por ocorrência). */
 const TOP_CAMPAIGNS = 5;
 
-/** Lookback default (ms) quando o incidente não tem janela de detecção precisa (ex.: seed). */
-const RELATED_DEFAULT_LOOKBACK_MS = MS_PER_DAY;
-
 /** Default page size of the incident list (`limit` absent). */
 const DEFAULT_INCIDENTS_LIMIT = 20;
 
@@ -32,35 +28,20 @@ const DEFAULT_INCIDENTS_LIMIT = 20;
 const INCIDENT_NOT_FOUND = 'Incidente não encontrado';
 
 /**
- * An incident row as this service reads it. The schema declares the detection window columns
- * NOT NULL, but the service tolerates a row without them (falls back to a default lookback and
- * exposes `window_from`/`window_to` as `null`), so they are read as optional.
- */
-type IncidentRowType = Omit<Incident, 'detectionWindowStart' | 'detectionWindowEnd'> & {
-  detectionWindowStart?: Date | null;
-  detectionWindowEnd?: Date | null;
-};
-
-/**
- * Window of the impacted shippings of an incident: its detection window, or, without one, the
- * default lookback ending at the detection instant.
+ * Window of the impacted shippings of an incident: its detection window (NOT NULL in the schema,
+ * always written by the detector).
  *
  * @param incident - The incident row.
  *
  * @returns The window to read the impacted shippings from.
  */
-function impactWindow(incident: IncidentRowType): {
+function impactWindow(incident: Incident): {
   from: Date;
   to: Date
 } {
-  const to = incident.detectionWindowEnd ?? incident.detectedAt;
-
-  const from = incident.detectionWindowStart
-    ?? new Date(to.getTime() - RELATED_DEFAULT_LOOKBACK_MS);
-
   return {
-    from,
-    to,
+    from: incident.detectionWindowStart,
+    to: incident.detectionWindowEnd,
   };
 }
 
@@ -367,7 +348,7 @@ export class IncidentsService {
    *
    * @returns Incidente em snake_case (sem PII).
    */
-  private toIncident(record: IncidentRowType): IncidentInterface {
+  private toIncident(record: Incident): IncidentInterface {
     const payload = (record.detectionPayload ?? {}) as DetectionPayloadInterface;
 
     return {
@@ -381,8 +362,8 @@ export class IncidentsService {
       window: payload.window ?? '',
       // Janela em UTC absoluto (com `Z`) das colunas estruturadas — o consumidor (LLM) passa direto
       // como date_from/date_to do relatório, sem reconverter fuso (evita o shift do rótulo legível).
-      window_from: record.detectionWindowStart?.toISOString() ?? null,
-      window_to: record.detectionWindowEnd?.toISOString() ?? null,
+      window_from: record.detectionWindowStart.toISOString(),
+      window_to: record.detectionWindowEnd.toISOString(),
       summary: payload.summary ?? '',
       metrics: payload.metrics ?? EMPTY_METRICS,
       related_shippings: payload.relatedShippings ?? 0,

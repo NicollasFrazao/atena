@@ -1724,32 +1724,6 @@ describe('OrchestratorService (scripted LLM)', () => {
         {},
       )).toThrow('incident_id é obrigatório');
     });
-
-    it('get_incident keeps the stored window label when the incident has no window bounds', async () => {
-      const {
-        execute,
-        incidents,
-      } = buildScripted([]);
-
-      incidents.get.mockResolvedValue({
-        ...INCIDENT_DETAIL,
-        window_from: null,
-        window_to: null,
-        activities: [],
-      });
-
-      const detail = await execute(
-        'get_incident',
-        { incident_id: 'inc-1' },
-      );
-
-      expect(detail).toMatchObject({
-        window: '19:40 → 19:55 (UTC)',
-        window_from: null,
-        window_to: null,
-        detected_at: '22/06/2026 às 16:54',
-      });
-    });
   });
 });
 

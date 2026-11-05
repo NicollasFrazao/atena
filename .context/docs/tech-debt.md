@@ -94,9 +94,6 @@ The model in [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md
 - **Context:** the standards require everything in English. The context base, the tooling and every comment written since 2026-11-01 are in English; most older code comments (TSDoc of the API and web modules, inline comments), the `Makefile` help texts, `docs/` (handoff, cost notes) and some identifiers of pages (`UsuariosPage`, `RelatoriosPage`, route `/admin/usuarios`) are still in Portuguese. User-facing UI strings stay in Portuguese by design.
 - **What closes it:** translate module by module when a file is touched for other reasons; rename the page components (`UsersPage`, `ReportsPage`) in a dedicated `refactor` PR; translate `docs/` last (historical).
 
-## 16. Behaviour found while raising coverage (not changed)
-- **Incident detection-window fallbacks:** the schema says the window columns are `NOT NULL`, but the service still falls back when they are missing (a spec relies on it). Decide whether the fallback should exist.
-
 ## 17. Dependabot holds two majors
 - **Context (2026-11-05):** every migration major of 2026-11 has landed (NestJS 12 on Node 24, #25/#71). Two holds remain in `.github/dependabot.yml`: `@types/node` moves with the Node 24 runtime, not ahead of it, and TypeScript 7 waits for typescript-eslint.
 - **What closes it:** typescript-eslint supporting TypeScript 7 (remove that hold); `@types/node` majors follow each Node runtime upgrade.
