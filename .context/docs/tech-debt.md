@@ -97,6 +97,6 @@ The model in [02-data-model.md](../../docs/design_handoff_atena/02-data-model.md
 ## 16. Behaviour found while raising coverage (not changed)
 - **Incident detection-window fallbacks:** the schema says the window columns are `NOT NULL`, but the service still falls back when they are missing (a spec relies on it). Decide whether the fallback should exist.
 
-## 17. Dependabot holds the majors that are migrations
-- **Context (2026-11-02):** this major breaks the build when bumped alone: NestJS 12 (#25), whose ESM-only packages Jest cannot load yet (see the issue). The `@types/node` and TypeScript majors wait for the Node 22 runtime and for typescript-eslint. `.github/dependabot.yml` ignores their semver-major updates so the weekly PRs do not reopen.
-- **What closes it:** each migration removes its own `ignore` entries; `@types/node` moves with the runtime and TypeScript with typescript-eslint.
+## 17. Dependabot holds two majors
+- **Context (2026-11-05):** every migration major of 2026-11 has landed (NestJS 12 on Node 24, #25/#71). Two holds remain in `.github/dependabot.yml`: `@types/node` moves with the Node 24 runtime, not ahead of it, and TypeScript 7 waits for typescript-eslint.
+- **What closes it:** typescript-eslint supporting TypeScript 7 (remove that hold); `@types/node` majors follow each Node runtime upgrade.

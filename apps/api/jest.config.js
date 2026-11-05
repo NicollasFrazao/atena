@@ -1,6 +1,8 @@
 /**
  * Jest (ts-jest) of the API. Tests are compiled as CommonJS (overriding the base tsconfig's
- * `nodenext`, which Jest's CommonJS runtime does not consume directly).
+ * `nodenext`, which Jest's CommonJS runtime does not consume directly). ESM-only dependencies
+ * (NestJS 12, openid-client) load through Jest's native `require(esm)`, which needs Node 24.9+ and
+ * `--experimental-vm-modules` (set by the `test` scripts).
  */
 const COVERAGE_THRESHOLD = 80;
 
@@ -28,20 +30,7 @@ module.exports = {
         },
       },
     ],
-    // ESM-only dependencies, compiled to CommonJS for Jest's runtime (Node 22 has no Jest
-    // require(esm) support; that needs Node 24.9+).
-    '^.+\\.js$': [
-      'ts-jest',
-      {
-        tsconfig: {
-          allowJs: true,
-          module: 'commonjs',
-          verbatimModuleSyntax: false,
-        },
-      },
-    ],
   },
-  transformIgnorePatterns: ['/node_modules/(?!(openid-client|oauth4webapi|jose)/)'],
   // `npm run test:coverage` measures every source file, not only those a test imports.
   collectCoverageFrom: [
     'src/**/*.ts',

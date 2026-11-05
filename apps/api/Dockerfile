@@ -2,7 +2,7 @@
 #   docker build -f apps/api/Dockerfile -t atena-api:latest .
 
 # ---- build ----
-FROM node:22-slim AS build
+FROM node:24-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # manifests primeiro (cache de camadas do npm)
@@ -19,7 +19,7 @@ RUN npm run build --workspace @atena/types \
   && npm run build --workspace @atena/api
 
 # ---- runtime ----
-FROM node:22-slim AS runtime
+FROM node:24-slim AS runtime
 # ca-certificates: o DuckDB baixa as extensões httpfs/aws via HTTPS em runtime (precisa do CA bundle).
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*

@@ -27,20 +27,7 @@ module.exports = {
         },
       },
     ],
-    // ESM-only dependencies, compiled to CommonJS for Jest's runtime (Node 22 has no Jest
-    // require(esm) support; that needs Node 24.9+).
-    '^.+\\.js$': [
-      'ts-jest',
-      {
-        tsconfig: {
-          allowJs: true,
-          module: 'commonjs',
-          verbatimModuleSyntax: false,
-        },
-      },
-    ],
   },
-  transformIgnorePatterns: ['/node_modules/(?!(openid-client|oauth4webapi|jose)/)'],
   moduleNameMapper: {
     '^@atena/types$': '<rootDir>/../../packages/types/src/index.ts',
   },
