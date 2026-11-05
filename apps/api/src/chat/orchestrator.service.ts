@@ -803,15 +803,13 @@ function incidentForOperator(
 ): Record<string, unknown> {
   const timeZone = appTimeZone();
 
-  const window = detail.window_from && detail.window_to
-    ? `${formatInstantInTz(
-      detail.window_from,
-      timeZone,
-    )} → ${formatInstantInTz(
-      detail.window_to,
-      timeZone,
-    )}`
-    : detail.window;
+  const window = `${formatInstantInTz(
+    detail.window_from,
+    timeZone,
+  )} → ${formatInstantInTz(
+    detail.window_to,
+    timeZone,
+  )}`;
 
   return {
     ...detail,
@@ -820,18 +818,14 @@ function incidentForOperator(
       timeZone,
     ),
     window,
-    window_from: detail.window_from
-      ? toNaiveDatetimeInTz(
-        detail.window_from,
-        timeZone,
-      )
-      : null,
-    window_to: detail.window_to
-      ? toNaiveDatetimeInTz(
-        detail.window_to,
-        timeZone,
-      )
-      : null,
+    window_from: toNaiveDatetimeInTz(
+      detail.window_from,
+      timeZone,
+    ),
+    window_to: toNaiveDatetimeInTz(
+      detail.window_to,
+      timeZone,
+    ),
     activities: detail.activities.map((activity) => ({
       ...activity,
       at: formatInstantInTz(

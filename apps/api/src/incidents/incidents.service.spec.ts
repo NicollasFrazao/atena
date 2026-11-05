@@ -15,6 +15,8 @@ const INCIDENT_ROW = {
   dimensionType: 'provider',
   dimensionValue: 'Provider D',
   detectedAt: new Date('2026-05-28T14:02:00Z'),
+  detectionWindowStart: new Date('2026-05-28T13:58:00Z'),
+  detectionWindowEnd: new Date('2026-05-28T14:02:00Z'),
   acknowledgedBy: null,
   resolvedBy: null,
   detectionPayload: {
@@ -84,25 +86,6 @@ describe('IncidentsService', () => {
 
     expect(row.window_from).toBe('2026-06-23T19:40:00.000Z');
     expect(row.window_to).toBe('2026-06-23T19:55:00.000Z');
-  });
-
-  it('window_from/window_to = null quando o incidente não tem colunas de janela', async () => {
-    const prisma = {
-      incident: {
-        count: jest.fn().mockResolvedValue(1),
-        findMany: jest.fn().mockResolvedValue([INCIDENT_ROW]),
-      },
-    } as unknown as PrismaService;
-
-    const service = new IncidentsService(
-      prisma,
-      NO_MESSAGES,
-    );
-
-    const row = (await service.list({ status: 'detected' })).rows[0];
-
-    expect(row.window_from).toBeNull();
-    expect(row.window_to).toBeNull();
   });
 
   it('get: 404 quando o incidente não existe', async () => {

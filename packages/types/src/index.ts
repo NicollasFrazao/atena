@@ -564,9 +564,9 @@ export interface IncidentInterface {
   /** Rótulo legível da janela de detecção, no fuso de exibição (ex.: `23/06 16:40 → 16:55 GMT-3 (15 min)`). */
   window: string;
   /** Início da janela de detecção em ISO 8601 UTC (com `Z`) — use direto como `date_from` de relatório. */
-  window_from: string | null;
+  window_from: string;
   /** Fim da janela de detecção em ISO 8601 UTC (com `Z`) — use direto como `date_to` de relatório. */
-  window_to: string | null;
+  window_to: string;
   /** Resumo legível do incidente. */
   summary: string;
   /** Métricas de suporte: baseline, valor atual, limiar e tamanho da amostra. */
