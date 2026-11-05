@@ -10,9 +10,7 @@ updates:
       include: scope
     ignore:
       # Majors that are migrations, not bumps; each has its issue. Remove the hold when it is done.
-      - dependency-name: '@nestjs/*' # #25
-        update-types: ['version-update:semver-major']
-      # The runtime is Node 22 (CI, API image) with engines >=20; the types move with it, not ahead of it.
+      # The runtime is Node 24 (CI, images, engines >=24.9); the types move with it, not ahead of it.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
       # typescript-eslint has no support for TypeScript 7 yet; revisit when it does.

@@ -3,7 +3,7 @@
 # O browser (no host) fala com a API publicada no host → VITE_API_URL/WS apontam p/ localhost.
 
 # ---- build ----
-FROM node:20-slim AS build
+FROM node:24-slim AS build
 WORKDIR /app
 # manifests primeiro (cache de camadas do npm)
 COPY package.json ./

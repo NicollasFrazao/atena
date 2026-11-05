@@ -10,7 +10,7 @@ This page is the short version.
 ## Setup
 
 ```bash
-nvm use 22                      # the CI runs on Node.js 22; the lint tooling needs it
+nvm use 24                      # CI and the images run Node.js 24; the API tests need 24.9+
 npm ci                          # installs every workspace and the git hooks
 make env                        # creates apps/api/.env from the template (never committed)
 npm run build -w @atena/types   # the apps consume the contract from its build
