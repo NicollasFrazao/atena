@@ -1,21 +1,163 @@
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import request from 'supertest';
 import { AppModule } from './app.module';
 
+/** Full phone of `m-1001`, returned by reveal-phone. */
+const FIXTURE_PHONE = '+5511987651234';
+
+/** How far back the fixture sends are, inside the default 30-day search window. */
+const FIXTURE_AGE_MS = 3 * 60 * 60 * 1000;
+
+/** Number of sends in the fixture. */
+const FIXTURE_SENDS = 8;
+
+/** Zero-padded two-digit part of a partition path. */
+function twoDigits(value: number): string {
+  return String(value).padStart(
+    2,
+    '0',
+  );
+}
+
 /**
- * E2e de INTEGRAÇÃO contra um MySQL real (sem mocks de Prisma) — roda via
- * `make test-e2e`, que sobe o banco (compose), aplica migrations, semeia e executa
- * esta suíte. Fica FORA do `make test` (naming `*.e2e-spec.ts` não casa com o
- * `testRegex` unitário); precisa de `DATABASE_URL` apontando para o MySQL.
+ * Writes the delivery data the audit query reads: eight sends (`m-1001`…`m-1008`) a few hours old,
+ * as one hourly partition of the detailed report under `root`. Every send starts with `queued` (a
+ * terminal status alone is an orphan the search leaves out); `m-1001` carries the full trail
+ * (queued → sent → delivered) and {@link FIXTURE_PHONE}. The providers are Provider C and Provider D.
  *
- * Valida o caminho real ponta a ponta (HTTP → serviço → Prisma → MySQL) sobre os
- * dados de seed (8 mensagens; trilha de `m-1001`; telefone `+5511987651234`).
+ * @param root - Directory the audit query uses as its source (`ATENA_AUDIT_SOURCE_ROOT`).
+ */
+function writeDeliveryFixture(root: string): void {
+  const at = new Date(Date.now() - FIXTURE_AGE_MS);
+
+  const partition = join(
+    root,
+    `year=${at.getUTCFullYear()}`,
+    `month=${twoDigits(at.getUTCMonth() + 1)}`,
+    `day=${twoDigits(at.getUTCDate())}`,
+    `hour=${twoDigits(at.getUTCHours())}`,
+  );
+
+  const lines: string[] = [];
+
+  for (let index = 1; index <= FIXTURE_SENDS; index += 1) {
+    const campaignId = `m-${1000 + index}`;
+
+    const statuses = index === 1
+      ? [
+        'queued',
+        'sent',
+        'delivered',
+      ]
+      : [
+        'queued',
+        'delivered',
+      ];
+
+    statuses.forEach((
+      status,
+      step,
+    ) => {
+      lines.push(JSON.stringify({
+        campaign_id: campaignId,
+        campaign_type: 'sms',
+        client_id: 'AcmeBank',
+        app_id: null,
+        source: 'api',
+        status,
+        phone: index === 1
+          ? FIXTURE_PHONE
+          : `+55119876500${twoDigits(index)}`,
+        message: 'hello',
+        credits_required: 1,
+        sent_at: at.toISOString().slice(
+          0,
+          10,
+        ),
+        processed_at: new Date(at.getTime() + (step * 60_000)).toISOString(),
+        provider_name: index % 2 === 1
+          ? 'Provider D'
+          : 'Provider C',
+        provider_code: null,
+        error: null,
+      }));
+    });
+  }
+
+  mkdirSync(
+    partition,
+    { recursive: true },
+  );
+
+  writeFileSync(
+    join(
+      partition,
+      'sends.json.gz',
+    ),
+    gzipSync(Buffer.from(`${lines.join('\n')}\n`)),
+  );
+}
+
+/**
+ * E2e INTEGRATION suite against a real MySQL (no Prisma mocks). It runs through `make test-e2e`,
+ * which starts the database, applies the migrations, seeds and runs this suite; the
+ * `*.e2e-spec.ts` naming keeps it out of the unit `testRegex`. Needs `DATABASE_URL`.
+ *
+ * Covers the real path end to end (HTTP → service → Prisma → MySQL) over the seed. Delivery data
+ * is not in the database: it comes from the audit query's source, so the suite writes a local one
+ * ({@link writeDeliveryFixture}) and points `ATENA_AUDIT_SOURCE_ROOT` at it.
  */
 describe('DB e2e (MySQL real + seed, sem mocks)', () => {
   let app: INestApplication;
+  let fixtureRoot: string;
+
+  /**
+   * Id of the `m-1001` send, as the search returns it: trail and reveal take the send id
+   * (`md5(campaign_id|phone)`), not the campaign id.
+   */
+  const fixtureSendId = async (): Promise<string> => {
+    const res = await request(app.getHttpServer()).get('/api/shippings/search');
+
+    const rows = res.body.rows as {
+      id: string;
+      campaign_id: string | null;
+    }[];
+
+    const send = rows.find((row) => row.campaign_id === 'm-1001');
+
+    if (!send) {
+      throw new Error('The fixture send m-1001 is missing from the search.');
+    }
+
+    return send.id;
+  };
 
   beforeAll(async () => {
+    fixtureRoot = mkdtempSync(join(
+      tmpdir(),
+      'atena-e2e-',
+    ));
+
+    writeDeliveryFixture(join(
+      fixtureRoot,
+      'source',
+    ));
+
+    process.env.ATENA_AUDIT_SOURCE_ROOT = join(
+      fixtureRoot,
+      'source',
+    );
+
+    process.env.ATENA_TMP_CACHE_DIR = join(
+      fixtureRoot,
+      'cache',
+    );
+
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
 
     app = moduleRef.createNestApplication();
@@ -35,6 +177,14 @@ describe('DB e2e (MySQL real + seed, sem mocks)', () => {
 
   afterAll(async () => {
     await app.close();
+
+    rmSync(
+      fixtureRoot,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
   });
 
   it('GET /health → 200', async () => {
@@ -51,11 +201,13 @@ describe('DB e2e (MySQL real + seed, sem mocks)', () => {
     expect(res.body.rows[0].phone_masked).toContain('****');
   });
 
-  it('GET /api/shippings/m-1001/trail → trilha com eventos', async () => {
-    const res = await request(app.getHttpServer()).get('/api/shippings/m-1001/trail');
+  it('GET /api/shippings/:id/trail → trilha com eventos (m-1001)', async () => {
+    const id = await fixtureSendId();
+    const res = await request(app.getHttpServer()).get(`/api/shippings/${id}/trail`);
 
     expect(res.status).toBe(200);
-    expect(res.body.shipping_id).toBe('m-1001');
+    expect(res.body.shipping_id).toBe(id);
+    expect(res.body.campaign_id).toBe('m-1001');
     expect(res.body.events.length).toBeGreaterThan(0);
     expect(res.body.phone_masked).toContain('****');
   });
@@ -71,14 +223,19 @@ describe('DB e2e (MySQL real + seed, sem mocks)', () => {
     ]));
   });
 
-  it('POST /api/shippings/m-1001/reveal-phone → telefone completo + audita (real)', async () => {
-    const res = await request(app.getHttpServer()).post('/api/shippings/m-1001/reveal-phone');
+  it('POST /api/shippings/:id/reveal-phone → telefone completo + audita (real, m-1001)', async () => {
+    const id = await fixtureSendId();
+    const res = await request(app.getHttpServer()).post(`/api/shippings/${id}/reveal-phone`);
 
     expect(res.status).toBe(201);
 
+    // The audit query canonicalises phones to digits (PHONE_CANONICAL), so the reveal has no `+`.
     expect(res.body).toEqual({
-      shipping_id: 'm-1001',
-      phone_full: '+5511987651234',
+      shipping_id: id,
+      phone_full: FIXTURE_PHONE.replace(
+        '+',
+        '',
+      ),
     });
   });
 
